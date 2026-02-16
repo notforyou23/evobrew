@@ -2,6 +2,16 @@
 node_modules/
 package-lock.json
 
+# Test artifacts
+.playwright-cli/
+playwright-report/
+test-results/
+
+# User data / runtime state
+storage/
+*.db
+data/
+
 # Environment variables
 .env
 .env.local
