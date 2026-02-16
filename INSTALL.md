@@ -1,9 +1,78 @@
-# COSMO IDE - Installation Guide
+# Evobrew - Installation Guide
 
-**Get from "git clone" to working IDE in 5 minutes.**
+**Two installation methods: npm global (users) or git clone (contributors).**
 
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
 ![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-green)
+
+---
+
+## Choose Your Installation Method
+
+- **User Installation (recommended):** Install globally via npm, managed via CLI
+- **Contributor Installation:** Clone repository for development
+
+---
+
+## User Installation (Quick)
+
+### Prerequisites
+- **Node.js** 18.0.0 or higher
+- **npm** 9.0.0 or higher
+
+```bash
+node --version  # Should show v18.0.0 or higher
+npm --version   # Should show 9.0.0 or higher
+```
+
+### Installation Steps
+
+```bash
+# 1. Install globally (1 minute)
+npm install -g evobrew
+
+# 2. Run setup wizard (2 minutes)
+evobrew setup
+
+# 3. Start server
+evobrew start
+```
+
+**✅ Done!** Open http://localhost:3405 in your browser.
+
+### Setup Wizard
+
+The `evobrew setup` wizard will:
+1. Generate encryption keys
+2. Configure API keys (OpenAI, Anthropic, xAI)
+3. Set server ports (HTTP/HTTPS)
+4. Initialize database
+5. Optionally configure OpenClaw Gateway
+
+**To reconfigure later:** Run `evobrew setup` again.
+
+### CLI Commands
+
+```bash
+evobrew start                    # Start server (foreground)
+evobrew daemon install           # Install as system service
+evobrew daemon start             # Start background service
+evobrew daemon stop              # Stop background service
+evobrew daemon status            # Check service status
+evobrew setup                    # Run/re-run setup wizard
+evobrew doctor                   # Diagnose configuration issues
+evobrew import-oauth             # Import Anthropic OAuth token
+evobrew update                   # Update to latest version
+evobrew version                  # Show version
+```
+
+See [docs/CLI.md](./docs/CLI.md) for complete reference.
+
+---
+
+## Contributor Installation (Development)
+
+For contributing to Evobrew or running from source:
 
 ---
 
@@ -404,7 +473,7 @@ npm start
 
 **Expected output:**
 ```
-🚀 COSMO IDE Studio (Standalone)
+🚀 Evobrew (Standalone)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 📂 Workspace:  /Users/you/cosmo_ide
@@ -531,7 +600,7 @@ Once the IDE loads in your browser, verify everything works:
 
 **Example response:**
 ```
-Hello! Yes, I'm working correctly. I'm connected to the COSMO IDE and ready to help you with coding tasks. I can read files, search your codebase, make edits, and more. What would you like to work on?
+Hello! Yes, I'm working correctly. I'm connected to Evobrew and ready to help you with coding tasks. I can read files, search your codebase, make edits, and more. What would you like to work on?
 ```
 
 ---
@@ -642,7 +711,7 @@ DATABASE_URL="file:./custom-path/studio.db"
 
 If you have a **Claude Pro or Claude Max subscription**, you can use OAuth authentication instead of API keys. This gives you access to your subscription models without paying for additional API usage.
 
-**How it works:** COSMO IDE imports your OAuth token from the Claude CLI and stores it encrypted in the database using the "Token Sink Pattern."
+**How it works:** Evobrew imports your OAuth token from the Claude CLI and stores it encrypted in the database using the "Token Sink Pattern."
 
 #### Step 1: Install Claude CLI
 
@@ -742,7 +811,7 @@ Cons:
 **Option 2: System Keychain (Permanent)**
 
 1. Open **Keychain Access** app
-2. File → Import Items → Select `ssl/cert.pem` from your COSMO IDE directory
+2. File → Import Items → Select `ssl/cert.pem` from your Evobrew installation directory
 3. Find the certificate in the list (look for "localhost" or your IP address)
 4. Double-click the certificate
 5. Expand **"Trust"** section
@@ -773,7 +842,7 @@ If accessing from other devices on your network:
 
 **Option 2: Certificate Store (Permanent)**
 
-1. Copy `ssl/cert.pem` from COSMO IDE directory to Desktop
+1. Copy `ssl/cert.pem` from Evobrew installation directory to Desktop
 2. Rename to `cert.crt` (Windows recognizes .crt extension)
 3. Double-click `cert.crt`
 4. Click "Install Certificate"
@@ -865,7 +934,7 @@ sudo ufw reload
 
 ### Raspberry Pi
 
-COSMO IDE runs on Raspberry Pi with **cloud providers only**. Local AI models (Ollama) are automatically disabled.
+Evobrew runs on Raspberry Pi with **cloud providers only**. Local AI models (Ollama) are automatically disabled.
 
 **What works:**
 - ✅ OpenAI (GPT-4o, GPT-4)
@@ -1150,7 +1219,7 @@ npm start
 1. Transfer `ssl/cert.pem` to device
 2. Settings → Security → Install from storage
 3. Select cert.pem
-4. Name it "COSMO IDE"
+4. Name it "Evobrew"
 
 **See also:** [HTTPS-SETUP.md](HTTPS-SETUP.md)
 
@@ -1279,7 +1348,7 @@ Explore knowledge graphs (.brain packages):
 
 ## Updates & Maintenance
 
-### Update COSMO IDE
+### Update Evobrew
 
 ```bash
 cd cosmo_ide
@@ -1306,7 +1375,7 @@ rm cert.pem key.pem
 
 # Replace YOUR_LOCAL_IP with your actual IP
 openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes \
-  -subj "/C=US/ST=Local/L=Local/O=COSMO IDE/OU=Dev/CN=YOUR_LOCAL_IP" \
+  -subj "/C=US/ST=Local/L=Local/O=Evobrew/OU=Dev/CN=YOUR_LOCAL_IP" \
   -addext "subjectAltName=IP:YOUR_LOCAL_IP,DNS:localhost"
 
 # Restart server

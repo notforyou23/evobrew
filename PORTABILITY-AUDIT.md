@@ -1,4 +1,4 @@
-# COSMO IDE v2 - Portability Audit Report
+# Evobrew - Portability Audit Report
 
 **Date:** December 10, 2025  
 **Status:** ✅ HIGHLY PORTABLE with minor recommendations
@@ -195,7 +195,7 @@ Create a `SETUP.md` with platform-agnostic instructions:
 ```markdown
 ## Network Access
 
-Your COSMO IDE will be accessible at:
+Evobrew will be accessible at:
 - **Local:** http://localhost:3405
 - **Network:** http://YOUR_IP_ADDRESS:3405
 

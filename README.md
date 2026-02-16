@@ -25,27 +25,21 @@ Think of it as a workspace where you and AI build together — with memory, tool
 ## Quick Start
 
 ```bash
-# Clone
-git clone https://github.com/notforyou23/evobrew.git
-cd evobrew
+# Install globally
+npm install -g evobrew
 
-# Install
-npm install
+# Run setup wizard
+evobrew setup
 
-# Configure
-cp .env.example .env
-# Edit .env with your API keys
-
-# Initialize database
-npm run db:migrate
-
-# Start
-npm start
+# Start server
+evobrew start
 ```
 
 Open http://localhost:3405 (or https://localhost:3406 for HTTPS)
 
-Full installation guide: [INSTALL.md](./INSTALL.md)
+**For contributors:** See [INSTALL.md](./INSTALL.md) for development setup.
+
+Full documentation: [docs/CLI.md](./docs/CLI.md)
 
 ---
 

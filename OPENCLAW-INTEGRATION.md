@@ -2,7 +2,7 @@
 
 ## Overview
 
-COSMO IDE integrates OpenClaw (COZ) as a **selectable AI model** in the model picker dropdown. When selected, chat requests route through the OpenClaw Gateway instead of direct API calls to OpenAI/Anthropic/xAI.
+Evobrew integrates OpenClaw (COZ) as a **selectable AI model** in the model picker dropdown. When selected, chat requests route through the OpenClaw Gateway instead of direct API calls to OpenAI/Anthropic/xAI.
 
 **Key Benefit:** COZ has persistent memory, tools, and session context that survive across IDE restarts. It's not just another LLM — it's a stateful agent.
 
@@ -31,7 +31,7 @@ COSMO IDE integrates OpenClaw (COZ) as a **selectable AI model** in the model pi
 
 **HTTPS Mode (Production):**
 ```
-Browser (wss://) → COSMO IDE Server → ws://localhost:18789 (Gateway)
+Browser (wss://) → Evobrew Server → ws://localhost:18789 (Gateway)
 ```
 
 **HTTP Mode (Dev):**
@@ -139,7 +139,7 @@ When you send a message through COZ, the IDE automatically enriches it with:
 ### Enriched Message Format
 
 ```
-[COSMO IDE Context]
+[Evobrew Context]
 File: server.js (javascript)
 ```javascript
 // full file content here

@@ -1,59 +1,57 @@
 # Evobrew Quick Start
 
-## One-Time Setup (5 minutes)
+## One-Time Setup (2 minutes)
 
 ```bash
-# 1. Clone and install
-git clone https://github.com/notforyou23/evobrew.git
-cd evobrew
-npm install
+# 1. Install globally
+npm install -g evobrew
 
-# 2. Configure
-cp .env.example .env
-nano .env  # Add your API keys
-
-# 3. Initialize database
-npm run db:migrate
-
-# 4. Start
-npx evobrew start
+# 2. Run setup wizard
+evobrew setup
 ```
 
-## What to Add in `.env`
-
-**Required:**
-- `ENCRYPTION_KEY` - Run: `openssl rand -hex 32`
-- At least one API key (OpenAI, Anthropic, or xAI)
-
-**Optional:**
-- OpenClaw Gateway settings (for persistent memory)
-- Custom ports
+The wizard will:
+- Generate encryption keys
+- Configure API keys (OpenAI, Anthropic, or xAI)
+- Set server ports
+- Initialize the database
+- Optionally configure OpenClaw Gateway
 
 ## First Launch
 
-Open http://localhost:3405 (or your custom port)
+```bash
+evobrew start
+```
+
+Open http://localhost:3405 (or your configured port)
 
 ## Commands
 
 ```bash
-npx evobrew start   # Start server
-npx evobrew setup   # Show setup guide
-npx evobrew config  # Open .env file
+evobrew start    # Start server
+evobrew setup    # Re-run setup wizard
+evobrew daemon   # Run as background service
+evobrew doctor   # Check configuration
+evobrew version  # Show version
 ```
+
+See [docs/CLI.md](./docs/CLI.md) for complete command reference.
 
 ## Anthropic Setup
 
-**Option A: API Key (simpler)**
-```bash
-# In .env:
-ANTHROPIC_API_KEY=sk-ant-...
-ANTHROPIC_OAUTH_ONLY=false
-```
+**Option A: API Key**
+The setup wizard will prompt for your API key.
 
-**Option B: OAuth (better rate limits)**
+**Option B: OAuth (Claude Pro/Max users)**
 ```bash
-node import-oauth.js
-# Opens browser for authorization
+# Install Claude CLI
+npm install -g @anthropic-ai/claude-cli
+
+# Authenticate
+claude setup-token
+
+# Import into Evobrew
+evobrew import-oauth
 ```
 
 See [docs/ANTHROPIC_OAUTH_SETUP.md](./docs/ANTHROPIC_OAUTH_SETUP.md) for details.
@@ -61,14 +59,15 @@ See [docs/ANTHROPIC_OAUTH_SETUP.md](./docs/ANTHROPIC_OAUTH_SETUP.md) for details
 ## Troubleshooting
 
 **Port already in use:**
-- Change `HTTP_PORT` in `.env` to a different port (e.g., 3410)
+- Re-run `evobrew setup` and choose a different port
 
-**Database errors:**
-- Run: `npm run db:migrate`
+**Configuration errors:**
+- Run `evobrew doctor` to diagnose issues
+- Re-run `evobrew setup` to reconfigure
 
 **API key errors:**
-- Check `.env` has valid keys
-- For Anthropic: Either use OAuth OR set `ANTHROPIC_OAUTH_ONLY=false`
+- Verify keys with `evobrew doctor`
+- For Anthropic: Use OAuth (see above) or add API key via setup
 
 ## Full Documentation
 

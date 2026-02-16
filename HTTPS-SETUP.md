@@ -1,6 +1,6 @@
-# HTTPS Setup Guide for COSMO IDE
+# HTTPS Setup Guide for Evobrew
 
-Your COSMO IDE now runs with HTTPS support! 🔒
+Evobrew now runs with HTTPS support! 🔒
 
 ## Access URLs
 
@@ -42,7 +42,7 @@ Since this is a **self-signed certificate**, you'll need to trust it on each dev
 
 **Alternative (Trust permanently in Keychain):**
 1. Open **Keychain Access** app
-2. File → Import Items → Select `ssl/cert.pem` from your COSMO IDE directory
+2. File → Import Items → Select `ssl/cert.pem` from your Evobrew installation directory
 3. Find the certificate (named with your IP address) → Double-click
 4. Expand **"Trust"** → Set "When using this certificate" to **"Always Trust"**
 5. Close (enter password when prompted)
@@ -84,7 +84,7 @@ Since this is a **self-signed certificate**, you'll need to trust it on each dev
 2. **Install certificate:**
    - Go to **Settings** → **Security** → **Install from storage**
    - Select `cert.pem`
-   - Name it "COSMO IDE"
+   - Name it "Evobrew"
    - Credential use: **VPN and apps**
 
 3. Visit: https://YOUR_LOCAL_IP:3406
@@ -93,7 +93,7 @@ Since this is a **self-signed certificate**, you'll need to trust it on each dev
 
 ## Certificate Info
 
-- **Location:** `ssl/` folder in your COSMO IDE directory
+- **Location:** `ssl/` folder in your Evobrew installation directory
 - **Files:**
   - `cert.pem` - Certificate (share this to trust on other devices)
   - `key.pem` - Private key (keep secret!)

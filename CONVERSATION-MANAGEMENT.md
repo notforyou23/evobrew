@@ -1,6 +1,6 @@
 # 💬 Conversation Management Guide
 
-Your COSMO IDE now has **full conversation saving and loading** capabilities!
+Evobrew now has **full conversation saving and loading** capabilities!
 
 ## ✨ Features
 

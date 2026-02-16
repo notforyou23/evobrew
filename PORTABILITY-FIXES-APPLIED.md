@@ -7,7 +7,7 @@
 
 ## Summary
 
-All hardcoded paths, IP addresses, and platform-specific commands have been removed or made portable. Your COSMO IDE v2 is now fully portable and will work on any machine running Node.js!
+All hardcoded paths, IP addresses, and platform-specific commands have been removed or made portable. Evobrew is now fully portable and will work on any machine running Node.js!
 
 ---
 
@@ -90,7 +90,7 @@ switch (platform) {
 | Before | After |
 |--------|-------|
 | `192.168.7.131:3405` | `YOUR_LOCAL_IP:3405` |
-| `/Users/jtr/_JTR23_/cosmo_ide_v2/ssl/cert.pem` | `ssl/cert.pem` from your COSMO IDE directory |
+| `/Users/jtr/_JTR23_/cosmo_ide_v2/ssl/cert.pem` | `ssl/cert.pem` from your Evobrew installation directory |
 | "Find '192.168.7.131' certificate" | "Find the certificate (named with your IP)" |
 | "This Mac" | "This machine" |
 
@@ -285,7 +285,7 @@ While your app is now fully portable, here are some nice-to-haves:
 ✅ **Auto-detection for network configuration**  
 ✅ **Documentation updated for portability**
 
-Your COSMO IDE v2 is now **production-ready** and can be deployed on **any platform** running Node.js!
+Evobrew is now **production-ready** and can be deployed on **any platform** running Node.js!
 
 ---
 
