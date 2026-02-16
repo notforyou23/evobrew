@@ -78,18 +78,11 @@ class OpenAIAdapter extends ProviderAdapter {
 
   getAvailableModels() {
     return [
+      'gpt-5.2-codex',
       'gpt-5.2',
       'gpt-5.1',
-      'gpt-5',
       'gpt-4o',
-      'gpt-4o-mini',
-      'gpt-4-turbo',
-      'gpt-4',
-      'gpt-3.5-turbo',
-      'o1-preview',
-      'o1-mini',
-      'o3',
-      'o3-mini'
+      'gpt-4o-mini'
     ];
   }
 

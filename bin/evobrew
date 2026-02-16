@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Evobrew CLI - Simple launcher
+ * Evobrew CLI - Simple launcher with first-run detection
  * Usage: npx evobrew [command]
  */
 
@@ -12,15 +12,14 @@ const fs = require('fs');
 const commands = {
   start: 'Start Evobrew server',
   setup: 'Run first-time setup wizard',
-  status: 'Check if Evobrew is running',
-  stop: 'Stop Evobrew server',
-  logs: 'View server logs',
   config: 'Open configuration file',
 };
 
 const command = process.argv[2] || 'start';
+const projectRoot = path.join(__dirname, '..');
 
-if (!commands[command]) {
+// Show help
+if (!commands[command] && command !== 'help') {
   console.log('Evobrew - AI development workspace\n');
   console.log('Usage: npx evobrew [command]\n');
   console.log('Commands:');
@@ -30,55 +29,101 @@ if (!commands[command]) {
   process.exit(0);
 }
 
-const serverPath = path.join(__dirname, '..', 'server', 'server.js');
-
-switch (command) {
-  case 'start':
-    console.log('🚀 Starting Evobrew...\n');
-    const server = spawn('node', [serverPath], {
-      stdio: 'inherit',
-      cwd: path.join(__dirname, '..')
-    });
-    
-    server.on('error', (err) => {
-      console.error('❌ Failed to start:', err.message);
-      process.exit(1);
-    });
-    
-    process.on('SIGINT', () => {
-      console.log('\n👋 Stopping Evobrew...');
-      server.kill('SIGTERM');
-      process.exit(0);
-    });
-    break;
-    
-  case 'setup':
-    console.log('⚙️  Evobrew Setup Wizard\n');
-    console.log('Run these commands:\n');
-    console.log('1. Copy environment template:');
-    console.log('   cp .env.example .env\n');
-    console.log('2. Edit configuration:');
-    console.log('   nano .env (or use your editor)\n');
-    console.log('3. Initialize database:');
-    console.log('   npm run db:migrate\n');
-    console.log('4. Start Evobrew:');
-    console.log('   npx evobrew start\n');
-    break;
-    
-  case 'status':
-    // Simple check if process is running
-    console.log('📊 Checking Evobrew status...');
-    console.log('(Status check not implemented yet)');
-    break;
-    
-  case 'config':
-    const envPath = path.join(__dirname, '..', '.env');
-    console.log(`📝 Configuration file: ${envPath}`);
-    if (!fs.existsSync(envPath)) {
-      console.log('⚠️  No .env file found. Run: npx evobrew setup');
-    }
-    break;
-    
-  default:
-    console.log(`❌ Unknown command: ${command}`);
+// Check if first-run setup is needed
+function needsSetup() {
+  const envPath = path.join(projectRoot, '.env');
+  const dbPath = path.join(projectRoot, 'prisma', 'studio.db');
+  
+  // No .env = definitely needs setup
+  if (!fs.existsSync(envPath)) {
+    return true;
+  }
+  
+  // Check if .env has placeholder values
+  const envContent = fs.readFileSync(envPath, 'utf8');
+  if (envContent.includes('your_64_character_hex_string_here') ||
+      envContent.includes('your_openai_key_here') ||
+      envContent.includes('your_anthropic_key_here')) {
+    return true;
+  }
+  
+  // Check if database is initialized
+  if (!fs.existsSync(dbPath)) {
+    return true;
+  }
+  
+  return false;
 }
+
+async function runSetupWizard() {
+  const { setupWizard } = require('../lib/setup-wizard.js');
+  try {
+    await setupWizard(projectRoot);
+  } catch (err) {
+    console.error('❌ Setup failed:', err.message);
+    process.exit(1);
+  }
+}
+
+// Main command handler
+(async () => {
+  switch (command) {
+    case 'start':
+      // Auto-detect first run
+      if (needsSetup()) {
+        console.log('🔍 First-time setup detected...\n');
+        await runSetupWizard();
+        console.log('\n💡 Setup complete! Run "npx evobrew start" to launch.\n');
+        process.exit(0);
+      }
+      
+      // Start server
+      console.log('🚀 Starting Evobrew...\n');
+      const server = spawn('node', [path.join(projectRoot, 'server', 'server.js')], {
+        stdio: 'inherit',
+        cwd: projectRoot
+      });
+      
+      server.on('error', (err) => {
+        console.error('❌ Failed to start:', err.message);
+        process.exit(1);
+      });
+      
+      process.on('SIGINT', () => {
+        console.log('\n👋 Stopping Evobrew...');
+        server.kill('SIGTERM');
+        process.exit(0);
+      });
+      break;
+      
+    case 'setup':
+      await runSetupWizard();
+      break;
+      
+    case 'config':
+      const envPath = path.join(projectRoot, '.env');
+      console.log(`📝 Configuration file: ${envPath}\n`);
+      
+      if (!fs.existsSync(envPath)) {
+        console.log('⚠️  No .env file found. Run: npx evobrew setup\n');
+        process.exit(1);
+      }
+      
+      // Try to open with default editor
+      const { exec } = require('child_process');
+      if (process.platform === 'darwin') {
+        exec(`open -e "${envPath}"`);
+        console.log('✅ Opening in default editor...\n');
+      } else if (process.platform === 'linux') {
+        exec(`xdg-open "${envPath}"`);
+        console.log('✅ Opening in default editor...\n');
+      } else {
+        console.log(`Manually open: ${envPath}\n`);
+      }
+      break;
+      
+    default:
+      console.log(`❌ Unknown command: ${command}`);
+      process.exit(1);
+  }
+})();

@@ -23,7 +23,7 @@ ssl/
 
 # Conversation history (contains potentially sensitive data)
 conversations/
-*.json
+conversations/*.json
 
 # File snapshots (automatic backups before AI edits)
 snapshots/
