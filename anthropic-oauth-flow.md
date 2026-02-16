@@ -163,16 +163,16 @@ Content-Type: application/json
 
 ```json
 {
-  "access_token": "sk-ant-oauth03-abc123...xyz",
-  "refresh_token": "sk-ant-refresh03-def456...uvw",
+  "access_token": "ANTHROPIC_OAUTH_ACCESS_TOKEN_EXAMPLE",
+  "refresh_token": "ANTHROPIC_OAUTH_REFRESH_TOKEN_EXAMPLE",
   "expires_in": 3600,
   "token_type": "Bearer"
 }
 ```
 
 **Token format:**
-- `access_token`: Starts with `sk-ant-oauth03-`
-- `refresh_token`: Starts with `sk-ant-refresh03-`
+- `access_token`: OAuth access-token string
+- `refresh_token`: OAuth refresh-token string
 - `expires_in`: Seconds until access token expires (typically 3600 = 1 hour)
 
 ### Response (Error)
@@ -225,7 +225,7 @@ Content-Type: application/json
 {
   "grant_type": "refresh_token",
   "client_id": "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
-  "refresh_token": "sk-ant-refresh03-def456...uvw"
+  "refresh_token": "ANTHROPIC_OAUTH_REFRESH_TOKEN_EXAMPLE"
 }
 ```
 
@@ -233,8 +233,8 @@ Content-Type: application/json
 
 ```json
 {
-  "access_token": "sk-ant-oauth03-new123...xyz",
-  "refresh_token": "sk-ant-refresh03-new456...uvw",
+  "access_token": "ANTHROPIC_OAUTH_ACCESS_TOKEN_EXAMPLE_NEW",
+  "refresh_token": "ANTHROPIC_OAUTH_REFRESH_TOKEN_EXAMPLE_NEW",
   "expires_in": 3600,
   "token_type": "Bearer"
 }
@@ -554,8 +554,8 @@ if __name__ == "__main__":
 ```javascript
 // Store tokens securely
 const credentials = {
-  accessToken: "sk-ant-oauth03-...",
-  refreshToken: "sk-ant-refresh03-...",
+  accessToken: "ANTHROPIC_OAUTH_ACCESS_TOKEN_EXAMPLE",
+  refreshToken: "ANTHROPIC_OAUTH_REFRESH_TOKEN_EXAMPLE",
   expiresAt: Date.now() + 3600000, // 1 hour from now
 };
 

@@ -9,6 +9,7 @@
     <!-- NOTE: This page has a large inline stylesheet below. We intentionally do NOT load `css/styles.css`
          because it contains an older layout (grid-based) that can conflict with this IDE layout and break scrolling. -->
     <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css">
@@ -571,6 +572,14 @@
             gap: 8px;
             transition: background 0.15s, color 0.15s;
             max-width: 200px;
+            min-width: 80px;
+            flex-shrink: 0;
+        }
+        
+        .tab .tab-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 140px;
         }
 
         .tab:hover {
@@ -622,19 +631,23 @@
         }
 
         .tab-close {
-            opacity: 0;
+            opacity: 0.4;
             margin-left: 4px;
             font-size: 16px;
             line-height: 1;
             transition: opacity 0.2s;
+            cursor: pointer;
+            padding: 2px;
+            border-radius: 3px;
         }
 
         .tab:hover .tab-close {
-            opacity: 0.6;
+            opacity: 0.7;
         }
 
         .tab-close:hover {
             opacity: 1;
+            background: rgba(255, 255, 255, 0.1);
         }
 
         /* Split View */
@@ -3484,10 +3497,10 @@
 
           /* Hide less-essential buttons on tablet */
           /* CSV builder, upload replace, onlyoffice, keyboard shortcuts */
-          .header-group button[onclick="showCSVBuilder()"],
-          .header-group button[onclick="uploadReplacementFile()"],
-          .header-group button[onclick="openInOnlyOffice()"],
-          .header-group button[onclick="toggleKeyboardHelp()"] {
+          .header-group > button[data-action="showCSVBuilder()"],
+          .header-group > button[data-action="uploadReplacementFile()"],
+          .header-group > button[data-action="openInOnlyOffice()"],
+          .header-group > button[data-action="toggleKeyboardHelp()"] {
             display: none !important;
           }
 
@@ -3568,12 +3581,12 @@
           }
 
           /* Hide even more action buttons — keep only Save, AI, Settings */
-          .header-group button[onclick="createNewFile()"],
-          .header-group button[onclick="createNewFolder()"],
-          .header-group button[onclick="downloadCurrentFile()"],
-          .header-group button[onclick="toggleSearch()"],
-          .header-group button[onclick="togglePreview()"],
-          .header-group button[onclick="toggleSnapshotHistory()"],
+          .header-group > button[data-action="createNewFile()"],
+          .header-group > button[data-action="createNewFolder()"],
+          .header-group > button[data-action="downloadCurrentFile()"],
+          .header-group > button[data-action="toggleSearch()"],
+          .header-group > button[data-action="togglePreview()"],
+          .header-group > button[data-action="toggleSnapshotHistory()"],
           #save-all-btn {
             display: none !important;
           }
@@ -3930,6 +3943,10 @@
         }
 
     </style>
+    <link rel="stylesheet" href="css/ui-tokens.css">
+    <link rel="stylesheet" href="css/ui-shell.css">
+    <link rel="stylesheet" href="css/ui-components.css">
+    <link rel="stylesheet" href="css/ui-responsive.css">
 </head>
 <body>
     <script>
@@ -3966,35 +3983,35 @@
             </div>
 
             <!-- Brain Picker Button -->
-            <button id="brainPickerBtn" onclick="toggleBrainPicker()" style="margin-left: 12px; padding: 4px 10px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-secondary); cursor: pointer; font-size: 11px; display: flex; align-items: center; gap: 5px; white-space: nowrap;" data-tooltip="Connect or switch brain">
-                🧠 <span id="brainPickerLabel">No Brain</span>
+            <button id="brainPickerBtn" data-action="toggleBrainPicker()" style="margin-left: 12px; padding: 4px 10px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-secondary); cursor: pointer; font-size: 11px; display: flex; align-items: center; gap: 5px; white-space: nowrap;" data-tooltip="Connect or switch brain">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+                    <path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7z"/>
+                    <path d="M9 21h6"/>
+                </svg>
+                <span id="brainPickerLabel">No Brain</span>
             </button>
 
             <!-- BRAIN STUDIO TABS (Main App Modes) -->
             <nav style="display: flex; gap: 8px; margin-left: 32px; height: 100%; align-items: center;">
-                <button class="tab-btn" data-tab="readme" onclick="switchBrainTab('readme')" data-tooltip="Documentation: View the platform README and guide.">
+                <button class="tab-btn" data-tab="readme" data-action="switchBrainTab('readme')" data-tooltip="Documentation: View the platform README and guide.">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
                     Docs
                 </button>
-                <button class="tab-btn" data-tab="query" onclick="switchBrainTab('query')" data-tooltip="Research Mode: Deep dive into memory, find evidence, and synthesize knowledge.">
+                <button class="tab-btn" data-tab="query" data-action="switchBrainTab('query')" data-tooltip="Research Mode: Deep dive into memory, find evidence, and synthesize knowledge.">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/><path d="M11 8v6"/><path d="M8 11h6"/></svg>
                     Research
                 </button>
-                <button class="tab-btn active agent-ide-tab" data-tab="files" onclick="switchBrainTab('files')" data-tooltip="Agent IDE: Operation mode. Create files, write code, and execute tasks.">
+                <button class="tab-btn active agent-ide-tab" data-tab="files" data-action="switchBrainTab('files')" data-tooltip="Agent IDE: Operation mode. Create files, write code, and execute tasks.">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
                     Agent IDE
                 </button>
-                <button class="tab-btn" data-tab="explore" onclick="switchBrainTab('explore')" data-tooltip="Explore Mode: Visualize and navigate the knowledge graph.">
+                <button class="tab-btn" data-tab="explore" data-action="switchBrainTab('explore')" data-tooltip="Explore Mode: Visualize and navigate the knowledge graph.">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
                     Explore
                 </button>
-                <button class="tab-btn" data-tab="clawdboard" onclick="switchBrainTab('clawdboard')" data-tooltip="Clawdboard: Visual control center for Clawdbot">
+                <button class="tab-btn openclaw-tab" data-tab="openclaw" data-action="switchBrainTab('openclaw')" data-tooltip="OpenClaw: AI agent with memory and tools" style="display: none;">
                     <span style="font-size: 14px;">🐾</span>
-                    Clawdboard
-                </button>
-                <button class="tab-btn" data-tab="coz" onclick="switchBrainTab('coz')" data-tooltip="COZ: Strategic planning and orchestration with Clawdbot">
-                    <span style="font-size: 14px;">🤖</span>
-                    COZ
+                    <span class="openclaw-tab-name">OpenClaw</span>
                 </button>
             </nav>
             
@@ -4002,22 +4019,22 @@
                 <!-- Group 1: File Operations -->
                 <div class="header-group">
                     <span class="header-group-label">File</span>
-                    <button class="btn btn-icon" onclick="createNewFile()" data-tooltip="New File (Cmd+N)" title="Create new file">
+                    <button class="btn btn-icon" data-action="createNewFile()" data-tooltip="New File (Cmd+N)" title="Create new file">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
                     </button>
-                    <button class="btn btn-icon" onclick="createNewFolder()" data-tooltip="New Folder" title="Create new folder">
+                    <button class="btn btn-icon" data-action="createNewFolder()" data-tooltip="New Folder" title="Create new folder">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
                     </button>
-                    <button class="btn btn-icon" onclick="showCSVBuilder()" data-tooltip="New CSV Table" title="Create CSV spreadsheet">
+                    <button class="btn btn-icon low-frequency-action" data-action="showCSVBuilder()" data-tooltip="New CSV Table" title="Create CSV spreadsheet">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
                     </button>
-                    <button class="btn btn-icon" onclick="downloadCurrentFile()" id="download-btn" disabled data-tooltip="Download File">
+                    <button class="btn btn-icon" data-action="downloadCurrentFile()" id="download-btn" disabled data-tooltip="Download File">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                     </button>
-                    <button class="btn btn-icon" onclick="uploadReplacementFile()" id="upload-replace-btn" disabled data-tooltip="Upload Replacement (Re-upload edited file)" title="Upload an edited version to replace this file" style="display: none;">
+                    <button class="btn btn-icon low-frequency-action" data-action="uploadReplacementFile()" id="upload-replace-btn" disabled data-tooltip="Upload Replacement (Re-upload edited file)" title="Upload an edited version to replace this file" style="display: none;">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                     </button>
-                    <button class="btn" onclick="openInOnlyOffice()" id="onlyoffice-edit-btn" disabled data-tooltip="Edit in OnlyOffice (Full WYSIWYG)" title="Enterprise-grade Office editor" style="display: none; gap: 4px;">
+                    <button class="btn low-frequency-action" data-action="openInOnlyOffice()" id="onlyoffice-edit-btn" disabled data-tooltip="Edit in OnlyOffice (Full WYSIWYG)" title="Enterprise-grade Office editor" style="display: none; gap: 4px;">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                         Edit
                     </button>
@@ -4026,16 +4043,16 @@
                 <!-- Group 2: Editor Tools -->
                 <div class="header-group">
                     <span class="header-group-label">Tools</span>
-                    <button class="btn btn-icon" onclick="toggleSearch()" data-tooltip="Search (Cmd+F)">
+                    <button class="btn btn-icon" data-action="toggleSearch()" data-tooltip="Search (Cmd+F)">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                     </button>
-                    <button class="btn btn-icon" onclick="togglePreview()" id="preview-btn" data-tooltip="Toggle Preview" style="display: none;">
+                    <button class="btn btn-icon" data-action="togglePreview()" id="preview-btn" data-tooltip="Toggle Preview" style="display: none;">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                     </button>
-                    <button class="btn btn-icon" onclick="toggleSnapshotHistory()" data-tooltip="File History" id="snapshot-btn" disabled>
+                    <button class="btn btn-icon low-frequency-action" data-action="toggleSnapshotHistory()" data-tooltip="File History" id="snapshot-btn" disabled>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                     </button>
-                    <button class="btn active" onclick="toggleAI()" id="ai-btn" data-tooltip="AI Assistant (Cmd+K A)" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); margin-left: 4px; border-radius: 16px; padding: 4px 12px; height: 28px; display: flex; align-items: center; gap: 4px;">
+                    <button class="btn active" data-action="toggleAI()" id="ai-btn" data-tooltip="AI Assistant (Cmd+K A)" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); margin-left: 4px; border-radius: 16px; padding: 4px 12px; height: 28px; display: flex; align-items: center; gap: 4px;">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2z"/></svg>
                         AI
                     </button>
@@ -4043,19 +4060,67 @@
 
                 <!-- Group 3: Save Actions -->
                 <div class="header-group">
-                    <button class="btn" onclick="saveCurrentFile()" id="save-btn" disabled data-tooltip="Save (Cmd+S)" style="display: flex; align-items: center; gap: 4px;">
+                    <button class="btn" data-action="saveCurrentFile()" id="save-btn" disabled data-tooltip="Save (Cmd+S)" style="display: flex; align-items: center; gap: 4px;">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
                         Save
                     </button>
-                    <button class="btn btn-secondary" onclick="saveAllFiles()" id="save-all-btn" disabled data-tooltip="Save All (Cmd+Shift+S)">Save All</button>
+                    <button class="btn btn-secondary" data-action="saveAllFiles()" id="save-all-btn" disabled data-tooltip="Save All (Cmd+Shift+S)">Save All</button>
                 </div>
 
                 <!-- Group 4: System -->
                 <div class="header-group">
-                    <button class="btn btn-icon" onclick="toggleSettings()" data-tooltip="Settings">
+                    <div class="header-overflow">
+                        <button class="btn btn-icon" id="header-overflow-btn" data-action="toggleHeaderOverflow()" data-tooltip="More Actions" aria-haspopup="menu" aria-expanded="false">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/><circle cx="5" cy="12" r="1.5"/></svg>
+                        </button>
+                        <div class="header-overflow-menu" id="header-overflow-menu" role="menu" aria-label="More actions">
+                            <button class="overflow-item" data-action="createNewFile()" role="menuitem">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M14 2v6h6"/><path d="M12 12v6"/><path d="M9 15h6"/></svg>
+                                New File
+                            </button>
+                            <button class="overflow-item" data-action="createNewFolder()" role="menuitem">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><path d="M12 11v6"/><path d="M9 14h6"/></svg>
+                                New Folder
+                            </button>
+                            <button class="overflow-item" data-action="downloadCurrentFile()" role="menuitem">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>
+                                Download File
+                            </button>
+                            <button class="overflow-item" data-action="toggleSearch()" role="menuitem">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                                Search
+                            </button>
+                            <button class="overflow-item" data-action="saveAllFiles()" role="menuitem">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5z"/><path d="M7 3v5h8"/><path d="M17 21v-8H7v8"/></svg>
+                                Save All
+                            </button>
+                            <div class="overflow-divider" role="separator"></div>
+                            <button class="overflow-item" data-action="showCSVBuilder()" role="menuitem">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
+                                New CSV Table
+                            </button>
+                            <button class="overflow-item" data-action="uploadReplacementFile()" role="menuitem">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+                                Upload Replacement
+                            </button>
+                            <button class="overflow-item" data-action="openInOnlyOffice()" role="menuitem">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                Edit in OnlyOffice
+                            </button>
+                            <button class="overflow-item" data-action="toggleSnapshotHistory()" role="menuitem">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                File History
+                            </button>
+                            <button class="overflow-item" data-action="toggleKeyboardHelp()" role="menuitem">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.001M10 8h.001M14 8h.001M18 8h.001M6 12h.001M10 12h.001M14 12h.001M18 12h.001M8 16h8"/></svg>
+                                Keyboard Shortcuts
+                            </button>
+                        </div>
+                    </div>
+                    <button class="btn btn-icon" data-action="toggleSettings()" data-tooltip="Settings">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                     </button>
-                    <button class="btn btn-icon" onclick="toggleKeyboardHelp()" data-tooltip="Keyboard Shortcuts (?)">
+                    <button class="btn btn-icon low-frequency-action" data-action="toggleKeyboardHelp()" data-tooltip="Keyboard Shortcuts (?)">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.001M10 8h.001M14 8h.001M18 8h.001M6 12h.001M10 12h.001M14 12h.001M18 12h.001M8 16h8"/></svg>
                     </button>
                 </div>
@@ -4086,12 +4151,12 @@
         <!-- Body -->
         <div class="ide-body">
             <!-- Tablet: Sidebar backdrop -->
-            <div class="tablet-sidebar-backdrop" id="tablet-sidebar-backdrop" onclick="closeTabletSidebar()"></div>
+            <div class="tablet-sidebar-backdrop" id="tablet-sidebar-backdrop" data-action="closeTabletSidebar()"></div>
             <!-- Tablet: AI panel backdrop -->
-            <div class="tablet-ai-backdrop" id="tablet-ai-backdrop" onclick="closeTabletAI()"></div>
+            <div class="tablet-ai-backdrop" id="tablet-ai-backdrop" data-action="closeTabletAI()"></div>
 
             <!-- Sidebar Expand Button (visible when collapsed) -->
-            <button class="sidebar-expand-btn" id="sidebar-expand-btn" onclick="toggleSidebar()" title="Show Sidebar" style="display: none;">
+            <button class="sidebar-expand-btn" id="sidebar-expand-btn" data-action="toggleSidebar()" title="Show Sidebar" style="display: none;">
                 ⏵
             </button>
             
@@ -4100,28 +4165,28 @@
                 <div class="resize-handle resize-handle-vertical" data-target="sidebar"></div>
                 <div class="sidebar-header">
                     <span>FILES</span>
-                    <div style="display: flex; gap: 4px;">
-                        <button class="btn btn-icon" id="go-home-btn" onclick="goToHomeFolder()" data-tooltip="Home" style="background: none; padding: 4px 8px; font-size: 14px;" title="Go to outputs folder">
-                            🏠
+                    <div class="sidebar-actions" style="display: flex; gap: 4px;">
+                        <button class="btn btn-icon" id="go-home-btn" data-action="goToHomeFolder()" data-tooltip="Home" style="background: none; padding: 4px 8px; font-size: 14px;" title="Go to outputs folder">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/></svg>
                         </button>
-                        <button class="btn btn-icon" id="go-up-btn" onclick="goUpDirectory()" data-tooltip="Go Up" style="background: none; padding: 4px 8px; font-size: 14px;" title="Go to parent folder">
-                            ⬆️
+                        <button class="btn btn-icon" id="go-up-btn" data-action="goUpDirectory()" data-tooltip="Go Up" style="background: none; padding: 4px 8px; font-size: 14px;" title="Go to parent folder">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"/><path d="m6 11 6-6 6 6"/></svg>
                         </button>
-                        <button class="btn btn-icon" id="brain-folder-btn" onclick="toggleBrainFolder()" data-tooltip="Switch to Brain Folder" style="background: none; padding: 4px 8px; font-size: 14px; display: none;" title="Switch between working folder and brain folder">
-                            🧠
+                        <button class="btn btn-icon" id="brain-folder-btn" data-action="toggleBrainFolder()" data-tooltip="Switch to Brain Folder" style="background: none; padding: 4px 8px; font-size: 14px; display: none;" title="Switch between working folder and brain folder">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7z"/><path d="M9 21h6"/></svg>
                         </button>
-                        <button class="btn btn-icon" onclick="refreshFileTree()" data-tooltip="Refresh File Tree" style="background: none; padding: 4px 8px; font-size: 14px;" title="Refresh file tree">
-                            🔄
+                        <button class="btn btn-icon" data-action="refreshFileTree()" data-tooltip="Refresh File Tree" style="background: none; padding: 4px 8px; font-size: 14px;" title="Refresh file tree">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3.95-7.45"/><path d="M21 3v7h-7"/></svg>
                         </button>
-                        <button class="btn btn-icon" id="auto-refresh-btn" onclick="toggleAutoRefresh()" data-tooltip="Auto Refresh" style="background: none; padding: 4px 8px; font-size: 14px; opacity: 0.5;" title="Toggle auto-refresh (every 5s)">
-                            ⏱️
+                        <button class="btn btn-icon" id="auto-refresh-btn" data-action="toggleAutoRefresh()" data-tooltip="Auto Refresh" style="background: none; padding: 4px 8px; font-size: 14px; opacity: 0.5;" title="Toggle auto-refresh (every 5s)">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5"/><path d="M8 2h8"/></svg>
                         </button>
-                        <button class="btn btn-icon" onclick="toggleSidebar()" data-tooltip="Hide Sidebar" style="background: none; padding: 4px 8px; font-size: 14px;">
-                            ⏴
+                        <button class="btn btn-icon" data-action="toggleSidebar()" data-tooltip="Hide Sidebar" style="background: none; padding: 4px 8px; font-size: 14px;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 6-6 6 6 6"/></svg>
                         </button>
                     </div>
                 </div>
-                <div class="sidebar-path" id="sidebar-path" style="padding: 4px 12px; font-size: 10px; color: var(--text-secondary); border-bottom: 1px solid var(--border-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;" title="Click to navigate" onclick="showFolderBrowser()">
+                <div class="sidebar-path" id="sidebar-path" style="padding: 4px 12px; font-size: 10px; color: var(--text-secondary); border-bottom: 1px solid var(--border-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;" title="Click to navigate" data-action="showFolderBrowser()">
                     <!-- Current path shown here -->
                 </div>
                 <div class="file-tree" id="file-tree">
@@ -4155,7 +4220,7 @@
                         <div class="resize-handle resize-handle-vertical" data-target="preview-pane"></div>
                         <div class="preview-header">
                             <span>📄 Preview</span>
-                            <button onclick="togglePreview()" style="background: none; border: none; color: var(--text-primary); cursor: pointer; font-size: 18px;">×</button>
+                            <button data-action="togglePreview()" style="background: none; border: none; color: var(--text-primary); cursor: pointer; font-size: 18px;">×</button>
                         </div>
                         <div class="preview-content" id="preview-content">
                             <p style="color: var(--text-secondary);">Preview will appear here...</p>
@@ -4186,9 +4251,9 @@
                                         </select>
                                         <input id="query-pgs-session" placeholder="session" value="default" style="width:90px; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 2px 6px; font-size: 10px;" />
                                     </div>
-                                    <button class="btn-icon" id="history-toggle-btn" onclick="toggleChatHistory()" title="History">H</button>
-                                    <button class="btn-icon" onclick="startNewChat()" title="New Chat">+</button>
-                                    <button class="btn-icon" onclick="toggleAI()" title="Close">x</button>
+                                    <button class="btn-icon" id="history-toggle-btn" data-action="toggleChatHistory()" title="History">H</button>
+                                    <button class="btn-icon" data-action="startNewChat()" title="New Chat">+</button>
+                                    <button class="btn-icon" data-action="toggleAI()" title="Close">x</button>
                                 </div>
                             </div>
                             
@@ -4264,25 +4329,20 @@
             <!-- Will be populated by explore-tab.js -->
           </div>
           
-          <!-- Clawdboard Panel (hidden by default) -->
-          <div id="clawdboard-tab-panel" class="brain-tab-panel" style="display: none; width: 100%; height: 100%;">
-            <iframe id="clawdboard-iframe" src="about:blank" style="width: 100%; height: 100%; border: none; background: var(--bg-primary);"></iframe>
-          </div>
-          
-          <!-- COZ Chat Panel (hidden by default) -->
-          <div id="coz-tab-panel" class="brain-tab-panel" style="display: none; flex-direction: column; width: 100%; height: 100%; background: var(--bg-primary);">
-            <div id="coz-messages" style="flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+          <!-- OpenClaw Chat Panel (hidden by default) -->
+          <div id="openclaw-tab-panel" class="brain-tab-panel" style="display: none; flex-direction: column; width: 100%; height: 100%; background: var(--bg-primary);">
+            <div id="openclaw-messages" style="flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px;">
               <div style="color: var(--text-secondary); text-align: center; padding: 40px;">
-                <span style="font-size: 48px;">🤖</span>
-                <p style="margin-top: 16px;">COZ - Strategic Planning & Orchestration</p>
-                <p style="font-size: 12px; opacity: 0.7;">Connected to Clawdbot Gateway</p>
+                <span style="font-size: 48px;">🐾</span>
+                <p style="margin-top: 16px;" id="openclaw-welcome-title">OpenClaw Agent</p>
+                <p style="font-size: 12px; opacity: 0.7;">AI assistant with memory and tools</p>
               </div>
             </div>
             <div style="border-top: 1px solid var(--border-color); padding: 12px; display: flex; gap: 8px; background: var(--bg-secondary);">
-              <input type="text" id="coz-input" placeholder="Ask COZ for strategic guidance..." 
+              <input type="text" id="openclaw-input" placeholder="Ask OpenClaw..." 
                 style="flex: 1; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary); font-size: 14px;"
-                onkeydown="if(event.key==='Enter' && !event.shiftKey) { event.preventDefault(); sendCozMessage(); }">
-              <button onclick="sendCozMessage()" 
+                onkeydown="if(event.key==='Enter' && !event.shiftKey) { event.preventDefault(); sendOpenclawMessage(); }">
+              <button onclick="sendOpenclawMessage()" 
                 style="padding: 10px 20px; border-radius: 8px; background: var(--accent-primary); color: white; border: none; cursor: pointer; font-weight: 500;">
                 Send
               </button>
@@ -4293,15 +4353,15 @@
 
         <!-- Tablet: Bottom panel switcher bar -->
         <div class="tablet-panel-bar" id="tablet-panel-bar">
-          <button id="tablet-btn-files" onclick="tabletShowPanel('files')" title="File Tree">
+          <button id="tablet-btn-files" data-action="tabletShowPanel('files')" title="File Tree">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
             Files
           </button>
-          <button id="tablet-btn-editor" class="active" onclick="tabletShowPanel('editor')" title="Editor">
+          <button id="tablet-btn-editor" class="active" data-action="tabletShowPanel('editor')" title="Editor">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
             Editor
           </button>
-          <button id="tablet-btn-chat" onclick="tabletShowPanel('chat')" title="AI Chat">
+          <button id="tablet-btn-chat" data-action="tabletShowPanel('chat')" title="AI Chat">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
             Chat
           </button>
@@ -4316,7 +4376,7 @@
                 <span id="status-dirty"></span>
             </div>
             <div class="status-right">
-                <span id="status-edits" class="status-item" onclick="toggleEditQueue()" style="display:none; cursor:pointer; color: #3b82f6;" title="Click to open AI Edits panel"></span>
+                <span id="status-edits" class="status-item" data-action="toggleEditQueue()" style="display:none; cursor:pointer; color: #3b82f6;" title="Click to open AI Edits panel"></span>
                 <span id="status-size"></span>
                 <span id="status-words"></span>
                 <span id="status-lang">Plain Text</span>
@@ -4384,8 +4444,8 @@
                 <div class="setting-item">
                     <label class="setting-label">Theme</label>
                     <select class="setting-input" id="setting-theme" onchange="applyTheme()">
-                        <option value="vs-dark">Dark (default)</option>
-                        <option value="vs">Light</option>
+                        <option value="vs">Light (default)</option>
+                        <option value="vs-dark">Dark</option>
                         <option value="hc-black">High Contrast Dark</option>
                         <option value="hc-light">High Contrast Light</option>
                     </select>
@@ -4664,6 +4724,14 @@
         const params = new URLSearchParams(window.location.search);
         let folderPath = params.get('path');
         let initialFileName = params.get('file');
+        window.uiRefreshEnabled = false;
+
+        const STORAGE_KEYS = {
+            settings: 'evobrew-settings',
+            layoutV2: 'evobrew.ui.layout.v2',
+            shortcutsV2: 'evobrew.ui.shortcuts.v2',
+            themeV2: 'evobrew.ui.theme.v2'
+        };
 
         // Theme detection - supports ?theme=light or defaults based on preference
         const themeParam = params.get('theme');
@@ -4690,9 +4758,23 @@
         }
         
         // FileAPI - filesystem only
+        function getBrowseDepthForPath(pathValue) {
+            if (!pathValue) return 2;
+            if (pathValue === '/' || /^[A-Za-z]:\\\\?$/.test(pathValue)) return 2;
+            const segments = pathValue.split('/').filter(Boolean);
+            if (segments.length <= 1) return 3;
+            return 8;
+        }
+
         const FileAPI = {
             async listFiles() {
-                const res = await fetch(`/api/folder/browse?path=${encodeURIComponent(folderPath)}&recursive=true`);
+                const depth = getBrowseDepthForPath(folderPath);
+                const query = new URLSearchParams({
+                    path: folderPath,
+                    depth: String(depth),
+                    includeFiles: 'true'
+                });
+                const res = await fetch(`/api/folder/browse?${query.toString()}`);
                 if (!res.ok) {
                     return { success: false, error: `HTTP ${res.status}: ${res.statusText}` };
                 }
@@ -4781,7 +4863,7 @@
         
         // Settings
         const defaultSettings = {
-            theme: 'vs-dark',
+            theme: 'vs',  // Default to light mode
             fontSize: 14,
             tabSize: 2,
             minimap: true,
@@ -4789,9 +4871,20 @@
             wordWrap: true,
             autoSave: 'off',
             autoSaveDelay: 1000,
+            shortcuts: {},
         };
         
         let settings = loadSettings();
+        
+        // Apply theme from settings on page load
+        if (settings.theme === 'vs' || settings.theme === 'hc-light') {
+            document.body.classList.add('light-theme');
+            document.body.setAttribute('data-theme', 'light');
+        } else {
+            document.body.classList.remove('light-theme');
+            document.body.setAttribute('data-theme', 'dark');
+        }
+        window.IDE_THEME = settings.theme;
 
         // ============================================================================
         // EDIT QUEUE MANAGER - Cursor-style edit review system
@@ -5936,81 +6029,85 @@
         // ============================================================================
         
         function setupKeyboardShortcuts() {
-            // Save
-            editor.addCommand(
-                monaco.KeyMod.CtrlCmd | monaco.KeyCode.KEY_S,
-                () => saveCurrentFile()
-            );
+            if (window.uiRefreshEnabled === false) {
+                // Save
+                editor.addCommand(
+                    monaco.KeyMod.CtrlCmd | monaco.KeyCode.KEY_S,
+                    () => saveCurrentFile()
+                );
 
-            // Save All
-            editor.addCommand(
-                monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KEY_S,
-                () => saveAllFiles()
-            );
+                // Save All
+                editor.addCommand(
+                    monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KEY_S,
+                    () => saveAllFiles()
+                );
 
-            // Close Tab
-            editor.addCommand(
-                monaco.KeyMod.CtrlCmd | monaco.KeyCode.KEY_W,
-                () => { if (activeFile) closeTab(activeFile); }
-            );
+                // Close Tab
+                editor.addCommand(
+                    monaco.KeyMod.CtrlCmd | monaco.KeyCode.KEY_W,
+                    () => { if (activeFile) closeTab(activeFile); }
+                );
 
-            // Command Palette
-            editor.addCommand(
-                monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KEY_P,
-                () => toggleCommandPalette()
-            );
+                // Command Palette
+                editor.addCommand(
+                    monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KEY_P,
+                    () => toggleCommandPalette()
+                );
 
-            // Quick Open
-            editor.addCommand(
-                monaco.KeyMod.CtrlCmd | monaco.KeyCode.KEY_P,
-                () => toggleCommandPalette('file')
-            );
+                // Quick Open
+                editor.addCommand(
+                    monaco.KeyMod.CtrlCmd | monaco.KeyCode.KEY_P,
+                    () => toggleCommandPalette('file')
+                );
 
-            // Find
-            editor.addCommand(
-                monaco.KeyMod.CtrlCmd | monaco.KeyCode.KEY_F,
-                () => toggleSearch()
-            );
+                // Find
+                editor.addCommand(
+                    monaco.KeyMod.CtrlCmd | monaco.KeyCode.KEY_F,
+                    () => toggleSearch()
+                );
 
-            // Toggle Sidebar
-            editor.addCommand(
-                monaco.KeyMod.CtrlCmd | monaco.KeyCode.KEY_B,
-                () => toggleSidebar()
-            );
+                // Toggle Sidebar
+                editor.addCommand(
+                    monaco.KeyMod.CtrlCmd | monaco.KeyCode.KEY_B,
+                    () => toggleSidebar()
+                );
 
-            // Settings
-            editor.addCommand(
-                monaco.KeyMod.CtrlCmd | monaco.KeyCode.US_COMMA,
-                () => toggleSettings()
-            );
+                // Settings
+                editor.addCommand(
+                    monaco.KeyMod.CtrlCmd | monaco.KeyCode.US_COMMA,
+                    () => toggleSettings()
+                );
 
-            // Recent Files
-            editor.addCommand(
-                monaco.KeyMod.CtrlCmd | monaco.KeyCode.KEY_E,
-                () => showRecentFiles()
-            );
+                // Recent Files
+                editor.addCommand(
+                    monaco.KeyMod.CtrlCmd | monaco.KeyCode.KEY_E,
+                    () => showRecentFiles()
+                );
 
-            // Find in Files
-            editor.addCommand(
-                monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KEY_F,
-                () => showFindInFiles()
-            );
+                // Find in Files
+                editor.addCommand(
+                    monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KEY_F,
+                    () => showFindInFiles()
+                );
 
-            // Toggle AI Panel
-            editor.addCommand(
-                monaco.KeyMod.CtrlCmd | monaco.KeyCode.KEY_K,
-                () => {
-                    // Wait for next key
-                    const nextKeyHandler = (e) => {
-                        if (e.key === 'a' || e.key === 'A') {
-                            toggleAI();
-                            document.removeEventListener('keydown', nextKeyHandler);
-                        }
-                    };
-                    document.addEventListener('keydown', nextKeyHandler);
-                    setTimeout(() => document.removeEventListener('keydown', nextKeyHandler), 2000);
-                }
-            );
+                // Toggle AI Panel
+                editor.addCommand(
+                    monaco.KeyMod.CtrlCmd | monaco.KeyCode.KEY_K,
+                    () => {
+                        // Wait for next key
+                        const nextKeyHandler = (e) => {
+                            if (e.key === 'a' || e.key === 'A') {
+                                toggleAI();
+                                document.removeEventListener('keydown', nextKeyHandler);
+                            }
+                        };
+                        document.addEventListener('keydown', nextKeyHandler);
+                        setTimeout(() => document.removeEventListener('keydown', nextKeyHandler), 2000);
+                    }
+                );
+            } else if (window.UIRefreshShortcuts?.init) {
+                window.UIRefreshShortcuts.init();
+            }
 
             // Global keyboard listener for non-editor shortcuts
             document.addEventListener('keydown', (e) => {
@@ -6048,7 +6145,16 @@
         
         async function loadFileTree() {
             try {
-                if (!folderPath) return;  // No folder selected yet
+                const tree = document.getElementById('file-tree');
+                if (!folderPath) {
+                    if (tree) {
+                        tree.innerHTML = '<div class="browse-empty">No folder selected. Use <strong>Choose Folder</strong> to start.</div>';
+                    }
+                    if (window.UIRefreshOnboarding?.updateVisibility) {
+                        window.UIRefreshOnboarding.updateVisibility();
+                    }
+                    return;
+                }
 
                 // Update sidebar path display
                 const sidebarPath = document.getElementById('sidebar-path');
@@ -6070,13 +6176,29 @@
                     throw new Error(data.error || 'Failed to load files');
                 }
 
-                allFiles = data.files;
+                allFiles = data.files || [];
 
-                const tree = document.getElementById('file-tree');
                 tree.innerHTML = '';
 
+                if (Array.isArray(data.partialErrors) && data.partialErrors.length > 0) {
+                    const warning = document.createElement('div');
+                    warning.className = 'browse-meta';
+                    warning.textContent = `${data.partialErrors.length} folders could not be read. Showing available files.`;
+                    tree.appendChild(warning);
+                }
+
+                if (data.truncated) {
+                    const truncatedNotice = document.createElement('div');
+                    truncatedNotice.className = 'browse-meta';
+                    truncatedNotice.textContent = 'Listing truncated for performance. Narrow your folder path to load deeper.';
+                    tree.appendChild(truncatedNotice);
+                }
+
                 if (allFiles.length === 0) {
-                    tree.innerHTML = '<div style="padding: 16px; color: var(--text-secondary); font-size: 12px;">No files found</div>';
+                    const empty = document.createElement('div');
+                    empty.className = 'browse-empty';
+                    empty.textContent = 'No files found';
+                    tree.appendChild(empty);
                     return;
                 }
 
@@ -6101,6 +6223,10 @@
 
             } catch (error) {
                 console.error('Failed to load file tree:', error);
+                const tree = document.getElementById('file-tree');
+                if (tree) {
+                    tree.innerHTML = `<div class="browse-error">Failed to load files: ${escapeHtml(error.message || String(error))}</div>`;
+                }
                 showToast('Failed to load files: ' + error.message, 'error');
             }
         }
@@ -6617,19 +6743,45 @@ ${result.content}`;
         }
         
         function openFolderInTree(folderPath) {
-            // Expand the folder in the file tree
+            // Ensure file tree panel is visible
+            const fileTreePanel = document.getElementById('file-tree');
+            if (fileTreePanel) {
+                fileTreePanel.style.display = 'block';
+            }
+            
+            // Expand all parent folders leading to this path
+            const pathParts = folderPath.split('/').filter(Boolean);
+            let currentPath = '';
+            pathParts.forEach(part => {
+                currentPath += '/' + part;
+                const folders = document.querySelectorAll('.folder-item');
+                folders.forEach(folder => {
+                    if (folder.dataset.path === currentPath) {
+                        const folderContents = folder.parentElement?.querySelector('.folder-contents');
+                        const chevron = folder.querySelector('.folder-chevron');
+                        if (folderContents) {
+                            folderContents.classList.remove('collapsed');
+                        }
+                        if (chevron) {
+                            chevron.classList.add('expanded');
+                        }
+                    }
+                });
+            });
+            
+            // Find and highlight the target folder
             const folders = document.querySelectorAll('.folder-item');
             folders.forEach(folder => {
-                const path = folder.dataset.path;
-                if (path === folderPath) {
-                    const folderContents = folder.querySelector('.folder-contents');
-                    const chevron = folder.querySelector('.folder-chevron');
-                    if (folderContents && chevron) {
-                        folderContents.classList.remove('collapsed');
-                        chevron.classList.add('expanded');
-                    }
+                folder.style.backgroundColor = ''; // Clear previous highlights
+                if (folder.dataset.path === folderPath) {
+                    // Highlight briefly
+                    folder.style.backgroundColor = 'var(--accent-color)';
+                    folder.style.transition = 'background-color 0.3s';
+                    setTimeout(() => {
+                        folder.style.backgroundColor = '';
+                    }, 1500);
                     // Scroll into view
-                    folder.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    folder.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 }
             });
         }
@@ -6648,7 +6800,7 @@ ${result.content}`;
             
             // Save to localStorage
             try {
-                if (folderPath) localStorage.setItem(`cosmo-recent-files-${folderPath}`, JSON.stringify(recentFiles));
+                if (folderPath) localStorage.setItem(`evobrew-recent-files-${folderPath}`, JSON.stringify(recentFiles));
             } catch (e) {
                 console.error('Failed to save recent files:', e);
             }
@@ -6657,7 +6809,7 @@ ${result.content}`;
         function loadRecentFiles() {
             try {
                 if (!folderPath) return;  // No folder selected yet
-                const saved = folderPath ? localStorage.getItem(`cosmo-recent-files-${folderPath}`) : null;
+                const saved = folderPath ? localStorage.getItem(`evobrew-recent-files-${folderPath}`) : null;
                 if (saved) {
                     recentFiles = JSON.parse(saved);
                 }
@@ -7011,6 +7163,11 @@ ${result.content}`;
             `).join('');
         }
 
+        function getCommandRegistry() {
+            return commands;
+        }
+        window.getCommandRegistry = getCommandRegistry;
+
         function renderFileCommands() {
             const results = document.getElementById('command-results');
             selectedCommandIndex = 0;
@@ -7077,6 +7234,14 @@ ${result.content}`;
                 toggleCommandPalette();
             }
         }
+
+        function executeCommandById(commandId) {
+            const cmd = commands.find(c => c.id === commandId);
+            if (cmd && cmd.action) {
+                cmd.action();
+            }
+        }
+        window.executeCommandById = executeCommandById;
 
         function executeSelectedCommand() {
             const selected = document.querySelector('.command-item.selected');
@@ -7191,7 +7356,7 @@ ${result.content}`;
             try {
                 if (language === 'markdown') {
                     // Parse markdown to HTML
-            const html = marked.parse(content);
+            const html = renderMarkdownSafe(content);
                     previewContent.innerHTML = html;
                     
                 } else if (language === 'html') {
@@ -7661,22 +7826,45 @@ ${result.content}`;
         
         function loadSettings() {
             try {
-            const saved = localStorage.getItem('cosmo-ide-settings');
+                const saved = localStorage.getItem(STORAGE_KEYS.settings);
+                const savedTheme = localStorage.getItem(STORAGE_KEYS.themeV2);
+                const savedShortcuts = localStorage.getItem(STORAGE_KEYS.shortcutsV2);
                 if (saved) {
                     const parsed = JSON.parse(saved);
+                    if (savedTheme) parsed.theme = savedTheme;
+                    if (savedShortcuts) {
+                        try {
+                            parsed.shortcuts = JSON.parse(savedShortcuts);
+                        } catch (_error) {
+                            parsed.shortcuts = parsed.shortcuts || {};
+                        }
+                    }
                     // Validate and merge with defaults
                     return { ...defaultSettings, ...parsed };
                 }
+
+                const fallback = { ...defaultSettings };
+                if (savedTheme) fallback.theme = savedTheme;
+                if (savedShortcuts) {
+                    try {
+                        fallback.shortcuts = JSON.parse(savedShortcuts);
+                    } catch (_error) {
+                        fallback.shortcuts = {};
+                    }
+                }
+                return fallback;
             } catch (e) {
                 console.error('Failed to load settings:', e);
                 // Clear corrupted settings
-                localStorage.removeItem('cosmo-ide-settings');
+                localStorage.removeItem(STORAGE_KEYS.settings);
             }
             return { ...defaultSettings };
         }
 
         function saveSettings() {
-            localStorage.setItem('cosmo-ide-settings', JSON.stringify(settings));
+            localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(settings));
+            localStorage.setItem(STORAGE_KEYS.themeV2, settings.theme);
+            localStorage.setItem(STORAGE_KEYS.shortcutsV2, JSON.stringify(settings.shortcuts || {}));
         }
 
         function toggleSettings() {
@@ -7693,12 +7881,21 @@ ${result.content}`;
                 document.getElementById('setting-word-wrap').checked = settings.wordWrap;
                 document.getElementById('setting-auto-save').value = settings.autoSave;
                 document.getElementById('setting-auto-save-delay').value = settings.autoSaveDelay;
+                document.dispatchEvent(new CustomEvent('evobrew:settings-opened'));
             }
         }
 
         function applyTheme() {
             settings.theme = document.getElementById('setting-theme').value;
             monaco.editor.setTheme(settings.theme);
+            // Also update body class for CSS theming
+            if (settings.theme === 'vs' || settings.theme === 'hc-light') {
+                document.body.classList.add('light-theme');
+                document.body.setAttribute('data-theme', 'light');
+            } else {
+                document.body.classList.remove('light-theme');
+                document.body.setAttribute('data-theme', 'dark');
+            }
             saveSettings();
         }
 
@@ -7778,13 +7975,13 @@ ${result.content}`;
                 pinnedTabs: Array.from(pinnedTabs),
             };
             
-            const key = folderPath ? `cosmo-workspace-${folderPath}` : 'cosmo-workspace-default';
+            const key = folderPath ? `evobrew-workspace-${folderPath}` : 'evobrew-workspace-default';
             localStorage.setItem(key, JSON.stringify(state));
         }
 
         function restoreWorkspaceState() {
             if (!folderPath) return;  // No folder selected yet
-            const key = folderPath ? `cosmo-workspace-${folderPath}` : 'cosmo-workspace-default';
+            const key = folderPath ? `evobrew-workspace-${folderPath}` : 'evobrew-workspace-default';
             const saved = localStorage.getItem(key);
             
             if (!saved) return;
@@ -7826,8 +8023,12 @@ ${result.content}`;
             // Update button icon and tooltip
             const toggleBtn = document.querySelector('[data-tooltip="Hide Sidebar"], [data-tooltip="Show Sidebar"]');
             if (toggleBtn) {
-                toggleBtn.textContent = isCollapsed ? '⏵' : '⏴';
+                toggleBtn.innerHTML = isCollapsed
+                    ? '<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"m9 6 6 6-6 6\"/></svg>'
+                    : '<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"m15 6-6 6 6 6\"/></svg>';
                 toggleBtn.setAttribute('data-tooltip', isCollapsed ? 'Show Sidebar' : 'Hide Sidebar');
+                toggleBtn.setAttribute('title', isCollapsed ? 'Show Sidebar' : 'Hide Sidebar');
+                toggleBtn.setAttribute('aria-label', isCollapsed ? 'Show Sidebar' : 'Hide Sidebar');
             }
         }
         
@@ -7936,11 +8137,12 @@ ${result.content}`;
                 const data = await FileAPI.listFiles();
                 if (!data.success) return;
 
-                const newCount = data.files.length;
+                const files = Array.isArray(data.files) ? data.files : [];
+                const newCount = files.length;
                 const oldCount = allFiles.length;
 
                 if (newCount !== oldCount) {
-                    allFiles = data.files;
+                    allFiles = files;
                     const tree = document.getElementById('file-tree');
                     tree.innerHTML = '';
                     const treeStructure = buildTreeStructure(allFiles, folderPath);
@@ -7977,67 +8179,14 @@ ${result.content}`;
             const csvBuilder = document.getElementById('csv-builder');
             if (csvBuilder) csvBuilder.classList.add('hidden');
             document.getElementById('overlay').classList.add('hidden');
+            if (typeof closeHeaderOverflow === 'function') {
+                closeHeaderOverflow();
+            }
             // Note: Don't close AI panel on Escape - it's a persistent panel like preview
         }
 
-        function showContextMenu(x, y, items) {
-            const menu = document.getElementById('context-menu');
-            
-            // Clear previous content and event listeners
-            menu.innerHTML = '';
-            
-            // Build menu items with proper event handlers
-            items.forEach((item, index) => {
-                if (item.type === 'separator') {
-                    const separator = document.createElement('div');
-                    separator.className = 'context-menu-separator';
-                    menu.appendChild(separator);
-                } else {
-                    const menuItem = document.createElement('div');
-                    menuItem.className = 'context-menu-item';
-                    menuItem.textContent = item.label;
-                    menuItem.dataset.index = index;
-                    
-                    // Add click handler
-                    menuItem.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        if (item.action && typeof item.action === 'function') {
-                            item.action();
-                        }
-                        menu.classList.add('hidden');
-                    });
-                    
-                    menu.appendChild(menuItem);
-                }
-            });
-            
-            // Position menu
-            menu.style.left = x + 'px';
-            menu.style.top = y + 'px';
-            menu.classList.remove('hidden');
-            
-            // Ensure menu stays within viewport
-            setTimeout(() => {
-                const rect = menu.getBoundingClientRect();
-                if (rect.right > window.innerWidth) {
-                    menu.style.left = (window.innerWidth - rect.width - 10) + 'px';
-                }
-                if (rect.bottom > window.innerHeight) {
-                    menu.style.top = (window.innerHeight - rect.height - 10) + 'px';
-                }
-            }, 0);
-            
-            // Close on click outside
-            setTimeout(() => {
-                const closeHandler = (e) => {
-                    if (!menu.contains(e.target)) {
-                    menu.classList.add('hidden');
-                        document.removeEventListener('click', closeHandler);
-                    }
-                };
-                document.addEventListener('click', closeHandler);
-            }, 0);
-        }
+        // showContextMenu is defined in CONTEXT MENU section below (line ~10576)
+        // It handles file/folder right-click menus
 
         function copyToClipboard(text) {
             if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -8719,7 +8868,7 @@ ${result.content}`;
                 // Get selected model
                 const selectedModel = document.getElementById('ai-model-select')?.value || 'claude-sonnet-4-5';
 
-                // Route to OpenClaw Gateway if COZ model selected
+                // Route to OpenClaw Gateway if OpenClaw model selected
                 if (selectedModel.startsWith('openclaw:')) {
                     try {
                         await sendViaOpenClaw(message, {
@@ -9175,7 +9324,7 @@ ${result.content}`;
                                                 try {
                                                     // Render markdown
                                                     if (typeof marked !== 'undefined' && marked.parse) {
-                                                        contentDiv.innerHTML = marked.parse(finalContent);
+                                                        contentDiv.innerHTML = renderMarkdownSafe(finalContent);
                                                         console.log('[FRONTEND] Markdown rendered successfully');
                                                         
                                                         // Highlight code blocks
@@ -9331,7 +9480,7 @@ ${result.content}`;
                 renderedContent = '▋';
             } else if (type === 'assistant') {
                 // Use marked.js for beautiful markdown rendering
-                renderedContent = marked.parse(content);
+                renderedContent = renderMarkdownSafe(content);
             } else {
                 // For user/system/error messages, escape HTML
                 renderedContent = escapeHtml(content);
@@ -9400,7 +9549,7 @@ ${result.content}`;
             if (contentDiv) {
                 // If it's an assistant message, use marked.js for markdown rendering
                 if (messageElement.classList.contains('assistant')) {
-                    contentDiv.innerHTML = marked.parse(newContent);
+                    contentDiv.innerHTML = renderMarkdownSafe(newContent);
                     // Highlight code blocks
                     messageElement.querySelectorAll('pre code').forEach((block) => {
                         hljs.highlightElement(block);
@@ -9568,6 +9717,20 @@ ${result.content}`;
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        function sanitizeRenderedHtml(html) {
+            if (window.DOMPurify && typeof window.DOMPurify.sanitize === 'function') {
+                return window.DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
+            }
+            return escapeHtml(String(html || ''));
+        }
+
+        function renderMarkdownSafe(markdown) {
+            if (typeof marked !== 'undefined' && marked.parse) {
+                return sanitizeRenderedHtml(marked.parse(markdown || ''));
+            }
+            return `<pre style="white-space:pre-wrap;">${escapeHtml(markdown || '')}</pre>`;
         }
         
         function clearAIChat() {
@@ -9853,7 +10016,7 @@ ${result.content}`;
             try {
             // Use browser print for PDF export
             const content = fileData.model.getValue();
-            const html = marked.parse(content);
+            const html = renderMarkdownSafe(content);
             
             const printWindow = window.open('', '_blank');
                 if (!printWindow) {
@@ -9926,7 +10089,7 @@ ${result.content}`;
             
             try {
             const content = fileData.model.getValue();
-            const html = marked.parse(content);
+            const html = renderMarkdownSafe(content);
             
             const fullHTML = `<!DOCTYPE html>
 <html lang="en">
@@ -10152,7 +10315,7 @@ ${html}
         
         function savePanelSize(panelId, width) {
             try {
-                const key = `cosmo-panel-size-${panelId}`;
+                const key = `evobrew-panel-size-${panelId}`;
                 localStorage.setItem(key, width.toString());
             } catch (e) {
                 console.error('Failed to save panel size:', e);
@@ -10164,7 +10327,7 @@ ${html}
             
             panels.forEach(panelId => {
                 try {
-                    const key = `cosmo-panel-size-${panelId}`;
+                    const key = `evobrew-panel-size-${panelId}`;
                     const saved = localStorage.getItem(key);
                     if (saved) {
                         const panel = document.getElementById(panelId);
@@ -10943,6 +11106,7 @@ ${html}
                 { id: 'ai.summarize', label: 'AI: Summarize', action: () => aiQuickAction('summarize') },
                 { id: 'help.keyboard', label: 'Keyboard Shortcuts', action: toggleKeyboardHelp, keys: '?' },
             ];
+            window.evobrewCommands = commands;
         }
 
         // ============================================================================
@@ -10956,7 +11120,7 @@ ${html}
             const data = await response.json();
             
             if (data.success && window.marked) {
-              contentEl.innerHTML = marked.parse(data.content);
+              contentEl.innerHTML = renderMarkdownSafe(data.content);
               // Highlight code blocks
               contentEl.querySelectorAll('pre code').forEach((block) => {
                 if (typeof hljs !== 'undefined') hljs.highlightElement(block);
@@ -10976,13 +11140,13 @@ ${html}
         function isFeatureEnabled(feature) {
           const urlParams = new URLSearchParams(window.location.search);
           if (urlParams.get('features')?.includes(feature)) return true;
-          if (localStorage.getItem(`cosmo_feature_${feature}`) === 'true') return true;
-          if (window.__COSMO_FEATURES__?.[feature]) return true;
+          if (localStorage.getItem(`evobrew_feature_${feature}`) === 'true') return true;
+          if (window.__EVOBREW_FEATURES__?.[feature]) return true;
           return false;
         }
 
         function switchBrainTab(tabName) {
-          console.log('[BRAIN STUDIO] Switching to tab:', tabName);
+          console.log('[EVOBREW] Switching to tab:', tabName);
           
           // Update mode description
           const modeDesc = document.getElementById('modeDescription');
@@ -10992,8 +11156,7 @@ ${html}
             else if (tabName === 'files') modeDesc.textContent = 'Action-oriented workspace';
             else if (tabName === 'explore') modeDesc.textContent = 'Knowledge graph exploration';
             else if (tabName === 'hub') modeDesc.textContent = 'Brain package management';
-            else if (tabName === 'clawdboard') modeDesc.textContent = 'Visual control center';
-            else if (tabName === 'coz') modeDesc.textContent = 'Strategic planning & orchestration';
+            else if (tabName === 'openclaw') modeDesc.textContent = 'AI agent with memory & tools';
           }
           
           // Update tab buttons
@@ -11015,8 +11178,8 @@ ${html}
               aiPanel.classList.remove('hidden');
               if (aiBtn) aiBtn.classList.add('active');
             }
-          } else if (tabName === 'readme' || tabName === 'explore' || tabName === 'hub' || tabName === 'clawdboard' || tabName === 'coz') {
-            // Auto-hide AI panel in documentation, explore, hub, clawdboard, or coz modes to maximize space
+          } else if (tabName === 'readme' || tabName === 'explore' || tabName === 'hub' || tabName === 'openclaw') {
+            // Auto-hide AI panel in documentation, explore, hub, openclaw modes to maximize space
             const aiPanel = document.getElementById('ai-panel');
             const aiBtn = document.getElementById('ai-btn');
             if (aiPanel && !aiPanel.classList.contains('hidden')) {
@@ -11046,30 +11209,19 @@ ${html}
             }, 50);
           }
           
-          // Lazy-load Clawdboard iframe on first view
-          if (tabName === 'clawdboard' && !window.clawdboardTabInitialized) {
-            const iframe = document.getElementById('clawdboard-iframe');
-            if (iframe && iframe.src === 'about:blank') {
-              // Use current hostname for LAN access
-              const clawdboardHost = window.location.hostname || 'localhost';
-              iframe.src = 'http://' + clawdboardHost + ':3300';
-            }
-            window.clawdboardTabInitialized = true;
-          }
-          
-          // Initialize COZ chat on first view
-          if (tabName === 'coz' && !window.cozTabInitialized) {
-            initCozChat();
-            window.cozTabInitialized = true;
+          // Initialize OpenClaw chat on first view
+          if (tabName === 'openclaw' && !window.openclawTabInitialized) {
+            initOpenclawChat();
+            window.openclawTabInitialized = true;
           }
         }
         
         // ============================================================================
-        // COZ CHAT - WebSocket connection to Clawdbot Gateway
+        // OPENCLAW CHAT - WebSocket connection to OpenClaw Gateway
         // ============================================================================
         
         // UUID helper - fallback for non-secure contexts
-        function cozUuid() {
+        function openclawUuid() {
           if (typeof crypto !== 'undefined' && crypto.randomUUID) {
             return crypto.randomUUID();
           }
@@ -11081,10 +11233,10 @@ ${html}
           });
         }
         
-        let cozWebSocket = null;
-        let cozPendingRequests = new Map();
-        let cozAuthenticated = false;
-        let cozConnectSent = false;
+        let openclawWebSocket = null;
+        let openclawPendingRequests = new Map();
+        let openclawAuthenticated = false;
+        let openclawConnectSent = false;
         
         // ===== Dynamic Model Selector =====
         async function populateModelSelector() {
@@ -11164,8 +11316,8 @@ ${html}
           select.addEventListener('change', () => {
             if (select.value.startsWith('openclaw:')) {
               // Auto-connect to Gateway if not connected
-              if (!cozWebSocket || cozWebSocket.readyState !== WebSocket.OPEN) {
-                connectCozWebSocket();
+              if (!openclawWebSocket || openclawWebSocket.readyState !== WebSocket.OPEN) {
+                connectOpenclawWebSocket();
               }
               updateOpenClawStatus();
             } else {
@@ -11193,10 +11345,10 @@ ${html}
           if (!dot) return;
 
           dot.style.display = 'inline-block';
-          if (cozAuthenticated && cozWebSocket?.readyState === WebSocket.OPEN) {
+          if (openclawAuthenticated && openclawWebSocket?.readyState === WebSocket.OPEN) {
             dot.style.background = 'var(--success-color)';
             dot.title = 'OpenClaw Gateway connected';
-          } else if (cozWebSocket?.readyState === WebSocket.CONNECTING || (cozWebSocket?.readyState === WebSocket.OPEN && !cozAuthenticated)) {
+          } else if (openclawWebSocket?.readyState === WebSocket.CONNECTING || (openclawWebSocket?.readyState === WebSocket.OPEN && !openclawAuthenticated)) {
             dot.style.background = '#f0a030';
             dot.title = 'Connecting to OpenClaw Gateway...';
           } else {
@@ -11206,17 +11358,17 @@ ${html}
         }
         // ===== End Dynamic Model Selector =====
 
-        function initCozChat() {
-          console.log('[COZ] Initializing chat connection...');
-          connectCozWebSocket();
+        function initOpenclawChat() {
+          console.log('[OpenClaw] Initializing chat connection...');
+          connectOpenclawWebSocket();
         }
         
-        function connectCozWebSocket() {
-          if (cozWebSocket && cozWebSocket.readyState === WebSocket.OPEN) return;
+        function connectOpenclawWebSocket() {
+          if (openclawWebSocket && openclawWebSocket.readyState === WebSocket.OPEN) return;
           
           // Reset authentication state
-          cozAuthenticated = false;
-          cozConnectSent = false;
+          openclawAuthenticated = false;
+          openclawConnectSent = false;
           
           try {
             // Route WebSocket based on page protocol:
@@ -11229,31 +11381,31 @@ ${html}
               const gatewayHost = window.location.hostname || 'localhost';
               wsUrl = 'ws://' + gatewayHost + ':18789';
             }
-            console.log('[COZ] Connecting to:', wsUrl);
-            cozWebSocket = new WebSocket(wsUrl);
+            console.log('[OpenClaw] Connecting to:', wsUrl);
+            openclawWebSocket = new WebSocket(wsUrl);
             
-            cozWebSocket.onopen = () => {
-              console.log('[COZ] WebSocket opened, waiting for authentication challenge...');
-              addCozMessage('system', 'Connecting to Clawdbot Gateway...');
+            openclawWebSocket.onopen = () => {
+              console.log('[OpenClaw] WebSocket opened, waiting for authentication challenge...');
+              addOpenclawMessage('system', 'Connecting to OpenClaw Gateway...');
               updateOpenClawStatus();
             };
             
-            cozWebSocket.onmessage = (event) => {
+            openclawWebSocket.onmessage = (event) => {
               let data;
               try {
                 data = JSON.parse(event.data);
               } catch (e) {
-                console.error('[COZ] JSON parse error:', e);
+                console.error('[OpenClaw] JSON parse error:', e);
                 return;
               }
-              handleCozMessage(data);
+              handleOpenclawMessage(data);
             };
             
-            cozWebSocket.onclose = () => {
-              console.log('[COZ] WebSocket disconnected');
-              cozAuthenticated = false;
-              cozConnectSent = false;
-              addCozMessage('system', 'Disconnected. Click to reconnect.', true);
+            openclawWebSocket.onclose = () => {
+              console.log('[OpenClaw] WebSocket disconnected');
+              openclawAuthenticated = false;
+              openclawConnectSent = false;
+              addOpenclawMessage('system', 'Disconnected. Click to reconnect.', true);
               updateOpenClawStatus();
               // Clean up any in-flight OpenClaw main chat request
               if (openclawActive) {
@@ -11269,25 +11421,25 @@ ${html}
               }
             };
             
-            cozWebSocket.onerror = (error) => {
-              console.error('[COZ] WebSocket error:', error);
-              addCozMessage('system', 'Connection error. Is Clawdbot Gateway running?');
+            openclawWebSocket.onerror = (error) => {
+              console.error('[OpenClaw] WebSocket error:', error);
+              addOpenclawMessage('system', 'Connection error. Is OpenClaw Gateway running?');
             };
           } catch (e) {
-            console.error('[COZ] Failed to connect:', e);
-            addCozMessage('system', 'Failed to connect to Gateway');
+            console.error('[OpenClaw] Failed to connect:', e);
+            addOpenclawMessage('system', 'Failed to connect to Gateway');
           }
         }
         
-        async function sendCozConnect() {
-          if (cozConnectSent || !cozWebSocket || cozWebSocket.readyState !== WebSocket.OPEN) return;
-          cozConnectSent = true;
+        async function sendOpenclawConnect() {
+          if (openclawConnectSent || !openclawWebSocket || openclawWebSocket.readyState !== WebSocket.OPEN) return;
+          openclawConnectSent = true;
 
           // Generate or retrieve instance ID
-          let instanceId = localStorage.getItem('cosmo-ide-coz-instance-id');
+          let instanceId = localStorage.getItem('evobrew-openclaw-instance-id');
           if (!instanceId) {
-            instanceId = cozUuid();
-            localStorage.setItem('cosmo-ide-coz-instance-id', instanceId);
+            instanceId = openclawUuid();
+            localStorage.setItem('evobrew-openclaw-instance-id', instanceId);
           }
 
           // Fetch connect-level auth from server (credentials stay server-side)
@@ -11296,11 +11448,11 @@ ${html}
             const authRes = await fetch('/api/gateway-auth');
             if (authRes.ok) auth = await authRes.json();
           } catch (e) {
-            console.warn('[COZ] Could not fetch gateway auth:', e.message);
+            console.warn('[OpenClaw] Could not fetch gateway auth:', e.message);
           }
 
-          const connectId = cozUuid();
-          cozPendingRequests.set(connectId, 'connect');
+          const connectId = openclawUuid();
+          openclawPendingRequests.set(connectId, 'connect');
 
           const connectRequest = {
             id: connectId,
@@ -11325,60 +11477,60 @@ ${html}
             }
           };
 
-          console.log('[COZ] Sending connect request...');
-          cozWebSocket.send(JSON.stringify(connectRequest));
+          console.log('[OpenClaw] Sending connect request...');
+          openclawWebSocket.send(JSON.stringify(connectRequest));
         }
         
-        const COZ_SIDEBAR_SESSION = 'cosmo-ide:sidebar';
+        const OPENCLAW_SIDEBAR_SESSION = 'evobrew:sidebar';
 
-        function loadCozHistory() {
-          if (!cozAuthenticated || !cozWebSocket || cozWebSocket.readyState !== WebSocket.OPEN) {
-            console.log('[COZ] Cannot load history - not authenticated');
+        function loadOpenclawHistory() {
+          if (!openclawAuthenticated || !openclawWebSocket || openclawWebSocket.readyState !== WebSocket.OPEN) {
+            console.log('[OpenClaw] Cannot load history - not authenticated');
             return;
           }
           
-          const id = cozUuid();
-          cozPendingRequests.set(id, 'history');
-          cozWebSocket.send(JSON.stringify({
+          const id = openclawUuid();
+          openclawPendingRequests.set(id, 'history');
+          openclawWebSocket.send(JSON.stringify({
             id: id,
             type: 'req',
             method: 'chat.history',
             params: {
-              sessionKey: COZ_SIDEBAR_SESSION,
+              sessionKey: OPENCLAW_SIDEBAR_SESSION,
               limit: 50
             }
           }));
         }
         
-        function handleCozMessage(data) {
+        function handleOpenclawMessage(data) {
           // Handle authentication challenge
           if (data.type === 'event' && data.event === 'connect.challenge') {
-            console.log('[COZ] Received authentication challenge');
-            sendCozConnect();
+            console.log('[OpenClaw] Received authentication challenge');
+            sendOpenclawConnect();
             return;
           }
           
           // Handle response to our requests
-          if (data.type === 'res' && data.id && cozPendingRequests.has(data.id)) {
-            const type = cozPendingRequests.get(data.id);
-            cozPendingRequests.delete(data.id);
+          if (data.type === 'res' && data.id && openclawPendingRequests.has(data.id)) {
+            const type = openclawPendingRequests.get(data.id);
+            openclawPendingRequests.delete(data.id);
             
             if (type === 'connect') {
               if (data.ok) {
-                console.log('[COZ] Authentication successful');
-                cozAuthenticated = true;
-                addCozMessage('system', 'Connected and authenticated');
+                console.log('[OpenClaw] Authentication successful');
+                openclawAuthenticated = true;
+                addOpenclawMessage('system', 'Connected and authenticated');
                 updateOpenClawStatus();
                 // Now we can load chat history
-                loadCozHistory();
+                loadOpenclawHistory();
               } else {
-                console.error('[COZ] Authentication failed:', data.error);
-                addCozMessage('system', 'Authentication failed: ' + (data.error?.message || 'Unknown error'));
+                console.error('[OpenClaw] Authentication failed:', data.error);
+                addOpenclawMessage('system', 'Authentication failed: ' + (data.error?.message || 'Unknown error'));
               }
               return;
             } else if (type === 'history' && data.ok && data.payload?.messages) {
               // Clear welcome message and load history
-              const container = document.getElementById('coz-messages');
+              const container = document.getElementById('openclaw-messages');
               container.innerHTML = '';
               data.payload.messages.forEach(msg => {
                 // Extract text from content (could be string or array of content blocks)
@@ -11391,10 +11543,10 @@ ${html}
                     .map(c => c.text)
                     .join('\n');
                 }
-                if (text) addCozMessage(msg.role, text);
+                if (text) addOpenclawMessage(msg.role, text);
               });
               if (data.payload.messages.length === 0) {
-                addCozMessage('system', 'No chat history. Start a conversation!');
+                addOpenclawMessage('system', 'No chat history. Start a conversation!');
               }
             } else if (type === 'main-chat') {
               // OpenClaw main chat send acknowledgement
@@ -11408,9 +11560,9 @@ ${html}
               return;
             } else if (type === 'send') {
               if (!data.ok) {
-                console.error('[COZ] Send message failed:', data.error);
-                addCozMessage('system', 'Failed to send message: ' + (data.error?.message || 'Unknown error'));
-                stopCozResponsePolling();
+                console.error('[OpenClaw] Send message failed:', data.error);
+                addOpenclawMessage('system', 'Failed to send message: ' + (data.error?.message || 'Unknown error'));
+                stopOpenclawResponsePolling();
               }
               // Message sent - polling will pick up response
             } else if (type === 'poll' && data.ok && data.payload?.messages) {
@@ -11419,15 +11571,15 @@ ${html}
               
               // Check if the LAST message is from assistant (that's our response!)
               const lastMsg = messages[messages.length - 1];
-              console.log('[COZ] Poll: last message role =', lastMsg.role, 'timestamp =', lastMsg.timestamp);
+              console.log('[OpenClaw] Poll: last message role =', lastMsg.role, 'timestamp =', lastMsg.timestamp);
               
               // If last message is from assistant and newer than when we started polling
-              if (lastMsg.role === 'assistant' && lastMsg.timestamp > cozPollStartTime) {
-                console.log('[COZ] Got assistant response!');
+              if (lastMsg.role === 'assistant' && lastMsg.timestamp > openclawPollStartTimeSidebar) {
+                console.log('[OpenClaw] Got assistant response!');
                 
                 // Remove "thinking" message
-                const container = document.getElementById('coz-messages');
-                const systemMsgs = container.querySelectorAll('.coz-system');
+                const container = document.getElementById('openclaw-messages');
+                const systemMsgs = container.querySelectorAll('.openclaw-system');
                 systemMsgs.forEach(el => {
                   if (el.textContent.includes('thinking')) el.remove();
                 });
@@ -11444,11 +11596,11 @@ ${html}
                 }
                 
                 if (content) {
-                  addCozMessage('assistant', content);
+                  addOpenclawMessage('assistant', content);
                 }
                 
                 // Stop polling
-                stopCozResponsePolling();
+                stopOpenclawResponsePolling();
               }
             }
             return;
@@ -11458,8 +11610,8 @@ ${html}
           if (data.type === 'event') {
             const p = data.payload || data.params || {};
             const sk = p.sessionKey || '';
-            const isMainChat = sk === 'cosmo-ide:main' || sk.endsWith(':cosmo-ide:main');
-            const isSidebar = sk === COZ_SIDEBAR_SESSION || sk.endsWith(':' + COZ_SIDEBAR_SESSION);
+            const isMainChat = sk === 'evobrew:main' || sk.endsWith(':evobrew:main');
+            const isSidebar = sk === OPENCLAW_SIDEBAR_SESSION || sk.endsWith(':' + OPENCLAW_SIDEBAR_SESSION);
 
             // Agent events: streaming deltas and lifecycle
             if (data.event === 'agent') {
@@ -11470,14 +11622,14 @@ ${html}
                     openclawRenderedRunId = p.runId || data.payload?.runId;
                     handleOpenClawStream(delta);
                   } else if (isSidebar) {
-                    appendToCozStream(delta);
+                    appendToOpenclawStream(delta);
                   }
                 }
               } else if (p.stream === 'lifecycle' && p.data?.phase === 'end') {
                 if (isMainChat && openclawActive && openclawStreamEl) {
                   finalizeOpenClawStream();
-                } else if (isSidebar && document.querySelector('.coz-stream')) {
-                  finalizeCozStream();
+                } else if (isSidebar && document.querySelector('.openclaw-stream')) {
+                  finalizeOpenclawStream();
                 }
               }
             }
@@ -11525,8 +11677,8 @@ ${html}
                 aiConversationHistory.push({ role: 'assistant', content: content });
                 chatHistory.saveMessage('assistant', content);
               } else if (isSidebar && content) {
-                stopCozResponsePolling();
-                addCozMessage('assistant', content);
+                stopOpenclawResponsePolling();
+                addOpenclawMessage('assistant', content);
               }
             }
 
@@ -11534,27 +11686,27 @@ ${html}
           }
         }
         
-        let cozStreamElement = null;
+        let openclawStreamElement = null;
         
-        function appendToCozStream(content) {
-          if (!cozStreamElement) {
-            cozStreamElement = document.createElement('div');
-            cozStreamElement.className = 'coz-message coz-assistant';
-            cozStreamElement.style.cssText = 'padding: 12px 16px; border-radius: 12px; background: var(--bg-tertiary); max-width: 85%; align-self: flex-start; color: var(--text-primary); line-height: 1.5; white-space: pre-wrap;';
-            document.getElementById('coz-messages').appendChild(cozStreamElement);
+        function appendToOpenclawStream(content) {
+          if (!openclawStreamElement) {
+            openclawStreamElement = document.createElement('div');
+            openclawStreamElement.className = 'openclaw-message openclaw-assistant openclaw-stream';
+            openclawStreamElement.style.cssText = 'padding: 12px 16px; border-radius: 12px; background: var(--bg-tertiary); max-width: 85%; align-self: flex-start; color: var(--text-primary); line-height: 1.5; white-space: pre-wrap;';
+            document.getElementById('openclaw-messages').appendChild(openclawStreamElement);
           }
-          cozStreamElement.textContent += content;
-          cozStreamElement.scrollIntoView({ behavior: 'smooth' });
+          openclawStreamElement.textContent += content;
+          openclawStreamElement.scrollIntoView({ behavior: 'smooth' });
         }
         
-        function finalizeCozStream() {
-          cozStreamElement = null;
+        function finalizeOpenclawStream() {
+          openclawStreamElement = null;
         }
         
-        function addCozMessage(role, content, clickToReconnect = false) {
-          const container = document.getElementById('coz-messages');
+        function addOpenclawMessage(role, content, clickToReconnect = false) {
+          const container = document.getElementById('openclaw-messages');
           const msg = document.createElement('div');
-          msg.className = `coz-message coz-${role}`;
+          msg.className = `openclaw-message openclaw-${role}`;
           
           let bgColor, align;
           if (role === 'user') {
@@ -11578,7 +11730,7 @@ ${html}
             msg.style.cursor = 'pointer';
             msg.onclick = () => {
               msg.remove();
-              connectCozWebSocket();
+              connectOpenclawWebSocket();
             };
           }
           
@@ -11586,93 +11738,93 @@ ${html}
           msg.scrollIntoView({ behavior: 'smooth' });
         }
         
-        function sendCozMessage() {
-          const input = document.getElementById('coz-input');
+        function sendOpenclawMessage() {
+          const input = document.getElementById('openclaw-input');
           const message = input.value.trim();
           if (!message) return;
           
-          if (!cozWebSocket || cozWebSocket.readyState !== WebSocket.OPEN) {
-            addCozMessage('system', 'Not connected. Reconnecting...');
-            connectCozWebSocket();
+          if (!openclawWebSocket || openclawWebSocket.readyState !== WebSocket.OPEN) {
+            addOpenclawMessage('system', 'Not connected. Reconnecting...');
+            connectOpenclawWebSocket();
             return;
           }
           
-          if (!cozAuthenticated) {
-            addCozMessage('system', 'Not authenticated. Please wait for connection...');
+          if (!openclawAuthenticated) {
+            addOpenclawMessage('system', 'Not authenticated. Please wait for connection...');
             return;
           }
           
           // Add user message to UI
-          addCozMessage('user', message);
+          addOpenclawMessage('user', message);
           input.value = '';
           
           // Send to gateway
-          const id = cozUuid();
-          cozPendingRequests.set(id, 'send');
-          cozWebSocket.send(JSON.stringify({
+          const id = openclawUuid();
+          openclawPendingRequests.set(id, 'send');
+          openclawWebSocket.send(JSON.stringify({
             id: id,
             type: 'req',
             method: 'chat.send',
             params: {
-              sessionKey: COZ_SIDEBAR_SESSION,
+              sessionKey: OPENCLAW_SIDEBAR_SESSION,
               message: message,
-              idempotencyKey: cozUuid()
+              idempotencyKey: openclawUuid()
             }
           }));
 
           // Start polling for response
-          startCozResponsePolling();
+          startOpenclawResponsePolling();
         }
         
-        let cozPollingInterval = null;
-        let cozLastMessageCount = 0;
-        let cozPollStartTime = 0;
+        let openclawPollingIntervalSidebar = null;
+        let openclawLastMessageCount = 0;
+        let openclawPollStartTimeSidebar = 0;
         
-        function startCozResponsePolling() {
+        function startOpenclawResponsePolling() {
           // Stop any existing polling
-          stopCozResponsePolling();
+          stopOpenclawResponsePolling();
           
           // Reset message count tracker
-          cozLastMessageCount = 0;
+          openclawLastMessageCount = 0;
           
           // Add "thinking" indicator
-          addCozMessage('system', '⏳ Agent is thinking...');
-          console.log('[COZ] Starting response polling...');
+          addOpenclawMessage('system', '⏳ Agent is thinking...');
+          console.log('[OpenClaw] Starting response polling...');
           
-          cozPollStartTime = Date.now();
-          cozPollingInterval = setInterval(() => {
+          openclawPollStartTimeSidebar = Date.now();
+          openclawPollingIntervalSidebar = setInterval(() => {
             // Timeout after 90 seconds
-            if (Date.now() - cozPollStartTime > 90000) {
-              stopCozResponsePolling();
-              addCozMessage('system', '⏱️ Response timeout. The agent may still be working.');
+            if (Date.now() - openclawPollStartTimeSidebar > 90000) {
+              stopOpenclawResponsePolling();
+              addOpenclawMessage('system', '⏱️ Response timeout. The agent may still be working.');
               return;
             }
-            pollCozForResponse();
+            pollOpenclawForResponse();
           }, 2000);
         }
         
-        function stopCozResponsePolling() {
-          if (cozPollingInterval) {
-            clearInterval(cozPollingInterval);
-            cozPollingInterval = null;
+        function stopOpenclawResponsePolling() {
+          if (openclawPollingIntervalSidebar) {
+            clearInterval(openclawPollingIntervalSidebar);
+            openclawPollingIntervalSidebar = null;
           }
         }
         
-        function pollCozForResponse() {
-          if (!cozAuthenticated || !cozWebSocket || cozWebSocket.readyState !== WebSocket.OPEN) {
-            console.log('[COZ] Cannot poll - not connected');
+        function pollOpenclawForResponse() {
+          if (!openclawAuthenticated || !openclawWebSocket || openclawWebSocket.readyState !== WebSocket.OPEN) {
+            console.log('[OpenClaw] Cannot poll - not connected');
             return;
           }
-          console.log('[COZ] Polling for response...');
+          console.log('[OpenClaw] Polling for response...');
           
-          const id = cozUuid();
-          cozPendingRequests.set(id, 'poll');
-          cozWebSocket.send(JSON.stringify({
+          const id = openclawUuid();
+          openclawPendingRequests.set(id, 'poll');
+          openclawWebSocket.send(JSON.stringify({
             id: id,
             type: 'req',
             method: 'chat.history',
             params: {
-              sessionKey: COZ_SIDEBAR_SESSION,
+              sessionKey: OPENCLAW_SIDEBAR_SESSION,
               limit: 10
             }
           }));
@@ -11697,15 +11849,15 @@ ${html}
          */
         async function sendViaOpenClaw(message, ctx) {
             // 1. Ensure connected and authenticated
-            if (!cozWebSocket || cozWebSocket.readyState !== WebSocket.OPEN || !cozAuthenticated) {
-                connectCozWebSocket();
+            if (!openclawWebSocket || openclawWebSocket.readyState !== WebSocket.OPEN || !openclawAuthenticated) {
+                connectOpenclawWebSocket();
                 const authed = await new Promise(resolve => {
-                    if (cozAuthenticated) return resolve(true);
+                    if (openclawAuthenticated) return resolve(true);
                     let attempts = 0;
                     const check = setInterval(() => {
-                        if (cozAuthenticated || ++attempts > 50) {
+                        if (openclawAuthenticated || ++attempts > 50) {
                             clearInterval(check);
-                            resolve(cozAuthenticated);
+                            resolve(openclawAuthenticated);
                         }
                     }, 100);
                 });
@@ -11720,7 +11872,7 @@ ${html}
             let enrichedMessage = '';
             const hasContext = ctx.fileName || ctx.selectedText || ctx.brainEnabled;
             if (hasContext) {
-                enrichedMessage += '[COSMO IDE Context]\n';
+                enrichedMessage += '[Evobrew IDE Context]\n';
                 if (ctx.fileName) {
                     enrichedMessage += `File: ${ctx.fileName} (${ctx.language})\n`;
                     if (ctx.documentContent && ctx.documentContent.length > 0 && ctx.documentContent.length < 30000) {
@@ -11743,16 +11895,16 @@ ${html}
             // 3. Send to Gateway
             openclawActive = true;
             openclawLastUserMessage = message;
-            const id = cozUuid();
-            cozPendingRequests.set(id, 'main-chat');
-            cozWebSocket.send(JSON.stringify({
+            const id = openclawUuid();
+            openclawPendingRequests.set(id, 'main-chat');
+            openclawWebSocket.send(JSON.stringify({
                 id,
                 type: 'req',
                 method: 'chat.send',
                 params: {
-                    sessionKey: 'cosmo-ide:main',
+                    sessionKey: 'evobrew:main',
                     message: enrichedMessage,
-                    idempotencyKey: cozUuid()
+                    idempotencyKey: openclawUuid()
                 }
             }));
 
@@ -11805,7 +11957,7 @@ ${html}
             openclawStreamAccum += content;
             const contentDiv = openclawStreamEl.querySelector('.ai-message-content');
             if (contentDiv) {
-                contentDiv.innerHTML = marked.parse(openclawStreamAccum) + '▋';
+                contentDiv.innerHTML = renderMarkdownSafe(openclawStreamAccum) + '▋';
             }
             openclawStreamEl.scrollIntoView({ behavior: 'smooth', block: 'end' });
         }
@@ -11818,7 +11970,7 @@ ${html}
                 if (header) header.textContent = '🤖 AI Assistant';
                 const contentDiv = openclawStreamEl.querySelector('.ai-message-content');
                 if (contentDiv) {
-                    contentDiv.innerHTML = marked.parse(finalContent);
+                    contentDiv.innerHTML = renderMarkdownSafe(finalContent);
                     // Highlight code blocks
                     contentDiv.querySelectorAll('pre code').forEach(block => {
                         hljs.highlightElement(block);
@@ -11852,6 +12004,58 @@ ${html}
         document.addEventListener('DOMContentLoaded', async () => {
             initPanelResizing();
             restorePanelSizes();
+            let configData = null;
+            
+            // Fetch config to show/hide features
+            try {
+                const configRes = await fetch('/api/config');
+                configData = await configRes.json();
+                window.evobrewConfig = configData;
+                window.uiRefreshEnabled = configData.features?.ui_refresh_v1 !== false;
+                
+                // Show/hide OpenClaw tab based on config
+                const openclawTab = document.querySelector('.openclaw-tab');
+                if (openclawTab) {
+                    if (configData.openclaw?.enabled) {
+                        openclawTab.style.display = '';
+                        // Set custom tab name if configured
+                        const tabName = openclawTab.querySelector('.openclaw-tab-name');
+                        if (tabName && configData.openclaw.tab_name) {
+                            tabName.textContent = configData.openclaw.tab_name;
+                        }
+                        // Update welcome title
+                        const welcomeTitle = document.getElementById('openclaw-welcome-title');
+                        if (welcomeTitle && configData.openclaw.tab_name) {
+                            welcomeTitle.textContent = configData.openclaw.tab_name + ' Agent';
+                        }
+                    } else {
+                        openclawTab.style.display = 'none';
+                    }
+                }
+                
+                // Show/hide brain picker based on config
+                const brainPicker = document.getElementById('brainPickerBtn');
+                if (brainPicker && !configData.features?.brains?.enabled) {
+                    brainPicker.style.display = 'none';
+                }
+                
+                // Hide Query and Explore tabs if brains disabled
+                if (!configData.features?.brains?.enabled) {
+                    const queryTab = document.querySelector('[data-tab="query"]');
+                    const exploreTab = document.querySelector('[data-tab="explore"]');
+                    if (queryTab) queryTab.style.display = 'none';
+                    if (exploreTab) exploreTab.style.display = 'none';
+                }
+                
+                console.log('[Config] Features:', configData.features);
+            } catch (err) {
+                window.uiRefreshEnabled = true;
+                console.warn('[Config] Could not fetch config:', err.message);
+            }
+
+            window.dispatchEvent(new CustomEvent('evobrew:ui-refresh-toggle', {
+                detail: { enabled: window.uiRefreshEnabled !== false, config: configData }
+            }));
             
             // Populate AI model selector from API
             populateModelSelector();
@@ -11905,14 +12109,10 @@ ${html}
                         console.log('⚠️ No brain loaded - brain toggle disabled');
                     }
 
-                    // Show folder picker after a short delay
+                    // Keep startup non-blocking. Show guided empty-state instead of forcing a modal.
                     setTimeout(() => {
-                        const folderBrowser = document.getElementById('folder-browser');
-                        const overlay = document.getElementById('overlay');
-                        if (folderBrowser && overlay) {
-                            folderBrowser.classList.remove('hidden');
-                            overlay.classList.remove('hidden');
-                            browseFolders('/Users');
+                        if (window.UIRefreshOnboarding?.updateVisibility) {
+                            window.UIRefreshOnboarding.updateVisibility();
                         }
                     }, 150);
                 }
@@ -11926,6 +12126,10 @@ ${html}
     <!-- Brain Studio Tab Modules -->
     <script src="js/query-tab.js"></script>
     <script src="js/explore-tab.js"></script>
+    <script src="js/ui-panels.js"></script>
+    <script src="js/ui-onboarding.js"></script>
+    <script src="js/ui-shortcuts.js"></script>
+    <script src="js/ui-shell.js"></script>
 
     <!-- Brain Picker Modal -->
     <div id="brainPickerModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; z-index:10000; background:rgba(0,0,0,0.5); align-items:center; justify-content:center;">

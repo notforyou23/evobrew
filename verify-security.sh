@@ -1,37 +1,40 @@
 #!/bin/bash
-# COSMO IDE - Security Verification Script
+# Evobrew - Security Verification Script
 # Run this to verify repository is safe for public launch
 
-echo "🔍 COSMO IDE Security Verification"
+echo "🔍 Evobrew Security Verification"
 echo "==================================="
 echo ""
 
 FAILED=0
+KEY_PATTERN='sk-[A-Za-z0-9][A-Za-z0-9_-]{19,}|sk-ant-(api|oat|oauth|refresh)[A-Za-z0-9_-]{10,}|xai-[A-Za-z0-9][A-Za-z0-9_-]{19,}'
+SENSITIVE_HISTORY_PATHS=(
+    "ssl/key.pem"
+    "ssl/cert.pem"
+    "prisma/studio.db"
+    "docs/plans/PHASE1_CREDENTIAL_ROTATION.md"
+    "cursor_revisiting_implementation_approa.md"
+)
 
 # Check 1: Git history for sensitive files
 echo "1️⃣  Checking git history for sensitive files..."
-KEY_IN_HISTORY=$(git log --all --oneline -- ssl/key.pem 2>/dev/null | wc -l)
-CERT_IN_HISTORY=$(git log --all --oneline -- ssl/cert.pem 2>/dev/null | wc -l)
-DB_IN_HISTORY=$(git log --all --oneline -- prisma/studio.db 2>/dev/null | wc -l)
+for sensitive_path in "${SENSITIVE_HISTORY_PATHS[@]}"; do
+    IN_HISTORY=$(git log --all --oneline -- "$sensitive_path" 2>/dev/null | wc -l)
+    if [[ $IN_HISTORY -eq 0 ]]; then
+        echo "   ✅ $sensitive_path: Not in history"
+        continue
+    fi
 
-if [[ $KEY_IN_HISTORY -eq 0 ]]; then
-    echo "   ✅ ssl/key.pem: Not in history"
-else
-    echo "   🔴 ssl/key.pem: Found in $KEY_IN_HISTORY commits"
-    FAILED=1
-fi
-
-if [[ $CERT_IN_HISTORY -eq 0 ]]; then
-    echo "   ✅ ssl/cert.pem: Not in history"
-else
-    echo "   🟡 ssl/cert.pem: Found in $CERT_IN_HISTORY commits (low risk)"
-fi
-
-if [[ $DB_IN_HISTORY -eq 0 ]]; then
-    echo "   ✅ prisma/studio.db: Not in history"
-else
-    echo "   🟡 prisma/studio.db: Found in $DB_IN_HISTORY commits (verify empty)"
-fi
+    case "$sensitive_path" in
+        "ssl/cert.pem"|"prisma/studio.db")
+            echo "   🟡 $sensitive_path: Found in $IN_HISTORY commits (review required)"
+            ;;
+        *)
+            echo "   🔴 $sensitive_path: Found in $IN_HISTORY commits"
+            FAILED=1
+            ;;
+    esac
+done
 
 echo ""
 
@@ -50,13 +53,14 @@ echo ""
 
 # Check 3: API keys in committed files
 echo "3️⃣  Scanning committed files for API keys..."
-REAL_KEYS=$(git grep -E "sk-ant-api[0-9]|sk-proj-[A-Za-z0-9]{20,}|xai-[A-Za-z0-9]{30,}" 2>/dev/null | grep -v ".env.example" | wc -l)
+REAL_KEYS_OUTPUT=$(git grep -nE "$KEY_PATTERN" 2>/dev/null | grep -v ".env.example" || true)
+REAL_KEYS=$(echo "$REAL_KEYS_OUTPUT" | grep -c . || true)
 
 if [[ $REAL_KEYS -eq 0 ]]; then
     echo "   ✅ No real API keys found in committed files"
 else
     echo "   🔴 Found $REAL_KEYS potential API keys in committed files"
-    git grep -E "sk-ant-api[0-9]|sk-proj-[A-Za-z0-9]{20,}|xai-[A-Za-z0-9]{30,}" | head -5
+    echo "$REAL_KEYS_OUTPUT" | head -10
     FAILED=1
 fi
 

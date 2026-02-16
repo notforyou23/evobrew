@@ -1,0 +1,75 @@
+body.ui-refresh-enabled .btn:focus-visible,
+body.ui-refresh-enabled .btn-icon:focus-visible,
+body.ui-refresh-enabled .tab-btn:focus-visible,
+body.ui-refresh-enabled .overflow-item:focus-visible,
+body.ui-refresh-enabled .onboarding-action:focus-visible,
+body.ui-refresh-enabled .tablet-panel-bar button:focus-visible {
+  outline: none;
+  box-shadow: var(--ui-focus-ring);
+}
+
+body.ui-refresh-enabled .btn {
+  gap: var(--ui-space-2);
+}
+
+body.ui-refresh-enabled .brain-toggle {
+  min-height: 28px;
+  padding: 0 var(--ui-space-2);
+}
+
+body.ui-refresh-enabled .status-bar {
+  font-size: 12px;
+}
+
+body.ui-refresh-enabled .status-item {
+  border-radius: 4px;
+}
+
+body.ui-refresh-enabled #brainPickerModal > div,
+body.ui-refresh-enabled .keyboard-help,
+body.ui-refresh-enabled .settings-panel,
+body.ui-refresh-enabled .edit-queue-panel,
+body.ui-refresh-enabled .snapshot-history-panel,
+body.ui-refresh-enabled #folder-browser {
+  border-radius: 12px;
+}
+
+body.ui-refresh-enabled .settings-content {
+  padding-bottom: 110px;
+}
+
+body.ui-refresh-enabled .setting-group.shortcuts-group {
+  border-top: 1px dashed var(--border-color);
+  margin-top: var(--ui-space-4);
+  padding-top: var(--ui-space-4);
+}
+
+body.ui-refresh-enabled .shortcut-map-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 140px;
+  gap: var(--ui-space-2);
+  align-items: center;
+  margin-bottom: var(--ui-space-2);
+}
+
+body.ui-refresh-enabled .shortcut-map-item input {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  width: 100%;
+}
+
+body.ui-refresh-enabled .shortcut-map-help {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: var(--ui-space-2);
+}
+
+body.ui-refresh-enabled .shortcut-map-error {
+  color: var(--error-color);
+  font-size: 11px;
+  margin-top: 4px;
+}

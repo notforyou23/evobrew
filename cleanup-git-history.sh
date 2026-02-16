@@ -1,12 +1,20 @@
 #!/bin/bash
-# COSMO IDE - Git History Cleanup Script
+# Evobrew - Git History Cleanup Script
 # Removes sensitive files from git history before public launch
 # 
 # ⚠️ WARNING: This rewrites git history. Run BEFORE pushing to GitHub.
 
 set -e
 
-echo "🔍 COSMO IDE Git History Cleanup"
+SENSITIVE_PATHS=(
+  "ssl/key.pem"
+  "ssl/cert.pem"
+  "prisma/studio.db"
+  "docs/plans/PHASE1_CREDENTIAL_ROTATION.md"
+  "cursor_revisiting_implementation_approa.md"
+)
+
+echo "🔍 Evobrew Git History Cleanup"
 echo "================================="
 echo ""
 
@@ -28,20 +36,20 @@ fi
 
 echo ""
 echo "📋 Files to remove from history:"
-echo "  - ssl/key.pem (PRIVATE KEY - critical)"
-echo "  - ssl/cert.pem (public cert - unnecessary)"
-echo "  - prisma/studio.db (database file)"
+for file in "${SENSITIVE_PATHS[@]}"; do
+    echo "  - $file"
+done
 echo ""
 
 # Verify we're in the right directory
 if [[ ! -f "package.json" ]] || [[ ! -d ".git" ]]; then
-    echo "❌ ERROR: Not in COSMO IDE root directory"
+    echo "❌ ERROR: Not in Evobrew root directory"
     exit 1
 fi
 
 # Create backup
 echo "📦 Creating backup..."
-BACKUP_DIR="../cosmo_ide_backup_$(date +%Y%m%d_%H%M%S)"
+BACKUP_DIR="../evobrew_backup_$(date +%Y%m%d_%H%M%S)"
 cp -r . "$BACKUP_DIR"
 echo "✅ Backup created at: $BACKUP_DIR"
 echo ""
@@ -58,16 +66,16 @@ echo "🧹 Cleaning git history..."
 
 if [[ "$CLEANUP_METHOD" == "bfg" ]]; then
     # BFG method (faster)
-    bfg --delete-files key.pem
-    bfg --delete-files cert.pem
-    bfg --delete-files studio.db
+    for sensitive_path in "${SENSITIVE_PATHS[@]}"; do
+        bfg --delete-files "$(basename "$sensitive_path")"
+    done
     git reflog expire --expire=now --all
     git gc --prune=now --aggressive
 else
     # git-filter-repo method (more thorough)
-    git filter-repo --path ssl/key.pem --invert-paths --force
-    git filter-repo --path ssl/cert.pem --invert-paths --force
-    git filter-repo --path prisma/studio.db --invert-paths --force
+    for sensitive_path in "${SENSITIVE_PATHS[@]}"; do
+        git filter-repo --path "$sensitive_path" --invert-paths --force
+    done
 fi
 
 echo ""
@@ -78,14 +86,18 @@ echo ""
 echo "🔍 Verification:"
 echo ""
 
-KEY_CHECK=$(git log --all --oneline -- ssl/key.pem | wc -l)
-CERT_CHECK=$(git log --all --oneline -- ssl/cert.pem | wc -l)
-DB_CHECK=$(git log --all --oneline -- prisma/studio.db | wc -l)
+REMAINING=0
+for sensitive_path in "${SENSITIVE_PATHS[@]}"; do
+    CHECK=$(git log --all --oneline -- "$sensitive_path" | wc -l)
+    if [[ $CHECK -eq 0 ]]; then
+        echo "✅ $sensitive_path: REMOVED (0 commits found)"
+    else
+        echo "⚠️  $sensitive_path: Found in $CHECK commits"
+        REMAINING=1
+    fi
+done
 
-if [[ $KEY_CHECK -eq 0 ]] && [[ $CERT_CHECK -eq 0 ]] && [[ $DB_CHECK -eq 0 ]]; then
-    echo "✅ ssl/key.pem: REMOVED (0 commits found)"
-    echo "✅ ssl/cert.pem: REMOVED (0 commits found)"
-    echo "✅ prisma/studio.db: REMOVED (0 commits found)"
+if [[ $REMAINING -eq 0 ]]; then
     echo ""
     echo "🎉 SUCCESS! Repository is now clean."
     echo ""
@@ -96,9 +108,6 @@ if [[ $KEY_CHECK -eq 0 ]] && [[ $CERT_CHECK -eq 0 ]] && [[ $DB_CHECK -eq 0 ]]; t
     echo "  4. Safe to push to GitHub: git push origin main"
 else
     echo "⚠️  WARNING: Some files still found in history:"
-    [[ $KEY_CHECK -gt 0 ]] && echo "  - ssl/key.pem: $KEY_CHECK commits"
-    [[ $CERT_CHECK -gt 0 ]] && echo "  - ssl/cert.pem: $CERT_CHECK commits"
-    [[ $DB_CHECK -gt 0 ]] && echo "  - prisma/studio.db: $DB_CHECK commits"
     echo ""
     echo "Consider using the nuclear option (fresh git init)"
 fi

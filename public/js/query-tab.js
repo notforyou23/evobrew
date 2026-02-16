@@ -759,9 +759,7 @@ function displayQueryResult(result) {
   const thoughtCount = result.metadata?.sources?.thoughts || 0;
   const liveNodes = result.metadata?.sources?.liveJournalNodes || 0;
 
-  const answerHtml = (typeof marked !== 'undefined' && marked.parse)
-    ? marked.parse(result.answer || '')
-    : `<pre style="white-space:pre-wrap;">${escapeHtml(result.answer || '(no answer)')}</pre>`;
+  const answerHtml = renderMarkdownSafe(result.answer || '');
 
   let html = `
     <div class="qt-answer-card">
@@ -1059,6 +1057,20 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+function sanitizeRenderedHtml(html) {
+  if (window.DOMPurify && typeof window.DOMPurify.sanitize === 'function') {
+    return window.DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
+  }
+  return escapeHtml(String(html || ''));
+}
+
+function renderMarkdownSafe(markdown) {
+  if (typeof marked !== 'undefined' && marked.parse) {
+    return sanitizeRenderedHtml(marked.parse(markdown || ''));
+  }
+  return `<pre style="white-space:pre-wrap;">${escapeHtml(markdown || '(no answer)')}</pre>`;
 }
 
 function showQueryToast(msg, duration = 3000) {

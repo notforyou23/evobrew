@@ -5,7 +5,7 @@
  * Phase 3 Integration: Uses provider abstraction layer for model-agnostic support
  */
 
-const { toolDefinitions, anthropicTools, ToolExecutor } = require('./tools');
+const { toolDefinitions, ToolExecutor } = require('./tools');
 const { getAnthropicApiKey, prepareSystemPrompt } = require('./services/anthropic-oauth');
 const { getDefaultRegistry } = require('./providers');
 
@@ -328,13 +328,13 @@ function buildSystemPrompt(context) {
 ${runContext.context ? `**Focus**: ${runContext.context}` : ''}
 ${runContext.originalQuestion ? `**Research Question**: ${runContext.originalQuestion}` : ''}
 
-You are helping a human work with COSMO's research outputs on this domain.
+You are helping a human work with research outputs on this domain.
 `;
     
     // Add what actually exists
     if (runContext.structure) {
       domainBlock += `
-### COSMO Has Produced:
+### Research Has Produced:
 `;
       if (runContext.structure.outputsCount) {
         domainBlock += `- **${runContext.structure.outputsCount} output folders** in outputs/`;
@@ -681,15 +681,15 @@ This makes you a true IDE assistant, not just a chatbot.
 - **Patient**: Don't rush to change things - understand what the human wants
 - **Transparent**: Explain your findings, propose options
 
-## COSMO Directory Structure
+## Brain Directory Structure
 
-When exploring COSMO research outputs, know the dual structure:
+When exploring brain research outputs, know the dual structure:
 - **agents/** → Agent discoveries, insights, findings
 - **outputs/** → Actual deliverables (documents, code, reports)
 
 ## Remember
 
-You are here to HELP the human work with COSMO's research. Do not take autonomous action.
+You are here to HELP the human work with research. Do not take autonomous action.
 When asked to explore, do so thoroughly. When asked to edit, do so precisely.
 But always wait for the human to direct you.`;
 }
@@ -702,7 +702,7 @@ function buildBrainContextSection(nodes, loader) {
   const sections = [];
 
   sections.push('\n\n## Brain Knowledge Context\n');
-  sections.push(`*${nodes.length} relevant findings from COSMO brain (${loader.nodes.length} total nodes)*\n`);
+  sections.push(`*${nodes.length} relevant findings from brain (${loader.nodes.length} total nodes)*\n`);
 
   // NO artificial limit - include ALL nodes that passed the relevance threshold
   // Consistent content length for all nodes - relevance is already filtered by threshold
@@ -789,7 +789,9 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
     message, currentFolder, model = 'gpt-5.2', context = [],
     documentContent, selectedText, fileName, language,
     fileTreeContext, conversationHistory, conversationSummary,
-    allowedRoot, brainEnabled = false
+    allowedRoot, brainEnabled = false,
+    allowedToolNames = null,
+    disableSpreadsheetParsing = false
   } = params;
   
   // ═══════════════════════════════════════════════════════════════════════════
@@ -840,6 +842,18 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
     availableTools = provider.filterToolsByCapability(toolDefinitions);
     console.log(`[AI] Using ${availableTools.length}/${toolDefinitions.length} tools for ${provider.id}`);
   }
+
+  if (Array.isArray(allowedToolNames) && allowedToolNames.length > 0) {
+    const explicitAllow = new Set(allowedToolNames);
+    availableTools = availableTools.filter((tool) => explicitAllow.has(tool.function.name));
+    console.log(`[AI] Security policy restricted tools to ${availableTools.length} entries`);
+  }
+
+  const availableAnthropicTools = availableTools.map((t) => ({
+    name: t.function.name,
+    description: t.function.description,
+    input_schema: t.function.parameters
+  }));
 
   // Get OAuth credentials info for system prompt preparation
   let isOAuthMode = false;
@@ -1059,7 +1073,10 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
   // Admin mode bypasses path restrictions
   const isAdminMode = process.env.COSMO_ADMIN_MODE === 'true';
   const effectiveRoot = isAdminMode ? null : allowedRoot;
-  const toolExecutor = new ToolExecutor(indexer, currentFolder || process.cwd(), effectiveRoot);
+  const toolExecutor = new ToolExecutor(indexer, currentFolder || process.cwd(), effectiveRoot, {
+    allowedToolNames: availableTools.map((tool) => tool.function.name),
+    disableSpreadsheetParsing: disableSpreadsheetParsing === true
+  });
   
   // Function calling loop
   const MAX_ITERATIONS = 75;
@@ -1243,7 +1260,7 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
             temperature: 0.1,
             system: systemForClaude,
             messages: claudeMessages,
-            tools: anthropicTools
+            tools: availableAnthropicTools
           });
         } catch (apiError) {
           console.error(`[AI] Anthropic API call failed:`, apiError.message);
@@ -1335,7 +1352,7 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
         const trimmedMessages = trimMessages(messages, 200000);
         const xaiModel = model;
 
-        const toolsForResponses = buildOpenAIResponsesToolsFromChatTools(toolDefinitions);
+        const toolsForResponses = buildOpenAIResponsesToolsFromChatTools(availableTools);
 
         // Build input items (this skips system messages, we'll add it back below)
         let inputItems = Array.isArray(xaiNextInputItems) && xaiNextInputItems.length > 0
@@ -1526,7 +1543,7 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
 
         // Reference: /Users/jtr/_JTR23_/Cosmo_Unified_dev/engine/src/ide/ai-handler.js
         // uses toolDefinitions for Responses (Chat Completions tool schema → Responses tool schema).
-        const toolsForResponses = buildOpenAIResponsesToolsFromChatTools(toolDefinitions);
+        const toolsForResponses = buildOpenAIResponsesToolsFromChatTools(availableTools);
         const instructions = buildOpenAIResponsesInstructionsFromMessages(trimmedMessages);
 
         // If we have pending tool outputs from the previous iteration, only send those.

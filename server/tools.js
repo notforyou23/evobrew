@@ -4,6 +4,7 @@
  */
 
 const fs = require('fs').promises;
+const fsSync = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 const mammoth = require('mammoth');
@@ -622,10 +623,14 @@ const anthropicTools = toolDefinitions.map(t => ({
 // ============================================================================
 
 class ToolExecutor {
-  constructor(codebaseIndexer, workingDirectory, allowedRoot = null) {
+  constructor(codebaseIndexer, workingDirectory, allowedRoot = null, options = {}) {
     this.indexer = codebaseIndexer;
     this.cwd = workingDirectory || process.cwd();
     this.allowedRoot = allowedRoot; // Security boundary - if set, restrict file access to this directory
+    this.allowedToolNames = Array.isArray(options.allowedToolNames) && options.allowedToolNames.length > 0
+      ? new Set(options.allowedToolNames)
+      : null;
+    this.disableSpreadsheetParsing = options.disableSpreadsheetParsing === true;
   }
 
   /**
@@ -644,16 +649,46 @@ class ToolExecutor {
     try {
       const normalized = path.resolve(resolvedPath);
       const normalizedRoot = path.resolve(this.allowedRoot);
-      return normalized === normalizedRoot || normalized.startsWith(normalizedRoot + path.sep);
+      if (!(normalized === normalizedRoot || normalized.startsWith(normalizedRoot + path.sep))) {
+        return false;
+      }
+
+      const canonicalRoot = this.resolveCanonicalPathForBoundary(normalizedRoot);
+      const canonicalTarget = this.resolveCanonicalPathForBoundary(normalized);
+      return canonicalTarget === canonicalRoot || canonicalTarget.startsWith(canonicalRoot + path.sep);
     } catch (e) {
       return false;
     }
   }
 
   resolvePath(inputPath) {
-    if (path.isAbsolute(inputPath)) return inputPath;
-    if (inputPath === '.') return this.cwd;
-    return path.join(this.cwd, inputPath);
+    if (typeof inputPath !== 'string' || inputPath.trim() === '') {
+      throw new Error('Path must be a non-empty string');
+    }
+    if (inputPath.includes('\0')) {
+      throw new Error('Invalid path: null byte not allowed');
+    }
+    if (path.isAbsolute(inputPath)) return path.resolve(inputPath);
+    if (inputPath === '.') return path.resolve(this.cwd);
+    return path.resolve(this.cwd, inputPath);
+  }
+
+  resolveCanonicalPathForBoundary(resolvedPath) {
+    let candidate = path.resolve(resolvedPath);
+
+    // For non-existent targets (create/write), walk up to nearest existing parent.
+    while (!fsSync.existsSync(candidate)) {
+      const parent = path.dirname(candidate);
+      if (parent === candidate) break;
+      candidate = parent;
+    }
+
+    return fsSync.realpathSync(candidate);
+  }
+
+  isToolAllowed(toolName) {
+    if (!this.allowedToolNames) return true;
+    return this.allowedToolNames.has(toolName);
   }
 
   /**
@@ -670,6 +705,12 @@ class ToolExecutor {
 
   async execute(toolName, args) {
     console.log(`[TOOL] ${toolName}(${JSON.stringify(args).substring(0, 100)}...)`);
+
+    if (!this.isToolAllowed(toolName)) {
+      return {
+        error: `Tool "${toolName}" is disabled by security policy in this deployment profile`
+      };
+    }
     
     try {
       switch (toolName) {
@@ -753,6 +794,12 @@ class ToolExecutor {
     if (ext === '.docx') {
       return await this.readDocx(resolved);
     } else if (ext === '.xlsx' || ext === '.xls') {
+      if (this.disableSpreadsheetParsing) {
+        return {
+          error: 'Spreadsheet parsing is disabled in this deployment profile.',
+          path: resolved
+        };
+      }
       return await this.readExcel(resolved);
     } else if (ext === '.msg') {
       return await this.readMsg(resolved);
@@ -1849,4 +1896,3 @@ module.exports = {
   anthropicTools,
   ToolExecutor
 };
-

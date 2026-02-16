@@ -1,10 +1,44 @@
 #!/usr/bin/env node
 /**
- * COSMO IDE v2 Server
- * Clean implementation - Function Calling only
+ * Evobrew Server (formerly COSMO IDE v2)
+ * AI-powered development workspace
+ * 
+ * Configuration loading priority:
+ * 1. ~/.evobrew/config.json (global config)
+ * 2. .env file in project root (legacy/fallback)
  */
 
-require('dotenv').config();
+// ============================================================================
+// CONFIGURATION - Load before anything else
+// ============================================================================
+
+let configSource = 'defaults';
+let serverConfig = null;
+
+try {
+  // Use synchronous config loader for startup
+  const { loadConfigurationSync, ConfigSource } = require('../lib/config-loader-sync');
+  
+  const result = loadConfigurationSync({
+    projectRoot: __dirname,
+    applyToEnv: true,
+    silent: false
+  });
+  
+  configSource = result.source;
+  serverConfig = result.config;
+} catch (err) {
+  // Fall back to dotenv if new config system not available
+  console.log('[CONFIG] Config loader not available:', err.message);
+  require('dotenv').config();
+  configSource = 'env';
+  console.log('[CONFIG] Using .env file (legacy mode)');
+}
+
+// ============================================================================
+// IMPORTS
+// ============================================================================
+
 const express = require('express');
 const https = require('https');
 const http = require('http');
@@ -14,12 +48,14 @@ const crypto = require('crypto');
 const os = require('os');
 const fs = require('fs').promises;
 const fsSync = require('fs');
+const { execFile } = require('child_process');
 const cors = require('cors');
 const OpenAI = require('openai');
 const Anthropic = require('@anthropic-ai/sdk');
 const CodebaseIndexer = require('./codebase-indexer');
 const { handleFunctionCalling } = require('./ai-handler');
 const { getAnthropicApiKey } = require('./services/anthropic-oauth');
+const { loadSecurityProfile, isOnlyOfficeCallbackUrlAllowed } = require('../lib/security-profile');
 const zlib = require('zlib');
 const { promisify } = require('util');
 const gunzip = promisify(zlib.gunzip);
@@ -29,11 +65,44 @@ const MsgReader = require('msgreader').default || require('msgreader');
 
 const app = express();
 
-// OnlyOffice loopback routes - MUST BYPASS GLOBAL AUTH for Docker container access
+// Placeholder middleware for OnlyOffice routes (kept for explicit route grouping).
+// Authentication still flows through profile middleware below.
 app.use('/api/onlyoffice/download', (req, res, next) => next());
 app.use('/api/onlyoffice/save', (req, res, next) => next());
+
+// Port configuration (from config or env)
 const PORT = process.env.PORT || 3405;
 const HTTPS_PORT = process.env.HTTPS_PORT || 3406;
+
+let securityConfig;
+try {
+  securityConfig = loadSecurityProfile(process.env);
+} catch (error) {
+  console.error(`[SECURITY] Startup blocked: ${error.message}`);
+  process.exit(1);
+}
+
+const LOCAL_EPHEMERAL_COLLABORA_SECRET = (!securityConfig.isInternetProfile && !process.env.COLLABORA_SECRET && !process.env.JWT_SECRET)
+  ? crypto.randomBytes(32).toString('hex')
+  : null;
+if (LOCAL_EPHEMERAL_COLLABORA_SECRET) {
+  console.warn('[SECURITY] Using ephemeral local Collabora signing secret. Set COLLABORA_SECRET for stable sessions.');
+}
+function getCollaboraSigningSecret() {
+  return securityConfig.collaboraSecret || process.env.JWT_SECRET || LOCAL_EPHEMERAL_COLLABORA_SECRET;
+}
+
+const READ_ONLY_CHAT_TOOLS = new Set([
+  'file_read',
+  'list_directory',
+  'grep_search',
+  'codebase_search',
+  'brain_search',
+  'brain_node',
+  'brain_thoughts',
+  'brain_coordinator_insights',
+  'brain_stats'
+]);
 
 // ============================================================================
 // NETWORK UTILITIES
@@ -56,8 +125,13 @@ function getLocalIP() {
   return null; // No network IP found
 }
 
-// Initialize AI clients
-const getOpenAI = () => new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// Initialize AI clients (lazy - only when API key available)
+const getOpenAI = () => {
+  if (!process.env.OPENAI_API_KEY) {
+    return null; // OpenAI not configured
+  }
+  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+};
 // Anthropic uses OAuth service (Token Sink Pattern from Claude CLI)
 const getAnthropic = async () => {
   const credentials = await getAnthropicApiKey();
@@ -74,53 +148,234 @@ const getAnthropic = async () => {
   // For regular API keys (sk-ant-api*)
   return new Anthropic({ apiKey: credentials.apiKey });
 };
-const getXAI = () => new OpenAI({
-  apiKey: process.env.XAI_API_KEY,
-  baseURL: 'https://api.x.ai/v1'
-});
+const getXAI = () => {
+  if (!process.env.XAI_API_KEY) {
+    return null; // xAI not configured
+  }
+  return new OpenAI({
+    apiKey: process.env.XAI_API_KEY,
+    baseURL: 'https://api.x.ai/v1'
+  });
+};
 
-const codebaseIndexer = new CodebaseIndexer(getOpenAI());
+// Lazy-init codebase indexer (requires OpenAI)
+let codebaseIndexer = null;
+const getCodebaseIndexer = () => {
+  if (!codebaseIndexer && getOpenAI()) {
+    codebaseIndexer = new CodebaseIndexer(getOpenAI());
+  }
+  return codebaseIndexer;
+};
+
+function getHeaderValue(req, headerName) {
+  const value = req.headers?.[headerName];
+  if (Array.isArray(value)) return value[0] || '';
+  return typeof value === 'string' ? value : '';
+}
+
+function timingSafeEqualStrings(a, b) {
+  const aBuf = Buffer.from(String(a || ''));
+  const bBuf = Buffer.from(String(b || ''));
+  if (aBuf.length !== bBuf.length || aBuf.length === 0) return false;
+  return crypto.timingSafeEqual(aBuf, bBuf);
+}
+
+function getAuthenticatedProxyUser(req) {
+  for (const headerName of securityConfig.proxyUserHeaderCandidates) {
+    const candidate = getHeaderValue(req, headerName).trim();
+    if (candidate) return candidate;
+  }
+  return '';
+}
+
+function hasValidProxySecret(req) {
+  if (!securityConfig.proxySharedSecret) return false;
+  const provided = getHeaderValue(req, 'x-evobrew-proxy-secret').trim();
+  return timingSafeEqualStrings(provided, securityConfig.proxySharedSecret);
+}
+
+function isProtectedRoutePath(pathName) {
+  return pathName.startsWith('/api/') || pathName.startsWith('/wopi/');
+}
+
+function isAuthExemptPath(pathName) {
+  return pathName === '/api/health';
+}
+
+function proxyAuthMiddleware(req, res, next) {
+  if (!securityConfig.isInternetProfile) return next();
+  if (!isProtectedRoutePath(req.path) || isAuthExemptPath(req.path)) return next();
+
+  if (!hasValidProxySecret(req)) {
+    return res.status(401).json({ error: 'Missing or invalid proxy authentication secret' });
+  }
+
+  const proxyUser = getAuthenticatedProxyUser(req);
+  if (!proxyUser) {
+    return res.status(401).json({ error: 'Missing authenticated user header from reverse proxy' });
+  }
+
+  req.authenticatedProxyUser = proxyUser;
+  next();
+}
+
+function mutationGuard(req, res, next) {
+  if (!securityConfig.isInternetProfile) return next();
+  if (securityConfig.internetEnableMutations) return next();
+  return res.status(403).json({
+    error: 'Mutation endpoints are disabled in internet profile (set INTERNET_ENABLE_MUTATIONS=true to override)'
+  });
+}
+
+function shouldDisableGatewayProxy() {
+  return securityConfig.isInternetProfile && !securityConfig.internetEnableGatewayProxy;
+}
+
+function sanitizeHostHeader(hostValue) {
+  const raw = String(hostValue || '').trim();
+  if (!raw) return '';
+  if (!/^[A-Za-z0-9.:[\]-]+$/.test(raw)) return '';
+  return raw;
+}
+
+function getRequestBaseUrl(req) {
+  const trustedForwarded = securityConfig.isInternetProfile && Boolean(req.authenticatedProxyUser);
+  const forwardedHost = getHeaderValue(req, 'x-forwarded-host').split(',')[0].trim();
+  const forwardedProto = getHeaderValue(req, 'x-forwarded-proto').split(',')[0].trim().toLowerCase();
+  const hostHeader = getHeaderValue(req, 'host');
+
+  const host = sanitizeHostHeader(trustedForwarded ? (forwardedHost || hostHeader) : hostHeader) || `localhost:${PORT}`;
+  const protocol = trustedForwarded && (forwardedProto === 'https' || forwardedProto === 'http')
+    ? forwardedProto
+    : (req.socket?.encrypted ? 'https' : 'http');
+
+  return `${protocol}://${host}`;
+}
+
+function getEffectiveAllowedRoot() {
+  if (securityConfig.isInternetProfile) {
+    return securityConfig.workspaceRoot;
+  }
+  return getAllowedRoot();
+}
+
+function resolveCanonicalPathForBoundary(absolutePath) {
+  let candidate = path.resolve(absolutePath);
+  while (!fsSync.existsSync(candidate)) {
+    const parent = path.dirname(candidate);
+    if (parent === candidate) break;
+    candidate = parent;
+  }
+  return fsSync.realpathSync(candidate);
+}
+
+async function resolvePathWithinAllowedRoot(inputPath, options = {}) {
+  const {
+    mustExist = false,
+    expectFile = false,
+    expectDirectory = false
+  } = options;
+
+  if (typeof inputPath !== 'string' || inputPath.trim() === '') {
+    throw new Error('Path required');
+  }
+  if (inputPath.includes('\0')) {
+    throw new Error('Invalid path');
+  }
+
+  const allowedRoot = getEffectiveAllowedRoot();
+  const resolutionBase = allowedRoot || process.cwd();
+  const resolved = path.isAbsolute(inputPath)
+    ? path.resolve(inputPath)
+    : path.resolve(resolutionBase, inputPath);
+  if (allowedRoot) {
+    const normalizedRoot = path.resolve(allowedRoot);
+    if (!(resolved === normalizedRoot || resolved.startsWith(normalizedRoot + path.sep))) {
+      throw new Error('Access denied: outside allowed directory');
+    }
+
+    const canonicalRoot = resolveCanonicalPathForBoundary(normalizedRoot);
+    const canonicalTarget = resolveCanonicalPathForBoundary(resolved);
+    if (!(canonicalTarget === canonicalRoot || canonicalTarget.startsWith(canonicalRoot + path.sep))) {
+      throw new Error('Access denied: symlink escapes allowed directory');
+    }
+  }
+
+  if (mustExist || expectFile || expectDirectory) {
+    const stat = await fs.stat(resolved).catch(() => null);
+    if (!stat) {
+      throw new Error('Path not found');
+    }
+    if (expectFile && !stat.isFile()) {
+      throw new Error('Expected a file path');
+    }
+    if (expectDirectory && !stat.isDirectory()) {
+      throw new Error('Expected a directory path');
+    }
+  }
+
+  return resolved;
+}
 
 // Middleware
-// SECURITY: Restrict CORS to localhost and local network only
-// This prevents any external website from calling IDE API endpoints
-// For production internet deployment, add authentication layer
+app.disable('x-powered-by');
+
+app.use((req, res, next) => {
+  // Pragmatic hardening headers compatible with the current inline-heavy UI.
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self' data: blob: https:; " +
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; " +
+      "style-src 'self' 'unsafe-inline' https:; " +
+      "img-src 'self' data: blob: https:; " +
+      "font-src 'self' data: https:; " +
+      "connect-src 'self' ws: wss: https:; " +
+      "frame-ancestors 'self'; " +
+      "object-src 'none'; base-uri 'self'"
+  );
+  next();
+});
+
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow same-origin (undefined origin = same origin)
-    if (!origin) {
+    if (!origin) return callback(null, true); // same-origin and non-browser clients
+
+    if (securityConfig.isInternetProfile) {
+      // Internet deployments rely on reverse-proxy auth boundary.
       return callback(null, true);
     }
-    
-    // Allowed patterns
+
     const allowed = [
       'http://localhost:4410',
       'https://localhost:4411',
-      /^http:\/\/localhost:\d+$/,           // Any localhost port
-      /^https:\/\/localhost:\d+$/,          // Any localhost HTTPS port
-      /^http:\/\/127\.0\.0\.1:\d+$/,        // Loopback
-      /^http:\/\/192\.168\.\d+\.\d+:\d+$/,  // LAN (192.168.x.x)
-      /^http:\/\/10\.\d+\.\d+\.\d+:\d+$/,   // Private network (10.x.x.x)
-      /^http:\/\/172\.(1[6-9]|2\d|3[01])\.\d+\.\d+:\d+$/, // Private (172.16-31.x.x)
+      /^http:\/\/localhost:\d+$/,
+      /^https:\/\/localhost:\d+$/,
+      /^http:\/\/127\.0\.0\.1:\d+$/,
+      /^http:\/\/192\.168\.\d+\.\d+:\d+$/,
+      /^http:\/\/10\.\d+\.\d+\.\d+:\d+$/,
+      /^http:\/\/172\.(1[6-9]|2\d|3[01])\.\d+\.\d+:\d+$/
     ];
-    
-    const isAllowed = allowed.some(pattern => 
+
+    const isAllowed = allowed.some((pattern) =>
       pattern instanceof RegExp ? pattern.test(origin) : pattern === origin
     );
-    
-    if (isAllowed) {
-      callback(null, true);
-    } else {
-      callback(new Error(`CORS policy: Origin ${origin} not allowed`));
-    }
+
+    if (isAllowed) return callback(null, true);
+    return callback(new Error(`CORS policy: Origin ${origin} not allowed`));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Evobrew-Proxy-Secret']
 }));
-// Large limit for saving big documents/code files - this is a LOCAL system
+
+// Large limit for saving big documents/code files - local mode still supports heavy payloads.
 app.use(express.json({ limit: '500mb' }));
 app.use(express.urlencoded({ limit: '500mb', extended: true }));
+app.use(proxyAuthMiddleware);
 app.use(express.static('public'));
 
 // ============================================================================
@@ -136,7 +391,13 @@ function isPathAllowed(requestedPath, allowedRoot) {
   try {
     const normalized = path.resolve(requestedPath);
     const normalizedRoot = path.resolve(allowedRoot);
-    return normalized === normalizedRoot || normalized.startsWith(normalizedRoot + path.sep);
+    if (!(normalized === normalizedRoot || normalized.startsWith(normalizedRoot + path.sep))) {
+      return false;
+    }
+
+    const canonicalRoot = resolveCanonicalPathForBoundary(normalizedRoot);
+    const canonicalTarget = resolveCanonicalPathForBoundary(normalized);
+    return canonicalTarget === canonicalRoot || canonicalTarget.startsWith(canonicalRoot + path.sep);
   } catch (e) {
     return false;
   }
@@ -148,6 +409,10 @@ function isPathAllowed(requestedPath, allowedRoot) {
  * Returns null for admin mode (unrestricted access)
  */
 function getAllowedRoot() {
+  if (securityConfig.isInternetProfile) {
+    return securityConfig.workspaceRoot;
+  }
+
   // Admin bypass via environment variable
   if (process.env.COSMO_ADMIN_MODE === 'true') {
     return null;
@@ -168,70 +433,124 @@ function getAllowedRoot() {
 
 app.get('/api/folder/browse', async (req, res) => {
   try {
-    const { path: folderPath, recursive } = req.query;
+    const {
+      path: folderPath,
+      recursive,
+      depth,
+      includeFiles
+    } = req.query;
 
     if (!folderPath) {
-      return res.status(400).json({ error: 'Path required' });
+      return res.status(400).json({ success: false, error: 'Path required' });
     }
 
-    // Security: Check if path is within allowed directory
-    const allowedRoot = getAllowedRoot();
-    if (allowedRoot && !isPathAllowed(folderPath, allowedRoot)) {
-      return res.status(403).json({ success: false, error: 'Access denied: outside allowed directory' });
-    }
+    const resolvedFolderPath = await resolvePathWithinAllowedRoot(folderPath, {
+      mustExist: true,
+      expectDirectory: true
+    });
 
-    if (recursive === 'true') {
-      // Recursive directory listing
-      const files = await readDirRecursive(folderPath);
-      res.json({ success: true, files });
-    } else {
-      // Non-recursive (immediate children only)
-      const entries = await fs.readdir(folderPath, { withFileTypes: true });
-      
+    const includeFilesFlag = includeFiles !== 'false';
+    const hasDepthParam = typeof depth !== 'undefined';
+    const legacyRecursive = recursive === 'true';
+
+    let maxDepth = parseInt(depth, 10);
+    if (Number.isNaN(maxDepth)) {
+      // Backward-compat: recursive=true maps to a bounded traversal.
+      maxDepth = legacyRecursive ? 8 : 1;
+    }
+    maxDepth = Math.max(0, Math.min(maxDepth, 20));
+
+    // Legacy behavior: no depth + no recursive means one-level listing.
+    if (!hasDepthParam && !legacyRecursive) {
+      const entries = await fs.readdir(resolvedFolderPath, { withFileTypes: true });
       const files = entries
         .filter(e => !e.name.startsWith('.') && e.name !== 'node_modules')
+        .filter(e => includeFilesFlag || e.isDirectory())
         .map(e => ({
           name: e.name,
           isDirectory: e.isDirectory(),
-          path: path.join(folderPath, e.name)
+          path: path.join(resolvedFolderPath, e.name)
         }));
-      
-      res.json({ success: true, files });
+
+      return res.json({
+        success: true,
+        files,
+        partialErrors: [],
+        truncated: false
+      });
     }
-    
+
+    const traversalState = {
+      includeFiles: includeFilesFlag,
+      maxDepth,
+      maxEntries: 12000,
+      entryCount: 0,
+      partialErrors: [],
+      truncated: false
+    };
+
+    const files = await readDirRecursiveSafe(resolvedFolderPath, 1, traversalState);
+    return res.json({
+      success: true,
+      files,
+      partialErrors: traversalState.partialErrors,
+      truncated: traversalState.truncated
+    });
   } catch (error) {
     console.error('[BROWSE] Error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Helper function for recursive directory reading
-async function readDirRecursive(dirPath, depth = 0, maxDepth = 10) {
-  if (depth > maxDepth) return [];
-  
-  const entries = await fs.readdir(dirPath, { withFileTypes: true });
+async function readDirRecursiveSafe(dirPath, currentDepth, state) {
+  if (state.truncated || currentDepth > state.maxDepth) {
+    return [];
+  }
+
+  let entries = [];
+  try {
+    entries = await fs.readdir(dirPath, { withFileTypes: true });
+  } catch (error) {
+    state.partialErrors.push({
+      path: dirPath,
+      code: error.code || 'READDIR_FAILED',
+      message: error.message
+    });
+    return [];
+  }
+
   const files = [];
-  
+
   for (const entry of entries) {
+    if (state.truncated) break;
+
     // Skip hidden files and node_modules
     if (entry.name.startsWith('.') || entry.name === 'node_modules') {
       continue;
     }
-    
+
     const fullPath = path.join(dirPath, entry.name);
-    files.push({
-      name: entry.name,
-      isDirectory: entry.isDirectory(),
-      path: fullPath
-    });
-    
-    // Recursively read subdirectories
-    if (entry.isDirectory()) {
-      const children = await readDirRecursive(fullPath, depth + 1, maxDepth);
+    const isDirectory = entry.isDirectory();
+
+    if (isDirectory || state.includeFiles) {
+      files.push({
+        name: entry.name,
+        isDirectory,
+        path: fullPath
+      });
+      state.entryCount += 1;
+      if (state.entryCount >= state.maxEntries) {
+        state.truncated = true;
+        break;
+      }
+    }
+
+    if (isDirectory && currentDepth < state.maxDepth) {
+      const children = await readDirRecursiveSafe(fullPath, currentDepth + 1, state);
       files.push(...children);
     }
   }
-  
+
   return files;
 }
 
@@ -243,13 +562,12 @@ app.get('/api/folder/read', async (req, res) => {
       return res.status(400).json({ error: 'Path required' });
     }
 
-    // Security: Check if path is within allowed directory
-    const allowedRoot = getAllowedRoot();
-    if (allowedRoot && !isPathAllowed(filePath, allowedRoot)) {
-      return res.status(403).json({ success: false, error: 'Access denied: outside allowed directory' });
-    }
+    const resolvedFilePath = await resolvePathWithinAllowedRoot(filePath, {
+      mustExist: true,
+      expectFile: true
+    });
 
-    const content = await fs.readFile(filePath, 'utf-8');
+    const content = await fs.readFile(resolvedFilePath, 'utf-8');
     res.json({ success: true, content });
     
   } catch (error) {
@@ -258,7 +576,7 @@ app.get('/api/folder/read', async (req, res) => {
   }
 });
 
-app.put('/api/folder/write', async (req, res) => {
+app.put('/api/folder/write', mutationGuard, async (req, res) => {
   try {
     const { path: filePath, content } = req.body;
 
@@ -266,15 +584,11 @@ app.put('/api/folder/write', async (req, res) => {
       return res.status(400).json({ error: 'Path required' });
     }
 
-    // Security: Check if path is within allowed directory
-    const allowedRoot = getAllowedRoot();
-    if (allowedRoot && !isPathAllowed(filePath, allowedRoot)) {
-      return res.status(403).json({ success: false, error: 'Access denied: outside allowed directory' });
-    }
+    const resolvedFilePath = await resolvePathWithinAllowedRoot(filePath);
 
-    console.log(`[WRITE] Writing file: ${filePath} (${content?.length || 0} chars)`);
-    await fs.writeFile(filePath, content, 'utf-8');
-    console.log(`[WRITE] ✓ File written successfully: ${filePath}`);
+    console.log(`[WRITE] Writing file: ${resolvedFilePath} (${content?.length || 0} chars)`);
+    await fs.writeFile(resolvedFilePath, content, 'utf-8');
+    console.log(`[WRITE] ✓ File written successfully: ${resolvedFilePath}`);
     res.json({ success: true });
     
   } catch (error) {
@@ -284,7 +598,7 @@ app.put('/api/folder/write', async (req, res) => {
 });
 
 // Save text content as DOCX file
-app.put('/api/folder/write-docx', async (req, res) => {
+app.put('/api/folder/write-docx', mutationGuard, async (req, res) => {
   try {
     const { path: filePath, content, contentType = 'auto' } = req.body;
 
@@ -292,11 +606,7 @@ app.put('/api/folder/write-docx', async (req, res) => {
       return res.status(400).json({ error: 'Path required' });
     }
 
-    // Security: Check if path is within allowed directory
-    const allowedRoot = getAllowedRoot();
-    if (allowedRoot && !isPathAllowed(filePath, allowedRoot)) {
-      return res.status(403).json({ success: false, error: 'Access denied: outside allowed directory' });
-    }
+    const resolvedFilePath = await resolvePathWithinAllowedRoot(filePath);
 
     let buffer;
     const trimmedContent = (content || '').trim();
@@ -357,7 +667,7 @@ ${htmlContent}
         }
       });
       
-      console.log(`[WRITE-DOCX] ✓ Converted HTML to DOCX: ${filePath}`);
+      console.log(`[WRITE-DOCX] ✓ Converted HTML to DOCX: ${resolvedFilePath}`);
       
     } else {
       // Plain text or markdown - use docx library for basic conversion
@@ -403,15 +713,15 @@ ${htmlContent}
       });
       
       buffer = await Packer.toBuffer(doc);
-      console.log(`[WRITE-DOCX] ✓ Converted text/markdown to DOCX: ${filePath}`);
+      console.log(`[WRITE-DOCX] ✓ Converted text/markdown to DOCX: ${resolvedFilePath}`);
     }
     
     // Ensure directory exists
-    const dir = path.dirname(filePath);
+    const dir = path.dirname(resolvedFilePath);
     await fs.mkdir(dir, { recursive: true });
     
-    await fs.writeFile(filePath, buffer);
-    console.log(`[WRITE-DOCX] ✓ Saved: ${filePath} (${buffer.length} bytes)`);
+    await fs.writeFile(resolvedFilePath, buffer);
+    console.log(`[WRITE-DOCX] ✓ Saved: ${resolvedFilePath} (${buffer.length} bytes)`);
     
     res.json({ success: true, size: buffer.length });
     
@@ -421,7 +731,7 @@ ${htmlContent}
   }
 });
 
-app.post('/api/folder/create', async (req, res) => {
+app.post('/api/folder/create', mutationGuard, async (req, res) => {
   try {
     const { path: filePath, content = '' } = req.body;
 
@@ -429,15 +739,11 @@ app.post('/api/folder/create', async (req, res) => {
       return res.status(400).json({ error: 'Path required' });
     }
 
-    // Security: Check if path is within allowed directory
-    const allowedRoot = getAllowedRoot();
-    if (allowedRoot && !isPathAllowed(filePath, allowedRoot)) {
-      return res.status(403).json({ success: false, error: 'Access denied: outside allowed directory' });
-    }
+    const resolvedFilePath = await resolvePathWithinAllowedRoot(filePath);
 
-    const dir = path.dirname(filePath);
+    const dir = path.dirname(resolvedFilePath);
     await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(filePath, content, 'utf-8');
+    await fs.writeFile(resolvedFilePath, content, 'utf-8');
     
     res.json({ success: true });
     
@@ -448,7 +754,7 @@ app.post('/api/folder/create', async (req, res) => {
 });
 
 // Upload binary file (for replacing Office files after local editing)
-app.put('/api/folder/upload-binary', async (req, res) => {
+app.put('/api/folder/upload-binary', mutationGuard, async (req, res) => {
   try {
     const { path: filePath, content, encoding = 'base64' } = req.body;
 
@@ -460,22 +766,18 @@ app.put('/api/folder/upload-binary', async (req, res) => {
       return res.status(400).json({ error: 'Content required' });
     }
 
-    // Security: Check if path is within allowed directory
-    const allowedRoot = getAllowedRoot();
-    if (allowedRoot && !isPathAllowed(filePath, allowedRoot)) {
-      return res.status(403).json({ success: false, error: 'Access denied: outside allowed directory' });
-    }
+    const resolvedFilePath = await resolvePathWithinAllowedRoot(filePath);
 
     // Convert base64 to buffer
     const buffer = Buffer.from(content, encoding);
     
     // Ensure directory exists
-    const dir = path.dirname(filePath);
+    const dir = path.dirname(resolvedFilePath);
     await fs.mkdir(dir, { recursive: true });
     
     // Write binary file
-    await fs.writeFile(filePath, buffer);
-    console.log(`[UPLOAD-BINARY] ✓ Replaced: ${filePath} (${buffer.length} bytes)`);
+    await fs.writeFile(resolvedFilePath, buffer);
+    console.log(`[UPLOAD-BINARY] ✓ Replaced: ${resolvedFilePath} (${buffer.length} bytes)`);
     
     res.json({ success: true, size: buffer.length });
     
@@ -485,7 +787,7 @@ app.put('/api/folder/upload-binary', async (req, res) => {
   }
 });
 
-app.delete('/api/folder/delete', async (req, res) => {
+app.delete('/api/folder/delete', mutationGuard, async (req, res) => {
   try {
     const { path: filePath } = req.body;
 
@@ -493,13 +795,12 @@ app.delete('/api/folder/delete', async (req, res) => {
       return res.status(400).json({ error: 'Path required' });
     }
 
-    // Security: Check if path is within allowed directory
-    const allowedRoot = getAllowedRoot();
-    if (allowedRoot && !isPathAllowed(filePath, allowedRoot)) {
-      return res.status(403).json({ success: false, error: 'Access denied: outside allowed directory' });
-    }
+    const resolvedFilePath = await resolvePathWithinAllowedRoot(filePath, {
+      mustExist: true,
+      expectFile: true
+    });
 
-    await fs.unlink(filePath);
+    await fs.unlink(resolvedFilePath);
     res.json({ success: true });
     
   } catch (error) {
@@ -516,11 +817,16 @@ app.get('/api/serve-file', async (req, res) => {
     if (!filePath) {
       return res.status(400).json({ error: 'Path required' });
     }
-    
-    console.log('[SERVE] Serving file:', filePath);
+
+    const resolvedFilePath = await resolvePathWithinAllowedRoot(filePath, {
+      mustExist: true,
+      expectFile: true
+    });
+
+    console.log('[SERVE] Serving file:', resolvedFilePath);
     
     // Detect MIME type from extension
-    const ext = path.extname(filePath).toLowerCase();
+    const ext = path.extname(resolvedFilePath).toLowerCase();
     const mimeTypes = {
       '.html': 'text/html',
       '.htm': 'text/html',
@@ -548,18 +854,18 @@ app.get('/api/serve-file', async (req, res) => {
     
     if (isImage) {
       // Serve image as binary
-      const buffer = await fs.readFile(filePath);
-      console.log(`[SERVE] ✅ Image served: ${path.basename(filePath)} (${buffer.length} bytes)`);
+      const buffer = await fs.readFile(resolvedFilePath);
+      console.log(`[SERVE] ✅ Image served: ${path.basename(resolvedFilePath)} (${buffer.length} bytes)`);
       res.type(contentType).send(buffer);
     } else {
       // Serve text files as UTF-8
-      const content = await fs.readFile(filePath, 'utf-8');
-      console.log(`[SERVE] ✅ File served: ${path.basename(filePath)}`);
+      const content = await fs.readFile(resolvedFilePath, 'utf-8');
+      console.log(`[SERVE] ✅ File served: ${path.basename(resolvedFilePath)}`);
       res.type(contentType).send(content);
     }
     
   } catch (error) {
-    console.error('[SERVE] ❌ Error serving file:', filePath, error.message);
+    console.error('[SERVE] ❌ Error serving file:', error.message);
     res.status(500).send('Failed to serve file');
   }
 });
@@ -572,13 +878,18 @@ app.get('/api/extract-office-text', async (req, res) => {
     if (!filePath) {
       return res.status(400).json({ error: 'Path required' });
     }
-    
-    const ext = path.extname(filePath).toLowerCase();
+
+    const resolvedFilePath = await resolvePathWithinAllowedRoot(filePath, {
+      mustExist: true,
+      expectFile: true
+    });
+
+    const ext = path.extname(resolvedFilePath).toLowerCase();
     let textContent = '';
     let metadata = {};
     
     if (ext === '.docx') {
-      const buffer = await fs.readFile(filePath);
+      const buffer = await fs.readFile(resolvedFilePath);
       // Convert to HTML to preserve formatting (not raw text)
       const result = await mammoth.convertToHtml({ buffer });
       textContent = result.value;
@@ -587,7 +898,11 @@ app.get('/api/extract-office-text', async (req, res) => {
       metadata.warnings = result.messages.length > 0 ? result.messages.map(m => m.message) : undefined;
       
     } else if (ext === '.xlsx' || ext === '.xls') {
-      const buffer = await fs.readFile(filePath);
+      if (securityConfig.isInternetProfile) {
+        return res.status(403).json({ error: 'Spreadsheet parsing is disabled in internet profile' });
+      }
+
+      const buffer = await fs.readFile(resolvedFilePath);
       const workbook = XLSX.read(buffer, { type: 'buffer' });
       
       workbook.SheetNames.forEach((sheetName) => {
@@ -613,7 +928,7 @@ app.get('/api/extract-office-text', async (req, res) => {
       metadata.sheetCount = workbook.SheetNames.length;
       
     } else if (ext === '.msg') {
-      const buffer = await fs.readFile(filePath);
+      const buffer = await fs.readFile(resolvedFilePath);
       const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
       const msgReader = new MsgReader(arrayBuffer);
       const msg = msgReader.getFileData();
@@ -699,13 +1014,18 @@ app.get('/api/preview-office-file', async (req, res) => {
     if (!filePath) {
       return res.status(400).json({ error: 'Path required' });
     }
-    
-    const ext = path.extname(filePath).toLowerCase();
+
+    const resolvedFilePath = await resolvePathWithinAllowedRoot(filePath, {
+      mustExist: true,
+      expectFile: true
+    });
+
+    const ext = path.extname(resolvedFilePath).toLowerCase();
     let html = '';
     
     if (ext === '.docx') {
       // Convert DOCX to HTML
-      const buffer = await fs.readFile(filePath);
+      const buffer = await fs.readFile(resolvedFilePath);
       const result = await mammoth.convertToHtml({ buffer });
       html = result.value;
       
@@ -738,8 +1058,12 @@ app.get('/api/preview-office-file', async (req, res) => {
       `;
       
     } else if (ext === '.xlsx' || ext === '.xls') {
+      if (securityConfig.isInternetProfile) {
+        return res.status(403).json({ error: 'Spreadsheet preview is disabled in internet profile' });
+      }
+
       // Convert Excel to HTML table
-      const buffer = await fs.readFile(filePath);
+      const buffer = await fs.readFile(resolvedFilePath);
       const workbook = XLSX.read(buffer, { type: 'buffer' });
       
       let tablesHtml = '';
@@ -789,7 +1113,7 @@ app.get('/api/preview-office-file', async (req, res) => {
           </style>
         </head>
         <body>
-          <h1>${path.basename(filePath)}</h1>
+          <h1>${path.basename(resolvedFilePath)}</h1>
           ${tablesHtml}
         </body>
         </html>
@@ -797,7 +1121,7 @@ app.get('/api/preview-office-file', async (req, res) => {
       
     } else if (ext === '.msg') {
       // Convert MSG to HTML email format
-      const buffer = await fs.readFile(filePath);
+      const buffer = await fs.readFile(resolvedFilePath);
       const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
       const msgReader = new MsgReader(arrayBuffer);
       const msg = msgReader.getFileData();
@@ -913,27 +1237,34 @@ app.get('/api/preview-office-file', async (req, res) => {
 });
 
 // Reveal file in system file explorer (cross-platform)
-app.post('/api/reveal-in-finder', async (req, res) => {
+app.post('/api/reveal-in-finder', mutationGuard, async (req, res) => {
   try {
     const { path: filePath } = req.body;
     
     if (!filePath) {
       return res.status(400).json({ error: 'Path required' });
     }
-    
-    const { exec } = require('child_process');
+
+    const resolvedFilePath = await resolvePathWithinAllowedRoot(filePath, {
+      mustExist: true
+    });
+
     const platform = os.platform();
-    
+
     let command;
+    let args;
     switch (platform) {
       case 'darwin': // macOS
-        command = `open -R "${filePath}"`;
+        command = 'open';
+        args = ['-R', resolvedFilePath];
         break;
       case 'win32': // Windows
-        command = `explorer /select,"${filePath.replace(/\//g, '\\')}"`;
+        command = 'explorer';
+        args = [`/select,${resolvedFilePath.replace(/\//g, '\\')}`];
         break;
       case 'linux':
-        command = `xdg-open "$(dirname "${filePath}")"`;
+        command = 'xdg-open';
+        args = [path.dirname(resolvedFilePath)];
         break;
       default:
         return res.status(501).json({ 
@@ -941,8 +1272,8 @@ app.post('/api/reveal-in-finder', async (req, res) => {
           error: `Platform '${platform}' not supported for file reveal` 
         });
     }
-    
-    exec(command, (error) => {
+
+    execFile(command, args, (error) => {
       if (error) {
         console.error('[REVEAL] Error:', error);
         res.json({ success: false, error: error.message });
@@ -958,6 +1289,42 @@ app.post('/api/reveal-in-finder', async (req, res) => {
 });
 
 // OnlyOffice Document Server configuration endpoint
+function createOnlyOfficeCallbackToken(filePath, userId, ttlMs = 10 * 60 * 1000) {
+  const payload = {
+    p: filePath,
+    u: userId || 'local-user',
+    exp: Date.now() + ttlMs
+  };
+  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const signature = crypto.createHmac('sha256', getCollaboraSigningSecret())
+    .update(payloadB64)
+    .digest('hex');
+  return `${payloadB64}.${signature}`;
+}
+
+function verifyOnlyOfficeCallbackToken(token, filePath, userId) {
+  if (!token) return false;
+  const [payloadB64, signature] = String(token).split('.');
+  if (!payloadB64 || !signature) return false;
+
+  const secret = getCollaboraSigningSecret();
+  const expected = crypto.createHmac('sha256', secret).update(payloadB64).digest('hex');
+  const sigBuf = Buffer.from(signature);
+  const expBuf = Buffer.from(expected);
+  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) return false;
+
+  let payload;
+  try {
+    payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+  } catch (err) {
+    return false;
+  }
+
+  if (!payload || payload.p !== filePath || Date.now() > payload.exp) return false;
+  if (securityConfig.isInternetProfile && payload.u !== (userId || '')) return false;
+  return true;
+}
+
 app.post('/api/onlyoffice/config', async (req, res) => {
   try {
     const { filePath } = req.body;
@@ -965,16 +1332,18 @@ app.post('/api/onlyoffice/config', async (req, res) => {
     if (!filePath) {
       return res.status(400).json({ error: 'File path required' });
     }
-    
-    // Detect the host from the request to ensure consistency across dev/prod/tunnel
-    const userHost = req.headers['x-forwarded-host'] || req.headers.host;
-    const protocol = req.headers['x-forwarded-proto'] || 'http';
-    const BASE_URL = `${protocol}://${userHost}`;
+
+    const resolvedFilePath = await resolvePathWithinAllowedRoot(filePath, {
+      mustExist: true,
+      expectFile: true
+    });
+
+    const BASE_URL = getRequestBaseUrl(req);
     
     // OnlyOffice server URL
     const ONLYOFFICE_SERVER = `${BASE_URL}/onlyoffice`;
     
-    const fileName = path.basename(filePath);
+    const fileName = path.basename(resolvedFilePath);
     const fileExt = path.extname(fileName).toLowerCase().replace('.', '');
     
     // Determine document type
@@ -989,14 +1358,18 @@ app.post('/api/onlyoffice/config', async (req, res) => {
     // Generate unique document key (force fresh session to clear ghost cache)
     const crypto = require('crypto');
     const docKey = crypto.createHash('md5')
-      .update(filePath + Date.now().toString())
+      .update(resolvedFilePath + Date.now().toString())
       .digest('hex');
     
-    console.log('[ONLYOFFICE-CONFIG] File:', filePath);
+    console.log('[ONLYOFFICE-CONFIG] File:', resolvedFilePath);
     console.log('[ONLYOFFICE-CONFIG] Extension:', fileExt, 'Type:', documentType);
     
     // Use the detected public URL for OnlyOffice to "call back" to the server
     const INTERNAL_SERVER = BASE_URL;
+    const callbackToken = createOnlyOfficeCallbackToken(
+      resolvedFilePath,
+      req.authenticatedProxyUser || 'local-user'
+    );
     
     // OnlyOffice configuration
     const config = {
@@ -1006,7 +1379,7 @@ app.post('/api/onlyoffice/config', async (req, res) => {
         fileType: fileExt,
         key: docKey,
         title: fileName,
-        url: `${INTERNAL_SERVER}/api/onlyoffice/download/${encodeURIComponent(fileName)}?path=${encodeURIComponent(filePath)}`,
+        url: `${INTERNAL_SERVER}/api/onlyoffice/download/${encodeURIComponent(fileName)}?path=${encodeURIComponent(resolvedFilePath)}`,
         permissions: {
           edit: true,
           download: true,
@@ -1018,7 +1391,7 @@ app.post('/api/onlyoffice/config', async (req, res) => {
       editorConfig: {
         mode: 'edit',
         lang: 'en',
-        callbackUrl: `${INTERNAL_SERVER}/api/onlyoffice/save?path=${encodeURIComponent(filePath)}`,
+        callbackUrl: `${INTERNAL_SERVER}/api/onlyoffice/save?path=${encodeURIComponent(resolvedFilePath)}&cb_token=${encodeURIComponent(callbackToken)}`,
         user: {
           id: 'user1',
           name: 'User'
@@ -1055,12 +1428,17 @@ app.get('/api/onlyoffice/download/:filename?', async (req, res) => {
       console.error('[ONLYOFFICE-DOWNLOAD] Missing path parameter');
       return res.status(400).send('File path required');
     }
-    
-    console.log('[ONLYOFFICE-DOWNLOAD] Request for:', filePath);
+
+    const resolvedFilePath = await resolvePathWithinAllowedRoot(filePath, {
+      mustExist: true,
+      expectFile: true
+    });
+
+    console.log('[ONLYOFFICE-DOWNLOAD] Request for:', resolvedFilePath);
     console.log('[ONLYOFFICE-DOWNLOAD] URL filename param:', req.params.filename);
     
-    const buffer = await fs.readFile(filePath);
-    const fileName = path.basename(filePath);
+    const buffer = await fs.readFile(resolvedFilePath);
+    const fileName = path.basename(resolvedFilePath);
     const ext = path.extname(fileName).toLowerCase();
     
     // Determine proper MIME type
@@ -1095,20 +1473,35 @@ app.get('/api/onlyoffice/download/:filename?', async (req, res) => {
 });
 
 // OnlyOffice save callback endpoint
-app.post('/api/onlyoffice/save', async (req, res) => {
+app.post('/api/onlyoffice/save', mutationGuard, async (req, res) => {
   try {
     const { status, url } = req.body;
-    const { path: filePath } = req.query;
+    const { path: filePath, cb_token: callbackToken } = req.query;
     
     if (!filePath) {
       console.error('[ONLYOFFICE-SAVE] Missing path in query params');
+      return res.json({ error: 1 });
+    }
+
+    const resolvedFilePath = await resolvePathWithinAllowedRoot(filePath, {
+      mustExist: true,
+      expectFile: true
+    });
+
+    if (!verifyOnlyOfficeCallbackToken(callbackToken, resolvedFilePath, req.authenticatedProxyUser || 'local-user')) {
+      console.error('[ONLYOFFICE-SAVE] Invalid callback token');
       return res.json({ error: 1 });
     }
     
     // Status codes: 2=ready for save, 3=save error, 6=editing, 7=force save
     if (status === 2 || status === 6 || status === 7) {
       if (url) {
-        console.log(`[ONLYOFFICE-SAVE] Downloading updated file for: ${filePath}`);
+        if (securityConfig.isInternetProfile && !isOnlyOfficeCallbackUrlAllowed(url, securityConfig.onlyOfficeAllowlist)) {
+          console.error('[ONLYOFFICE-SAVE] Blocked callback URL outside allowlist:', url);
+          return res.json({ error: 1 });
+        }
+
+        console.log(`[ONLYOFFICE-SAVE] Downloading updated file for: ${resolvedFilePath}`);
         
         const https = require('https');
         const http = require('http');
@@ -1127,13 +1520,13 @@ app.post('/api/onlyoffice/save', async (req, res) => {
               const buffer = Buffer.concat(chunks);
               
               // Ensure directory exists
-              const dir = path.dirname(filePath);
+              const dir = path.dirname(resolvedFilePath);
               await fs.mkdir(dir, { recursive: true });
               
               // Write the file
-              await fs.writeFile(filePath, buffer);
+              await fs.writeFile(resolvedFilePath, buffer);
               
-              console.log(`[ONLYOFFICE-SAVE] ✓ Successfully saved ${filePath} (${buffer.length} bytes)`);
+              console.log(`[ONLYOFFICE-SAVE] ✓ Successfully saved ${resolvedFilePath} (${buffer.length} bytes)`);
               res.json({ error: 0 });
             } catch (err) {
               console.error('[ONLYOFFICE-SAVE] Write error:', err);
@@ -1162,7 +1555,7 @@ app.post('/api/onlyoffice/save', async (req, res) => {
 // Collabora Online (WOPI) - Replacement for OnlyOffice
 // ============================================================================
 
-const COLLABORA_SECRET = process.env.COLLABORA_SECRET || process.env.JWT_SECRET || 'collabora-dev-secret';
+const COLLABORA_SECRET = getCollaboraSigningSecret();
 
 function encodeFileId(filePath) {
   return Buffer.from(filePath).toString('base64url');
@@ -1176,8 +1569,8 @@ function decodeFileId(fileId) {
   }
 }
 
-function createCollaboraToken(filePath, ttlMs = 60 * 60 * 1000) {
-  const payload = { p: filePath, exp: Date.now() + ttlMs };
+function createCollaboraToken(filePath, userId, ttlMs = 15 * 60 * 1000) {
+  const payload = { p: filePath, u: userId || 'local-user', exp: Date.now() + ttlMs };
   const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
   const signature = crypto.createHmac('sha256', COLLABORA_SECRET).update(payloadB64).digest('hex');
   return `${payloadB64}.${signature}`;
@@ -1200,7 +1593,7 @@ function verifyCollaboraToken(token) {
     return null;
   }
 
-  if (!payload || !payload.p || !payload.exp || Date.now() > payload.exp) return null;
+  if (!payload || !payload.p || !payload.u || !payload.exp || Date.now() > payload.exp) return null;
   return payload;
 }
 
@@ -1212,21 +1605,28 @@ app.post('/api/collabora/config', async (req, res) => {
       return res.status(400).json({ error: 'File path required' });
     }
 
-    const fileStat = await fs.stat(filePath).catch(() => null);
+    const resolvedFilePath = await resolvePathWithinAllowedRoot(filePath, {
+      mustExist: true,
+      expectFile: true
+    });
+
+    const fileStat = await fs.stat(resolvedFilePath).catch(() => null);
     if (!fileStat || !fileStat.isFile()) {
       return res.status(404).json({ error: 'File not found' });
     }
 
-    const userHost = req.headers['x-forwarded-host'] || req.headers.host;
-    const protocol = req.headers['x-forwarded-proto'] || 'http';
-    const BASE_URL = `${protocol}://${userHost}`;
+    const BASE_URL = getRequestBaseUrl(req);
 
     const COLLABORA_BASE = `${BASE_URL}/onlyoffice`; // Caddy proxies /onlyoffice -> 8090
-    const fileName = path.basename(filePath);
-    const fileId = encodeFileId(filePath);
+    const fileName = path.basename(resolvedFilePath);
+    const fileId = encodeFileId(resolvedFilePath);
 
-    const tokenTtlSeconds = 60 * 60; // 1 hour
-    const accessToken = createCollaboraToken(filePath, tokenTtlSeconds * 1000);
+    const tokenTtlSeconds = 15 * 60; // 15 minutes
+    const accessToken = createCollaboraToken(
+      resolvedFilePath,
+      req.authenticatedProxyUser || 'local-user',
+      tokenTtlSeconds * 1000
+    );
     const wopiSrc = `${BASE_URL}/wopi/files/${encodeURIComponent(fileId)}`;
 
     const iframeUrl = `${COLLABORA_BASE}/loleaflet/dist/loleaflet.html?WOPISrc=${encodeURIComponent(wopiSrc)}&title=${encodeURIComponent(fileName)}&closebutton=1&revisionhistory=1&lang=en&permission=edit&access_token=${encodeURIComponent(accessToken)}&access_token_ttl=${tokenTtlSeconds}`;
@@ -1237,7 +1637,7 @@ app.post('/api/collabora/config', async (req, res) => {
       accessToken,
       accessTokenTtl: tokenTtlSeconds,
       fileName,
-      filePath
+      filePath: resolvedFilePath
     });
   } catch (error) {
     console.error('[COLLABORA-CONFIG] Error:', error);
@@ -1253,27 +1653,34 @@ app.get('/wopi/files/:id', async (req, res) => {
       return res.status(401).json({ error: 'Invalid or expired token' });
     }
 
+    if (securityConfig.isInternetProfile && tokenPayload.u !== (req.authenticatedProxyUser || '')) {
+      return res.status(403).json({ error: 'User mismatch' });
+    }
+
     const decodedPath = decodeFileId(req.params.id);
     if (!decodedPath || decodedPath !== tokenPayload.p) {
       return res.status(403).json({ error: 'File mismatch' });
     }
 
-    const fileStat = await fs.stat(decodedPath).catch(() => null);
+    const resolvedPath = await resolvePathWithinAllowedRoot(decodedPath, {
+      mustExist: true,
+      expectFile: true
+    });
+
+    const fileStat = await fs.stat(resolvedPath).catch(() => null);
     if (!fileStat || !fileStat.isFile()) {
       return res.status(404).json({ error: 'File not found' });
     }
 
-    const userHost = req.headers['x-forwarded-host'] || req.headers.host;
-    const protocol = req.headers['x-forwarded-proto'] || 'http';
-    const BASE_URL = `${protocol}://${userHost}`;
-    const fileName = path.basename(decodedPath);
+    const BASE_URL = getRequestBaseUrl(req);
+    const fileName = path.basename(resolvedPath);
 
     res.json({
       BaseFileName: fileName,
       Size: fileStat.size,
-      OwnerId: 'cosmo',
-      UserId: 'cosmo-user',
-      UserFriendlyName: 'Cosmo User',
+      OwnerId: 'evobrew',
+      UserId: 'evobrew-user',
+      UserFriendlyName: 'Evobrew User',
       Version: String(fileStat.mtimeMs || Date.now()),
       UserCanWrite: true,
       SupportsUpdate: true,
@@ -1282,7 +1689,7 @@ app.get('/wopi/files/:id', async (req, res) => {
       SupportsExtendedLockLength: false,
       SupportsRename: false,
       SupportsDeleteFile: false,
-      BreadcrumbBrandName: 'Cosmo',
+      BreadcrumbBrandName: 'Evobrew',
       BreadcrumbBrandUrl: BASE_URL,
       CloseUrl: BASE_URL
     });
@@ -1300,12 +1707,21 @@ app.get('/wopi/files/:id/contents', async (req, res) => {
       return res.status(401).json({ error: 'Invalid or expired token' });
     }
 
+    if (securityConfig.isInternetProfile && tokenPayload.u !== (req.authenticatedProxyUser || '')) {
+      return res.status(403).json({ error: 'User mismatch' });
+    }
+
     const decodedPath = decodeFileId(req.params.id);
     if (!decodedPath || decodedPath !== tokenPayload.p) {
       return res.status(403).json({ error: 'File mismatch' });
     }
 
-    const fileStat = await fs.stat(decodedPath).catch(() => null);
+    const resolvedPath = await resolvePathWithinAllowedRoot(decodedPath, {
+      mustExist: true,
+      expectFile: true
+    });
+
+    const fileStat = await fs.stat(resolvedPath).catch(() => null);
     if (!fileStat || !fileStat.isFile()) {
       return res.status(404).json({ error: 'File not found' });
     }
@@ -1315,7 +1731,7 @@ app.get('/wopi/files/:id/contents', async (req, res) => {
       'Content-Length': fileStat.size
     });
 
-    const stream = fsSync.createReadStream(decodedPath);
+    const stream = fsSync.createReadStream(resolvedPath);
     stream.on('error', (err) => {
       console.error('[WOPI-GETFILE] Stream error:', err);
       res.status(500).end();
@@ -1328,11 +1744,15 @@ app.get('/wopi/files/:id/contents', async (req, res) => {
 });
 
 // WOPI PutFile
-app.post('/wopi/files/:id/contents', express.raw({ type: '*/*', limit: '500mb' }), async (req, res) => {
+app.post('/wopi/files/:id/contents', mutationGuard, express.raw({ type: '*/*', limit: '500mb' }), async (req, res) => {
   try {
     const tokenPayload = verifyCollaboraToken(req.query.access_token);
     if (!tokenPayload) {
       return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+
+    if (securityConfig.isInternetProfile && tokenPayload.u !== (req.authenticatedProxyUser || '')) {
+      return res.status(403).json({ error: 'User mismatch' });
     }
 
     const decodedPath = decodeFileId(req.params.id);
@@ -1340,12 +1760,17 @@ app.post('/wopi/files/:id/contents', express.raw({ type: '*/*', limit: '500mb' }
       return res.status(403).json({ error: 'File mismatch' });
     }
 
+    const resolvedPath = await resolvePathWithinAllowedRoot(decodedPath, {
+      mustExist: true,
+      expectFile: true
+    });
+
     if (!Buffer.isBuffer(req.body)) {
       return res.status(400).json({ error: 'Request body missing' });
     }
 
-    await fs.mkdir(path.dirname(decodedPath), { recursive: true });
-    await fs.writeFile(decodedPath, req.body);
+    await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
+    await fs.writeFile(resolvedPath, req.body);
 
     res.status(200).end();
   } catch (error) {
@@ -1355,27 +1780,34 @@ app.post('/wopi/files/:id/contents', express.raw({ type: '*/*', limit: '500mb' }
 });
 
 // Open file in default system application (Word, Excel, Outlook, etc.)
-app.post('/api/open-in-app', async (req, res) => {
+app.post('/api/open-in-app', mutationGuard, async (req, res) => {
   try {
     const { path: filePath } = req.body;
     
     if (!filePath) {
       return res.status(400).json({ error: 'Path required' });
     }
-    
-    const { exec } = require('child_process');
+
+    const resolvedFilePath = await resolvePathWithinAllowedRoot(filePath, {
+      mustExist: true
+    });
+
     const platform = os.platform();
-    
+
     let command;
+    let args;
     switch (platform) {
       case 'darwin': // macOS - open with default app
-        command = `open "${filePath}"`;
+        command = 'open';
+        args = [resolvedFilePath];
         break;
       case 'win32': // Windows - start with default app
-        command = `start "" "${filePath.replace(/\//g, '\\')}"`;
+        command = 'cmd';
+        args = ['/c', 'start', '', resolvedFilePath.replace(/\//g, '\\')];
         break;
       case 'linux':
-        command = `xdg-open "${filePath}"`;
+        command = 'xdg-open';
+        args = [resolvedFilePath];
         break;
       default:
         return res.status(501).json({ 
@@ -1383,13 +1815,13 @@ app.post('/api/open-in-app', async (req, res) => {
           error: `Platform '${platform}' not supported` 
         });
     }
-    
-    exec(command, (error) => {
+
+    execFile(command, args, (error) => {
       if (error) {
         console.error('[OPEN-APP] Error:', error);
         res.json({ success: false, error: error.message });
       } else {
-        console.log(`[OPEN-APP] ✓ Opened: ${filePath}`);
+        console.log(`[OPEN-APP] ✓ Opened: ${resolvedFilePath}`);
         res.json({ success: true });
       }
     });
@@ -1413,8 +1845,12 @@ app.post('/api/chat', async (req, res) => {
       return res.status(400).json({ error: 'Message required' });
     }
 
-    // Security: Add allowed root to restrict AI file access to brain folder
-    params.allowedRoot = getAllowedRoot();
+    // Security: enforce root boundary and tool policy by deployment profile
+    params.allowedRoot = getEffectiveAllowedRoot();
+    params.disableSpreadsheetParsing = securityConfig.isInternetProfile;
+    if (securityConfig.isInternetProfile && !securityConfig.internetEnableMutations) {
+      params.allowedToolNames = Array.from(READ_ONLY_CHAT_TOOLS);
+    }
 
     // Log brain status for debugging
     const brainEnabled = params.brainEnabled || false;
@@ -2002,7 +2438,11 @@ app.post('/api/index-folder', async (req, res) => {
       return res.status(400).json({ error: 'Folder path required' });
     }
     
-    await codebaseIndexer.indexFolder(folderPath, files);
+    const indexer = getCodebaseIndexer();
+    if (!indexer) {
+      return res.status(400).json({ error: 'OpenAI API key required for semantic search' });
+    }
+    await indexer.indexFolder(folderPath, files);
     
     res.json({ success: true, message: 'Indexing started' });
     
@@ -2020,7 +2460,11 @@ app.post('/api/codebase-search', async (req, res) => {
       return res.status(400).json({ error: 'Query and folder path required' });
     }
     
-    const result = await codebaseIndexer.searchCode(folderPath, query, limit);
+    const indexer = getCodebaseIndexer();
+    if (!indexer) {
+      return res.status(400).json({ error: 'OpenAI API key required for semantic search' });
+    }
+    const result = await indexer.searchCode(folderPath, query, limit);
     
     res.json({
       success: true,
@@ -2037,6 +2481,28 @@ app.post('/api/codebase-search', async (req, res) => {
 // ============================================================================
 // START SERVER (HTTP + HTTPS)
 // ============================================================================
+// HEALTH CHECK ENDPOINT
+// ============================================================================
+
+app.get('/api/health', (req, res) => {
+  const pkg = require('../package.json');
+  res.json({
+    status: 'ok',
+    version: pkg.version || '1.0.0',
+    name: 'evobrew',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+    config: {
+      source: configSource,
+      http_port: PORT,
+      https_port: HTTPS_PORT
+    }
+  });
+});
+
+// ============================================================================
+// START SERVER
+// ============================================================================
 
 // Start HTTP server
 const localIP = getLocalIP();
@@ -2044,7 +2510,7 @@ const localIP = getLocalIP();
 const httpServer = http.createServer(app);
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log('\n' + '='.repeat(60));
-  console.log('🚀 COSMO IDE v2 - Function Calling');
+  console.log('🧪 Evobrew - Model-Agnostic AI Workspace');
   console.log('='.repeat(60));
   console.log(`\n✓ HTTP:  http://localhost:${PORT}`);
   if (localIP) {
@@ -2074,7 +2540,7 @@ if (fsSync.existsSync(certPath) && fsSync.existsSync(keyPath)) {
     console.log('   - Claude Opus 4.5 ✅');
     console.log('\n🧠 Semantic Search: ENABLED');
     console.log('🔧 Function Calling: ENABLED');
-    console.log('🌍 Access: UNRESTRICTED (Network-wide)');
+    console.log(`🌍 Access Profile: ${securityConfig.securityProfile.toUpperCase()}`);
     if (localIP) {
       console.log(`\n💡 Network URL: https://${localIP}:${HTTPS_PORT}`);
     }
@@ -2091,7 +2557,20 @@ if (fsSync.existsSync(certPath) && fsSync.existsSync(keyPath)) {
     const GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN || '';
 
     server.on('upgrade', (req, clientSocket, head) => {
-      if (req.url !== '/api/gateway-ws') return;
+      const upgradePath = String(req.url || '').split('?')[0];
+      if (upgradePath !== '/api/gateway-ws') return;
+
+      if (shouldDisableGatewayProxy()) {
+        clientSocket.end('HTTP/1.1 403 Forbidden\r\n\r\n');
+        return;
+      }
+
+      if (securityConfig.isInternetProfile) {
+        if (!hasValidProxySecret(req) || !getAuthenticatedProxyUser(req)) {
+          clientSocket.end('HTTP/1.1 401 Unauthorized\r\n\r\n');
+          return;
+        }
+      }
 
       const gatewaySocket = net.connect({ host: GATEWAY_HOST, port: GATEWAY_PORT }, () => {
         // Reconstruct WebSocket upgrade request for the Gateway
@@ -2141,7 +2620,7 @@ if (fsSync.existsSync(certPath) && fsSync.existsSync(keyPath)) {
   console.log('   - Claude Opus 4.5 ✅');
   console.log('\n🧠 Semantic Search: ENABLED');
   console.log('🔧 Function Calling: ENABLED');
-  console.log('🌍 Access: UNRESTRICTED (Network-wide)');
+  console.log(`🌍 Access Profile: ${securityConfig.securityProfile.toUpperCase()}`);
   console.log('\n' + '='.repeat(60) + '\n');
 }
 
@@ -2164,6 +2643,10 @@ let brainLoadingInProgress = false;
  * Supports both token auth (remote relay) and password-mode pairing bypass.
  */
 app.get('/api/gateway-auth', (req, res) => {
+  if (shouldDisableGatewayProxy()) {
+    return res.status(403).json({ error: 'Gateway proxy is disabled in internet profile' });
+  }
+
   const auth = {};
   if (process.env.OPENCLAW_GATEWAY_PASSWORD) auth.password = process.env.OPENCLAW_GATEWAY_PASSWORD;
   if (process.env.OPENCLAW_GATEWAY_TOKEN) auth.token = process.env.OPENCLAW_GATEWAY_TOKEN;
@@ -2746,14 +3229,42 @@ const {
   clearToken
 } = require('./services/anthropic-oauth');
 
+const oauthPkceStateStore = new Map();
+function pruneOAuthStateStore(maxAgeMs = 10 * 60 * 1000) {
+  const now = Date.now();
+  for (const [state, data] of oauthPkceStateStore.entries()) {
+    if (!data || (now - data.createdAt) > maxAgeMs) {
+      oauthPkceStateStore.delete(state);
+    }
+  }
+}
+
 // Initiate OAuth flow (uses PKCE from anthropic-oauth module)
 app.get('/api/oauth/anthropic/start', (req, res) => {
   const { authUrl, verifier } = getAuthorizationUrl();
+  const state = (() => {
+    try {
+      return new URL(authUrl).searchParams.get('state');
+    } catch {
+      return null;
+    }
+  })();
+
+  pruneOAuthStateStore();
+  const flowId = crypto.randomUUID();
+  if (state) {
+    oauthPkceStateStore.set(state, {
+      verifier,
+      flowId,
+      createdAt: Date.now()
+    });
+  }
 
   res.json({
     success: true,
     authUrl,
-    codeVerifier: verifier, // Client needs this for token exchange
+    flowId,
+    expiresInSeconds: 600,
     message: 'Open this URL in your browser to authenticate with Anthropic'
   });
 });
@@ -2769,9 +3280,27 @@ app.get('/api/oauth/anthropic/callback', async (req, res) => {
     });
   }
 
+  if (!state) {
+    return res.status(400).json({
+      success: false,
+      error: 'Missing OAuth state'
+    });
+  }
+
   try {
+    pruneOAuthStateStore();
+    const stored = oauthPkceStateStore.get(state);
+    const verifier = code_verifier || stored?.verifier;
+    if (!verifier) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid or expired OAuth flow. Start a new OAuth session.'
+      });
+    }
+    oauthPkceStateStore.delete(state);
+
     // Exchange authorization code for tokens via PKCE flow
-    const data = await exchangeCodeForTokens(code, state, code_verifier);
+    const data = await exchangeCodeForTokens(code, state, verifier);
 
     // Store tokens in database (encrypted)
     await storeToken(data.accessToken, data.expiresAt, data.refreshToken);
@@ -2828,20 +3357,50 @@ app.post('/api/oauth/anthropic/logout', async (req, res) => {
 // BRAIN PICKER - Browse and load brains at runtime
 // ============================================================================
 
-const BRAIN_DIRS = (process.env.COSMO_BRAIN_DIRS || [
-  '/Users/jtr/websites/cosmos.evobrew.com/data/users/cmjtizyn80000aulpahd0pfk5/runs/',
-  '/Volumes/Bertha - Data/_ALL_COZ/cosmoRuns/',
-  '/Volumes/Bertha - Data/_ALL_COZ/cosmoRuns/_allTesting/'
-].join(',')).split(',').map(s => s.trim()).filter(Boolean);
+// Check if brains feature is enabled in config
+const brainsConfig = serverConfig?.features?.brains || { enabled: false, directories: [] };
+const BRAINS_ENABLED = brainsConfig.enabled;
+
+// Get brain directories from config, fallback to env var for backwards compat
+const BRAIN_DIRS = BRAINS_ENABLED 
+  ? (brainsConfig.directories?.length > 0 
+      ? brainsConfig.directories 
+      : (process.env.COSMO_BRAIN_DIRS || '').split(',').map(s => s.trim()).filter(Boolean))
+  : [];
 
 const BRAIN_DIR_LABELS = {};
 BRAIN_DIRS.forEach(d => {
-  if (d.includes('_allTesting')) BRAIN_DIR_LABELS[d] = 'bertha/testing';
-  else if (d.includes('Bertha')) BRAIN_DIR_LABELS[d] = 'bertha';
-  else BRAIN_DIR_LABELS[d] = 'main';
+  // Create user-friendly labels based on path
+  const basename = path.basename(d);
+  if (d.includes('testing')) BRAIN_DIR_LABELS[d] = 'testing';
+  else if (basename) BRAIN_DIR_LABELS[d] = basename;
+  else BRAIN_DIR_LABELS[d] = 'brains';
+});
+
+// Config endpoint for frontend (exposes safe config values)
+app.get('/api/config', (req, res) => {
+  res.json({
+    success: true,
+    features: {
+      brains: {
+        enabled: BRAINS_ENABLED,
+        hasDirectories: BRAIN_DIRS.length > 0
+      },
+      ui_refresh_v1: process.env.UI_REFRESH_V1 !== 'false'
+    },
+    openclaw: {
+      enabled: serverConfig?.openclaw?.enabled || false,
+      tab_name: serverConfig?.openclaw?.tab_name || 'OpenClaw'
+    }
+  });
 });
 
 app.get('/api/brains/list', async (req, res) => {
+  // Return empty list if brains feature is disabled
+  if (!BRAINS_ENABLED || BRAIN_DIRS.length === 0) {
+    return res.json({ success: true, brains: [], disabled: true });
+  }
+  
   try {
     const brains = [];
     for (const dir of BRAIN_DIRS) {

@@ -370,7 +370,7 @@ function addChatMessage(type, content, options = {}) {
     
     // Render assistant messages with markdown, escape others for safety
     const renderedContent = type === 'assistant' 
-        ? (window.marked ? marked.parse(content) : escapeHtml(content))
+        ? renderMarkdownSafe(content)
         : escapeHtml(content);
     
     msg.innerHTML = `
@@ -401,7 +401,7 @@ function updateChatMessage(msgElement, content, options = {}) {
     
     // Render markdown for assistant messages, escape for others
     if (isAssistant && window.marked) {
-        contentDiv.innerHTML = marked.parse(content);
+        contentDiv.innerHTML = renderMarkdownSafe(content);
     } else {
         contentDiv.textContent = content;
     }
@@ -495,3 +495,16 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+function sanitizeRenderedHtml(html) {
+    if (window.DOMPurify && typeof window.DOMPurify.sanitize === 'function') {
+        return window.DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
+    }
+    return escapeHtml(String(html || ''));
+}
+
+function renderMarkdownSafe(markdown) {
+    if (window.marked) {
+        return sanitizeRenderedHtml(marked.parse(markdown || ''));
+    }
+    return escapeHtml(markdown || '');
+}
