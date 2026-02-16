@@ -1,0 +1,18 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./studio.db"
+}
+
+// System-wide configuration storage (OAuth tokens, feature flags, etc.)
+// Used for platform-level settings that don't belong to a specific user
+model SystemConfig {
+  key       String    @id               // Primary key: e.g., "anthropic_oauth"
+  value     String                      // Encrypted JSON blob
+  expiresAt DateTime?                   // Optional expiry for tokens
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
