@@ -1,0 +1,54 @@
+{
+  "name": "evobrew",
+  "version": "1.0.0",
+  "description": "AI development workspace with semantic knowledge graphs, function calling, and persistent memory",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "dev": "nodemon server/server.js",
+    "import-oauth": "node import-oauth.js",
+    "import-token": "node import-oauth-token.js",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "db:generate": "prisma generate"
+  },
+  "keywords": [
+    "ai",
+    "ide",
+    "knowledge-graph",
+    "semantic-search",
+    "claude",
+    "gpt-4",
+    "openai",
+    "anthropic"
+  ],
+  "author": "jtr",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/notforyou23/evobrew.git"
+  },
+  "homepage": "https://evobrew.ai",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "openai": "^4.20.0",
+    "@anthropic-ai/sdk": "^0.30.1",
+    "@prisma/client": "^5.0.0",
+    "hnswlib-node": "^3.0.0",
+    "mammoth": "^1.6.0",
+    "docx": "^8.5.0",
+    "xlsx": "^0.18.5",
+    "msgreader": "^1.0.1",
+    "node-fetch": "^2.7.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1",
+    "prisma": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
