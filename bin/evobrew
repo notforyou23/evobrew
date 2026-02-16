@@ -1,0 +1,84 @@
+#!/usr/bin/env node
+
+/**
+ * Evobrew CLI - Simple launcher
+ * Usage: npx evobrew [command]
+ */
+
+const { spawn } = require('child_process');
+const path = require('path');
+const fs = require('fs');
+
+const commands = {
+  start: 'Start Evobrew server',
+  setup: 'Run first-time setup wizard',
+  status: 'Check if Evobrew is running',
+  stop: 'Stop Evobrew server',
+  logs: 'View server logs',
+  config: 'Open configuration file',
+};
+
+const command = process.argv[2] || 'start';
+
+if (!commands[command]) {
+  console.log('Evobrew - AI development workspace\n');
+  console.log('Usage: npx evobrew [command]\n');
+  console.log('Commands:');
+  Object.entries(commands).forEach(([cmd, desc]) => {
+    console.log(`  ${cmd.padEnd(10)} ${desc}`);
+  });
+  process.exit(0);
+}
+
+const serverPath = path.join(__dirname, '..', 'server', 'server.js');
+
+switch (command) {
+  case 'start':
+    console.log('🚀 Starting Evobrew...\n');
+    const server = spawn('node', [serverPath], {
+      stdio: 'inherit',
+      cwd: path.join(__dirname, '..')
+    });
+    
+    server.on('error', (err) => {
+      console.error('❌ Failed to start:', err.message);
+      process.exit(1);
+    });
+    
+    process.on('SIGINT', () => {
+      console.log('\n👋 Stopping Evobrew...');
+      server.kill('SIGTERM');
+      process.exit(0);
+    });
+    break;
+    
+  case 'setup':
+    console.log('⚙️  Evobrew Setup Wizard\n');
+    console.log('Run these commands:\n');
+    console.log('1. Copy environment template:');
+    console.log('   cp .env.example .env\n');
+    console.log('2. Edit configuration:');
+    console.log('   nano .env (or use your editor)\n');
+    console.log('3. Initialize database:');
+    console.log('   npm run db:migrate\n');
+    console.log('4. Start Evobrew:');
+    console.log('   npx evobrew start\n');
+    break;
+    
+  case 'status':
+    // Simple check if process is running
+    console.log('📊 Checking Evobrew status...');
+    console.log('(Status check not implemented yet)');
+    break;
+    
+  case 'config':
+    const envPath = path.join(__dirname, '..', '.env');
+    console.log(`📝 Configuration file: ${envPath}`);
+    if (!fs.existsSync(envPath)) {
+      console.log('⚠️  No .env file found. Run: npx evobrew setup');
+    }
+    break;
+    
+  default:
+    console.log(`❌ Unknown command: ${command}`);
+}

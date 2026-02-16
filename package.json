@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "AI development workspace with semantic knowledge graphs, function calling, and persistent memory",
   "main": "server/server.js",
+  "bin": {
+    "evobrew": "./bin/evobrew"
+  },
   "scripts": {
     "start": "node server/server.js",
     "dev": "nodemon server/server.js",
