@@ -41,16 +41,22 @@ npx evobrew setup   # Show setup guide
 npx evobrew config  # Open .env file
 ```
 
-## Anthropic OAuth (Optional)
+## Anthropic Setup
 
-If you want to use Anthropic OAuth instead of API keys:
-
+**Option A: API Key (simpler)**
 ```bash
-node import-oauth.js
-# Follow prompts to authorize
+# In .env:
+ANTHROPIC_API_KEY=sk-ant-...
+ANTHROPIC_OAUTH_ONLY=false
 ```
 
-See [OAUTH-TOKEN-SINK.md](./OAUTH-TOKEN-SINK.md) for details.
+**Option B: OAuth (better rate limits)**
+```bash
+node import-oauth.js
+# Opens browser for authorization
+```
+
+See [docs/ANTHROPIC_OAUTH_SETUP.md](./docs/ANTHROPIC_OAUTH_SETUP.md) for details.
 
 ## Troubleshooting
 
