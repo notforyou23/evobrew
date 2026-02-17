@@ -11,9 +11,26 @@ const { promisify } = require('util');
 const gunzip = promisify(zlib.gunzip);
 
 const { BrainQueryEngine } = require('../lib/brain-query-engine');
+const os = require('os');
 
 let brainLoader = null;
 let brainQueryEngine = null;
+
+// Get embeddings API key from config or env
+function getEmbeddingsApiKey() {
+  // Try config first
+  const configPath = path.join(os.homedir(), '.evobrew', 'config.json');
+  try {
+    const config = JSON.parse(fsSync.readFileSync(configPath, 'utf8'));
+    if (config.embeddings?.api_key) {
+      return config.embeddings.api_key;
+    }
+  } catch (e) {
+    // Config not readable, fall through
+  }
+  // Fall back to env
+  return process.env.OPENAI_API_KEY;
+}
 
 function unloadBrain() {
   if (brainQueryEngine) {
@@ -44,7 +61,8 @@ async function loadBrain(brainPath) {
   };
 
   // QueryEngine handles missing OpenAI gracefully (falls back to keyword search)
-  brainQueryEngine = new BrainQueryEngine(brainPath, process.env.OPENAI_API_KEY);
+  const embeddingsKey = getEmbeddingsApiKey();
+  brainQueryEngine = new BrainQueryEngine(brainPath, embeddingsKey);
   console.log(`✅ Brain loaded: ${brainLoader.nodes.length} nodes, ${brainLoader.edges.length} edges\n`);
   
   return { brainLoader, brainQueryEngine };
