@@ -103,13 +103,14 @@ function generatePKCE() {
  * Returns: { authUrl, verifier }
  * User must save the verifier to exchange the code later
  */
-function getAuthorizationUrl(redirectUri = OAUTH_REDIRECT_URI) {
+function getAuthorizationUrl() {
   const { verifier, challenge } = generatePKCE();
 
   const authParams = new URLSearchParams({
+    code: 'true',
     client_id: OAUTH_CLIENT_ID,
     response_type: 'code',
-    redirect_uri: redirectUri,
+    redirect_uri: OAUTH_REDIRECT_URI,
     scope: OAUTH_SCOPES,
     code_challenge: challenge,
     code_challenge_method: 'S256',
@@ -118,7 +119,7 @@ function getAuthorizationUrl(redirectUri = OAUTH_REDIRECT_URI) {
 
   const authUrl = `${OAUTH_AUTHORIZE_URL}?${authParams.toString()}`;
 
-  return { authUrl, verifier, challenge };
+  return { authUrl, verifier };
 }
 
 /**
@@ -130,14 +131,14 @@ function getAuthorizationUrl(redirectUri = OAUTH_REDIRECT_URI) {
  * @param {string} verifier - Original PKCE verifier from getAuthorizationUrl()
  * @returns {Promise<{ accessToken, refreshToken, expiresAt, expiresIn }>}
  */
-async function exchangeCodeForTokens(code, state, verifier, redirectUri = OAUTH_REDIRECT_URI) {
+async function exchangeCodeForTokens(code, state, verifier) {
   return new Promise((resolve, reject) => {
     const postData = JSON.stringify({
       grant_type: 'authorization_code',
       client_id: OAUTH_CLIENT_ID,
       code: code,
       state: state,
-      redirect_uri: redirectUri,
+      redirect_uri: OAUTH_REDIRECT_URI,
       code_verifier: verifier,
     });
 
