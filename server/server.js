@@ -2078,6 +2078,7 @@ app.post('/api/chat', async (req, res) => {
           getOpenAI(),
           anthropicClient,
           getXAI(),
+          await getOpenAICodex(),
           codebaseIndexer,
           params,
           eventEmitter
@@ -2133,6 +2134,7 @@ app.post('/api/chat', async (req, res) => {
         getOpenAI(),
         anthropicClient,
         getXAI(),
+        await getOpenAICodex(),
         codebaseIndexer,
         params
       );

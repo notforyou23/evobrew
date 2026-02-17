@@ -802,7 +802,7 @@ function formatToolResultContent(result, isClaudeFormat = false) {
  * @param {Object} [options] - Additional options
  * @param {Object} [options.registry] - Provider registry (if not provided, will be created)
  */
-async function handleFunctionCalling(openai, anthropic, xai, indexer, params, eventEmitter, options = {}) {
+async function handleFunctionCalling(openai, anthropic, xai, codex, indexer, params, eventEmitter, options = {}) {
   const {
     message, currentFolder, model = 'gpt-5.2', context = [],
     documentContent, selectedText, fileName, language,
@@ -1131,6 +1131,7 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
   // Provider detection: prefer registry, fall back to legacy heuristics
   const isClaudeModel = providerId === 'anthropic' || (!providerId && model.startsWith('claude'));
   const isGrokModel = providerId === 'xai' || (!providerId && model.startsWith('grok'));
+  const isCodexModel = providerId === 'openai-codex' || (!providerId && model.startsWith('gpt-5'));
   const isOllamaModel = providerId === 'ollama' || (!providerId && (
     model.startsWith('llama') ||
     model.startsWith('mistral') ||
@@ -1140,7 +1141,7 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
     model.startsWith('qwen') ||
     model.includes(':') // Ollama models typically use format like "llama3.3:70b"
   ));
-  const isOpenAIModel = providerId === 'openai' || (!providerId && !isClaudeModel && !isGrokModel && !isOllamaModel);
+  const isOpenAIModel = providerId === 'openai' || (!providerId && !isClaudeModel && !isGrokModel && !isCodexModel && !isOllamaModel);
 
   const providerName = providerId || (isClaudeModel ? 'anthropic' : isGrokModel ? 'xai' : isOllamaModel ? 'ollama' : 'openai');
   console.log(`[AI] Starting ${providerName}/${model} in ${currentFolder}`);
@@ -1523,6 +1524,119 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
           content: textContent,
           tool_calls: toolCalls.length > 0 ? toolCalls : null
         };
+
+      } else if (isCodexModel) {
+        // ============ OpenAI Codex (ChatGPT OAuth, Responses API) ============
+        const trimmedMessages = trimMessages(messages, 200000);
+        const codexModel = model.replace('openai-codex/', ''); // Strip prefix if present
+
+        const toolsForResponses = buildOpenAIResponsesToolsFromChatTools(availableTools);
+
+        // Build input items
+        let inputItems = Array.isArray(xaiNextInputItems) && xaiNextInputItems.length > 0
+          ? xaiNextInputItems
+          : buildOpenAIResponsesInputFromMessages(trimmedMessages);
+
+        // Include system as instructions (Codex supports it like OpenAI)
+        const systemMsg = trimmedMessages.find(m => m?.role === 'system');
+        const instructions = systemMsg?.content || systemPrompt;
+
+        console.log(`[AI] Codex model selected="${model}" effective="${codexModel}" api="responses"`);
+
+        const responseParams = {
+          model: codexModel,
+          instructions,
+          input: inputItems,
+          tools: toolsForResponses,
+          tool_choice: 'auto',
+          parallel_tool_calls: true,
+          truncation: 'auto',
+          max_output_tokens: 64000,
+          temperature: 0.2,
+          stream: true
+        };
+
+        if (xaiPreviousResponseId) {
+          responseParams.previous_response_id = xaiPreviousResponseId;
+        }
+
+        const stream = await codex.responses.create(responseParams);
+
+        let textContent = '';
+        let reasoningSummary = '';
+        let responseId = null;
+        let outputItems = [];
+        let firstEventLogged = false;
+        let finalUsage = null;
+
+        for await (const chunk of stream) {
+          if (!firstEventLogged) {
+            console.log(`[CODEX STREAM] First event:`, JSON.stringify(chunk).substring(0, 500));
+            firstEventLogged = true;
+          }
+
+          if (chunk.type === 'response.created') {
+            responseId = chunk.response?.id;
+          }
+
+          if (chunk.type === 'response.reasoning_text.delta') {
+            const delta = chunk.delta || '';
+            if (eventEmitter) {
+              eventEmitter({ type: 'thinking', content: delta });
+            }
+            reasoningSummary += delta;
+          }
+
+          if (chunk.type === 'response.output_text.delta') {
+            const delta = chunk.delta || '';
+            textContent += delta;
+            if (eventEmitter) {
+              eventEmitter({ type: 'response_chunk', chunk: delta });
+            }
+          }
+
+          if (chunk.type === 'response.completed') {
+            finalUsage = chunk.response?.usage;
+            outputItems = chunk.response?.output || [];
+          }
+        }
+
+        // Extract tool calls from output items
+        const toolCalls = outputItems
+          .filter(item => item.type === 'function_call')
+          .map(item => ({
+            id: item.id || `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            type: 'function',
+            function: {
+              name: item.name,
+              arguments: JSON.stringify(item.arguments || {})
+            }
+          }));
+
+        if (toolCalls.length > 0) {
+          console.log(`[AI] Codex requested ${toolCalls.length} tool calls`);
+          const toolResults = await executeToolCalls(toolCalls, toolExecutor, eventEmitter);
+          messages.push({
+            role: 'assistant',
+            content: textContent || null,
+            tool_calls: toolCalls
+          });
+
+          for (const result of toolResults) {
+            messages.push({
+              role: 'tool',
+              tool_call_id: result.tool_call_id,
+              content: result.output
+            });
+          }
+
+          xaiPreviousResponseId = responseId;
+          continue;
+        }
+
+        assistantResponse = textContent;
+        console.log(`[AI] ✅ Complete: ${iterations} iterations, ${finalUsage?.total_tokens || 0} tokens`);
+        break;
 
       } else if (isOllamaModel) {
         // ============ OLLAMA (Local Models) ============
