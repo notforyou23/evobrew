@@ -108,6 +108,28 @@ async function createRegistry(options = {}) {
     console.warn('[Providers] ⚠️ OPENAI_API_KEY not set, OpenAI provider unavailable');
   }
 
+  // Initialize OpenAI Codex (ChatGPT OAuth)
+  try {
+    const { getCredentials } = require('../../lib/oauth-codex.cjs');
+    const creds = await getCredentials();
+    if (creds) {
+      registry.initializeProvider('openai-codex', {
+        apiKey: creds.accessToken,
+        baseUrl: 'https://chatgpt.com/backend-api',
+        defaultHeaders: {
+          'chatgpt-account-id': creds.accountId,
+        }
+      });
+      // Register Codex models explicitly
+      registry.registerModel('gpt-5.2', 'openai-codex');
+      registry.registerModel('gpt-5.3-codex', 'openai-codex');
+      registry.registerModel('gpt-5.3-codex-spark', 'openai-codex');
+      console.log('[Providers] ✅ OpenAI Codex registered (OAuth)');
+    }
+  } catch (e) {
+    console.warn('[Providers] ⚠️ OpenAI Codex OAuth unavailable:', e.message);
+  }
+
   // Initialize xAI (Grok)
   if (process.env.XAI_API_KEY) {
     registry.initializeProvider('xai', { 

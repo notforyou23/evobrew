@@ -161,6 +161,25 @@ const getOpenAI = () => {
   }
   return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 };
+
+// OpenAI Codex via ChatGPT OAuth
+const getOpenAICodex = async () => {
+  const { getCredentials } = require('../lib/oauth-codex.cjs');
+  const creds = await getCredentials();
+  
+  if (!creds) {
+    return null; // Codex OAuth not configured
+  }
+  
+  return new OpenAI({
+    apiKey: creds.accessToken,
+    baseURL: 'https://chatgpt.com/backend-api',
+    defaultHeaders: {
+      'chatgpt-account-id': creds.accountId,
+    },
+  });
+};
+
 // Anthropic uses OAuth service (Token Sink Pattern from Claude CLI)
 const getAnthropic = async () => {
   const credentials = await getAnthropicApiKey();
