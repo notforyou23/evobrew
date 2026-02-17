@@ -129,7 +129,7 @@ async function sendMessage() {
     // Get current context
     const fileInfo = getCurrentFile();
     const selectedText = getSelectedText();
-    const model = document.getElementById('model-select').value;
+    const model = document.getElementById('ai-model-select').value;
     
     // Add user message to chat
     addChatMessage('user', message);
