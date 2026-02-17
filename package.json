@@ -25,6 +25,9 @@
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "db:generate": "prisma generate",
+    "release:patch": "npm version patch && git push --follow-tags",
+    "release:minor": "npm version minor && git push --follow-tags",
+    "release:major": "npm version major && git push --follow-tags",
     "postinstall": "node -e \"console.log('\\n🧪 Evobrew installed! Run: evobrew setup\\n')\""
   },
   "keywords": [
