@@ -13,7 +13,6 @@ const { Document, Packer, Paragraph, TextRun, AlignmentType, HeadingLevel, Table
 const XLSX = require('xlsx');
 const MsgReader = require('msgreader').default || require('msgreader');
 const { getQueryEngine, getBrainLoader } = require('./brain-loader-module');
-const { getTerminalSessionManager } = require('./terminal/session-manager');
 
 // ============================================================================
 // TOOL DEFINITIONS (OpenAI/Anthropic Format)
@@ -268,180 +267,6 @@ const toolDefinitions = [
           }
         },
         required: ['file_path', 'content'],
-        additionalProperties: false
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'terminal_open',
-      description: 'Open a real PTY terminal session for interactive command execution.',
-      parameters: {
-        type: 'object',
-        properties: {
-          client_id: {
-            type: 'string',
-            description: 'Terminal client id to scope sessions (optional; defaults to current client)'
-          },
-          cwd: {
-            type: 'string',
-            description: 'Working directory for the terminal (optional)'
-          },
-          shell: {
-            type: 'string',
-            description: 'Shell executable path (optional)'
-          },
-          cols: {
-            type: 'number',
-            description: 'Terminal width in columns (optional)'
-          },
-          rows: {
-            type: 'number',
-            description: 'Terminal height in rows (optional)'
-          },
-          name: {
-            type: 'string',
-            description: 'Friendly session name (optional)'
-          },
-          persistent: {
-            type: 'boolean',
-            description: 'Whether session should persist after command completion (optional, default true)'
-          }
-        },
-        additionalProperties: false
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'terminal_write',
-      description: 'Write keystrokes/commands to a terminal session.',
-      parameters: {
-        type: 'object',
-        properties: {
-          session_id: {
-            type: 'string',
-            description: 'Target terminal session id'
-          },
-          client_id: {
-            type: 'string',
-            description: 'Terminal client id to validate ownership (optional)'
-          },
-          data: {
-            type: 'string',
-            description: 'Raw bytes/text to write to terminal input'
-          }
-        },
-        required: ['session_id', 'data'],
-        additionalProperties: false
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'terminal_wait',
-      description: 'Wait for terminal output pattern or timeout and return buffered output.',
-      parameters: {
-        type: 'object',
-        properties: {
-          session_id: {
-            type: 'string',
-            description: 'Target terminal session id'
-          },
-          client_id: {
-            type: 'string',
-            description: 'Terminal client id to validate ownership (optional)'
-          },
-          wait_for: {
-            type: 'string',
-            description: 'String/marker to wait for in terminal output (optional)'
-          },
-          wait_for_exit: {
-            type: 'boolean',
-            description: 'Resolve when terminal process exits (optional)'
-          },
-          timeout_ms: {
-            type: 'number',
-            description: 'Timeout in milliseconds (optional; default 30000)'
-          },
-          max_output_bytes: {
-            type: 'number',
-            description: 'Maximum output bytes to collect (optional)'
-          }
-        },
-        required: ['session_id'],
-        additionalProperties: false
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'terminal_resize',
-      description: 'Resize a terminal session viewport.',
-      parameters: {
-        type: 'object',
-        properties: {
-          session_id: {
-            type: 'string',
-            description: 'Target terminal session id'
-          },
-          client_id: {
-            type: 'string',
-            description: 'Terminal client id to validate ownership (optional)'
-          },
-          cols: {
-            type: 'number',
-            description: 'New width in columns'
-          },
-          rows: {
-            type: 'number',
-            description: 'New height in rows'
-          }
-        },
-        required: ['session_id', 'cols', 'rows'],
-        additionalProperties: false
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'terminal_close',
-      description: 'Close/terminate a terminal session.',
-      parameters: {
-        type: 'object',
-        properties: {
-          session_id: {
-            type: 'string',
-            description: 'Target terminal session id'
-          },
-          client_id: {
-            type: 'string',
-            description: 'Terminal client id to validate ownership (optional)'
-          }
-        },
-        required: ['session_id'],
-        additionalProperties: false
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'terminal_list',
-      description: 'List terminal sessions available to current terminal client id.',
-      parameters: {
-        type: 'object',
-        properties: {
-          client_id: {
-            type: 'string',
-            description: 'Terminal client id to scope sessions (optional)'
-          }
-        },
         additionalProperties: false
       }
     }
@@ -806,14 +631,6 @@ class ToolExecutor {
       ? new Set(options.allowedToolNames)
       : null;
     this.disableSpreadsheetParsing = options.disableSpreadsheetParsing === true;
-    this.terminalManager = options.terminalManager || getTerminalSessionManager();
-    this.terminalPolicy = {
-      enabled: options.terminalPolicy?.enabled !== false,
-      allowedRoot: options.terminalPolicy?.allowedRoot || null,
-      defaultClientId: typeof options.terminalPolicy?.defaultClientId === 'string' && options.terminalPolicy.defaultClientId.trim()
-        ? options.terminalPolicy.defaultClientId.trim()
-        : 'ai'
-    };
   }
 
   /**
@@ -926,24 +743,6 @@ class ToolExecutor {
           
         case 'create_file':
           return await this.createFile(args.file_path, args.content);
-
-        case 'terminal_open':
-          return await this.terminalOpen(args);
-
-        case 'terminal_write':
-          return await this.terminalWrite(args);
-
-        case 'terminal_wait':
-          return await this.terminalWait(args);
-
-        case 'terminal_resize':
-          return await this.terminalResize(args);
-
-        case 'terminal_close':
-          return await this.terminalClose(args);
-
-        case 'terminal_list':
-          return await this.terminalList(args);
           
         case 'run_terminal':
           return await this.runCommand(args.command);
@@ -1586,150 +1385,9 @@ class ToolExecutor {
     };
   }
 
-  isTerminalEnabled() {
-    return this.terminalPolicy.enabled !== false && this.terminalManager && typeof this.terminalManager.createSession === 'function';
-  }
-
-  getTerminalClientId(rawClientId) {
-    if (typeof rawClientId === 'string' && rawClientId.trim()) {
-      return rawClientId.trim();
-    }
-    return this.terminalPolicy.defaultClientId || 'ai';
-  }
-
-  getTerminalAllowedRoot() {
-    return this.terminalPolicy.allowedRoot || null;
-  }
-
-  async terminalOpen(args = {}) {
-    if (!this.isTerminalEnabled()) {
-      return { error: 'Terminal feature is disabled in this deployment profile' };
-    }
-
-    const clientId = this.getTerminalClientId(args.client_id);
-    const session = this.terminalManager.createSession({
-      clientId,
-      cwd: args.cwd || this.cwd,
-      shell: args.shell,
-      cols: args.cols,
-      rows: args.rows,
-      name: args.name,
-      persistent: args.persistent !== false,
-      allowedRoot: this.getTerminalAllowedRoot()
-    });
-
-    return {
-      success: true,
-      ...session
-    };
-  }
-
-  async terminalWrite(args = {}) {
-    if (!this.isTerminalEnabled()) {
-      return { error: 'Terminal feature is disabled in this deployment profile' };
-    }
-
-    const clientId = this.getTerminalClientId(args.client_id);
-    const result = this.terminalManager.write(args.session_id, clientId, args.data || '');
-    return {
-      success: true,
-      ...result
-    };
-  }
-
-  async terminalWait(args = {}) {
-    if (!this.isTerminalEnabled()) {
-      return { error: 'Terminal feature is disabled in this deployment profile' };
-    }
-
-    const clientId = this.getTerminalClientId(args.client_id);
-    const result = await this.terminalManager.waitFor(args.session_id, clientId, {
-      waitFor: args.wait_for || '',
-      waitForExit: args.wait_for_exit === true,
-      timeoutMs: args.timeout_ms,
-      maxOutputBytes: args.max_output_bytes
-    });
-
-    return {
-      success: true,
-      ...result
-    };
-  }
-
-  async terminalResize(args = {}) {
-    if (!this.isTerminalEnabled()) {
-      return { error: 'Terminal feature is disabled in this deployment profile' };
-    }
-
-    const clientId = this.getTerminalClientId(args.client_id);
-    const result = this.terminalManager.resize(args.session_id, clientId, args.cols, args.rows);
-    return {
-      success: true,
-      ...result
-    };
-  }
-
-  async terminalClose(args = {}) {
-    if (!this.isTerminalEnabled()) {
-      return { error: 'Terminal feature is disabled in this deployment profile' };
-    }
-
-    const clientId = this.getTerminalClientId(args.client_id);
-    const result = this.terminalManager.closeSession(args.session_id, clientId, {
-      force: true,
-      reason: 'tool-close'
-    });
-    return {
-      success: true,
-      ...result
-    };
-  }
-
-  async terminalList(args = {}) {
-    if (!this.isTerminalEnabled()) {
-      return { error: 'Terminal feature is disabled in this deployment profile' };
-    }
-
-    const clientId = this.getTerminalClientId(args.client_id);
-    const sessions = this.terminalManager.listSessions(clientId);
-    return {
-      success: true,
-      client_id: clientId,
-      count: sessions.length,
-      sessions
-    };
-  }
-
   async runCommand(command) {
-    const commandText = String(command || '').trim();
-    if (!commandText) {
-      return {
-        output: '',
-        exitCode: 1,
-        success: false,
-        error: 'Command must be a non-empty string',
-        session_id: null,
-        truncated: false,
-        timedOut: false
-      };
-    }
-
-    if (this.isTerminalEnabled()) {
-      try {
-        return await this.terminalManager.runCompatibilityCommand({
-          clientId: this.getTerminalClientId(),
-          cwd: this.cwd,
-          command: commandText,
-          timeoutMs: 30_000,
-          allowedRoot: this.getTerminalAllowedRoot()
-        });
-      } catch (error) {
-        console.warn('[TOOL] run_terminal PTY fallback to execSync:', error.message);
-      }
-    }
-
     try {
-      const output = execSync(commandText, {
+      const output = execSync(command, {
         cwd: this.cwd,
         encoding: 'utf-8',
         maxBuffer: 10 * 1024 * 1024,
@@ -1737,23 +1395,13 @@ class ToolExecutor {
         env: { ...process.env }
       });
       
-      return {
-        output,
-        exitCode: 0,
-        success: true,
-        session_id: null,
-        truncated: false,
-        timedOut: false
-      };
+      return { output, exitCode: 0, success: true };
     } catch (err) {
       return {
         output: err.stdout || err.stderr || '',
         exitCode: err.status || 1,
         success: false,
-        error: err.message,
-        session_id: null,
-        truncated: false,
-        timedOut: false
+        error: err.message
       };
     }
   }

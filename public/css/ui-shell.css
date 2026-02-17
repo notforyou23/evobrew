@@ -250,24 +250,6 @@ body.ui-refresh-enabled .sidebar-header .sidebar-actions::-webkit-scrollbar {
   display: none;
 }
 
-@container (max-width: 320px) {
-  body.ui-refresh-enabled .sidebar-header {
-    grid-template-columns: minmax(0, 1fr);
-    align-items: start;
-    row-gap: var(--ui-space-1);
-  }
-
-  body.ui-refresh-enabled .sidebar-header .sidebar-actions {
-    justify-content: flex-start;
-    max-width: 100%;
-  }
-
-  body.ui-refresh-enabled .sidebar-header .sidebar-actions #auto-refresh-btn,
-  body.ui-refresh-enabled .sidebar-header .sidebar-actions [data-action="toggleSidebar()"] {
-    display: none !important;
-  }
-}
-
 @container (max-width: 560px) {
   body.ui-refresh-enabled .header-actions [data-action="createNewFolder()"]:not(.overflow-item),
   body.ui-refresh-enabled .header-actions [data-action="downloadCurrentFile()"]:not(.overflow-item),
@@ -298,12 +280,14 @@ body.ui-refresh-enabled .sidebar-header .sidebar-actions::-webkit-scrollbar {
 }
 
 @container (max-width: 280px) {
+  body.ui-refresh-enabled .sidebar-header .sidebar-actions #brain-folder-btn,
   body.ui-refresh-enabled .sidebar-header .sidebar-actions #auto-refresh-btn {
     display: none !important;
   }
 }
 
-@container (max-width: 220px) {
+@container (max-width: 240px) {
+  body.ui-refresh-enabled .sidebar-header .sidebar-actions #go-home-btn,
   body.ui-refresh-enabled .sidebar-header .sidebar-actions #go-up-btn {
     display: none !important;
   }
@@ -311,18 +295,6 @@ body.ui-refresh-enabled .sidebar-header .sidebar-actions::-webkit-scrollbar {
 
 @container (max-width: 200px) {
   body.ui-refresh-enabled .sidebar-header .sidebar-actions [data-action="refreshFileTree()"] {
-    display: none !important;
-  }
-}
-
-@container (max-width: 180px) {
-  body.ui-refresh-enabled .sidebar-header .sidebar-actions #go-home-btn {
-    display: none !important;
-  }
-}
-
-@container (max-width: 170px) {
-  body.ui-refresh-enabled .sidebar-header .sidebar-actions #brain-folder-btn {
     display: none !important;
   }
 }

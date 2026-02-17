@@ -1,4 +1,4 @@
-# Agent Notes - Evobrew v1
+# Agent Notes - COSMO IDE v2
 
 **For AI Agents & Future Reference**
 
@@ -6,7 +6,7 @@
 
 ## Project Overview
 
-**Evobrew** - AI-powered IDE with function calling, semantic search, and surgical code editing.
+**COSMO IDE v2** - AI-powered IDE with function calling, semantic search, and surgical code editing.
 
 - **Tech Stack:** Node.js, Express, OpenAI, Anthropic, Monaco Editor
 - **Purpose:** Full-featured IDE with AI assistant capabilities
@@ -182,7 +182,7 @@ HTTPS_PORT=3406
 ```bash
 cd ssl/
 openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes \
-  -subj "/C=US/ST=Local/L=Local/O=Evobrew/OU=Dev/CN=YOUR_IP" \
+  -subj "/C=US/ST=Local/L=Local/O=COSMO IDE/OU=Dev/CN=YOUR_IP" \
   -addext "subjectAltName=IP:YOUR_IP,DNS:localhost"
 ```
 
@@ -286,7 +286,7 @@ Before pulling dev changes into stable:
 
 ## For Future Agents
 
-When the user asks you to work on Evobrew:
+When the user asks you to work on COSMO IDE:
 
 1. **Ask which version:** Dev or Stable?
 2. **Default to dev** for new features

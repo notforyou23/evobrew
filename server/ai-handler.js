@@ -530,26 +530,8 @@ The user will review in a diff viewer before accepting.
 ### create_file
 Create new files. Use RELATIVE paths from current folder.
 
-### terminal_open
-Open a real PTY terminal session.
-
-### terminal_write
-Send keystrokes/commands to a terminal session.
-
-### terminal_wait
-Wait for output marker/timeout/exit and collect terminal output.
-
-### terminal_resize
-Resize terminal viewport (cols/rows).
-
-### terminal_close
-Close a terminal session.
-
-### terminal_list
-List terminal sessions for the active terminal client.
-
 ### run_terminal
-Compatibility wrapper around terminal tools for one-shot command execution.
+Execute commands (npm, git, build, test, etc.)
 
 ### delete_file
 Delete files/directories. Use carefully.
@@ -802,16 +784,14 @@ function formatToolResultContent(result, isClaudeFormat = false) {
  * @param {Object} [options] - Additional options
  * @param {Object} [options.registry] - Provider registry (if not provided, will be created)
  */
-async function handleFunctionCalling(openai, anthropic, xai, codex, indexer, params, eventEmitter, options = {}) {
+async function handleFunctionCalling(openai, anthropic, xai, indexer, params, eventEmitter, options = {}) {
   const {
     message, currentFolder, model = 'gpt-5.2', context = [],
     documentContent, selectedText, fileName, language,
     fileTreeContext, conversationHistory, conversationSummary,
     allowedRoot, brainEnabled = false,
     allowedToolNames = null,
-    disableSpreadsheetParsing = false,
-    terminalPolicy = null,
-    terminalManager = null
+    disableSpreadsheetParsing = false
   } = params;
   
   // ═══════════════════════════════════════════════════════════════════════════
@@ -867,20 +847,6 @@ async function handleFunctionCalling(openai, anthropic, xai, codex, indexer, par
     const explicitAllow = new Set(allowedToolNames);
     availableTools = availableTools.filter((tool) => explicitAllow.has(tool.function.name));
     console.log(`[AI] Security policy restricted tools to ${availableTools.length} entries`);
-  }
-
-  if (terminalPolicy?.enabled === false) {
-    const terminalToolNames = new Set([
-      'run_terminal',
-      'terminal_open',
-      'terminal_write',
-      'terminal_wait',
-      'terminal_resize',
-      'terminal_close',
-      'terminal_list'
-    ]);
-    availableTools = availableTools.filter((tool) => !terminalToolNames.has(tool.function.name));
-    console.log(`[AI] Terminal tools disabled by policy; ${availableTools.length} tools remain`);
   }
 
   const availableAnthropicTools = availableTools.map((t) => ({
@@ -1109,9 +1075,7 @@ async function handleFunctionCalling(openai, anthropic, xai, codex, indexer, par
   const effectiveRoot = isAdminMode ? null : allowedRoot;
   const toolExecutor = new ToolExecutor(indexer, currentFolder || process.cwd(), effectiveRoot, {
     allowedToolNames: availableTools.map((tool) => tool.function.name),
-    disableSpreadsheetParsing: disableSpreadsheetParsing === true,
-    terminalPolicy,
-    terminalManager
+    disableSpreadsheetParsing: disableSpreadsheetParsing === true
   });
   
   // Function calling loop
@@ -1131,7 +1095,6 @@ async function handleFunctionCalling(openai, anthropic, xai, codex, indexer, par
   // Provider detection: prefer registry, fall back to legacy heuristics
   const isClaudeModel = providerId === 'anthropic' || (!providerId && model.startsWith('claude'));
   const isGrokModel = providerId === 'xai' || (!providerId && model.startsWith('grok'));
-  const isCodexModel = providerId === 'openai-codex' || (!providerId && model.startsWith('gpt-5'));
   const isOllamaModel = providerId === 'ollama' || (!providerId && (
     model.startsWith('llama') ||
     model.startsWith('mistral') ||
@@ -1141,7 +1104,7 @@ async function handleFunctionCalling(openai, anthropic, xai, codex, indexer, par
     model.startsWith('qwen') ||
     model.includes(':') // Ollama models typically use format like "llama3.3:70b"
   ));
-  const isOpenAIModel = providerId === 'openai' || (!providerId && !isClaudeModel && !isGrokModel && !isCodexModel && !isOllamaModel);
+  const isOpenAIModel = providerId === 'openai' || (!providerId && !isClaudeModel && !isGrokModel && !isOllamaModel);
 
   const providerName = providerId || (isClaudeModel ? 'anthropic' : isGrokModel ? 'xai' : isOllamaModel ? 'ollama' : 'openai');
   console.log(`[AI] Starting ${providerName}/${model} in ${currentFolder}`);
@@ -1525,119 +1488,6 @@ async function handleFunctionCalling(openai, anthropic, xai, codex, indexer, par
           tool_calls: toolCalls.length > 0 ? toolCalls : null
         };
 
-      } else if (isCodexModel) {
-        // ============ OpenAI Codex (ChatGPT OAuth, Responses API) ============
-        const trimmedMessages = trimMessages(messages, 200000);
-        const codexModel = model.replace('openai-codex/', ''); // Strip prefix if present
-
-        const toolsForResponses = buildOpenAIResponsesToolsFromChatTools(availableTools);
-
-        // Build input items
-        let inputItems = Array.isArray(xaiNextInputItems) && xaiNextInputItems.length > 0
-          ? xaiNextInputItems
-          : buildOpenAIResponsesInputFromMessages(trimmedMessages);
-
-        // Include system as instructions (Codex supports it like OpenAI)
-        const systemMsg = trimmedMessages.find(m => m?.role === 'system');
-        const instructions = systemMsg?.content || systemPrompt;
-
-        console.log(`[AI] Codex model selected="${model}" effective="${codexModel}" api="responses"`);
-
-        const responseParams = {
-          model: codexModel,
-          instructions,
-          input: inputItems,
-          tools: toolsForResponses,
-          tool_choice: 'auto',
-          parallel_tool_calls: true,
-          truncation: 'auto',
-          max_output_tokens: 64000,
-          temperature: 0.2,
-          stream: true
-        };
-
-        if (xaiPreviousResponseId) {
-          responseParams.previous_response_id = xaiPreviousResponseId;
-        }
-
-        const stream = await codex.responses.create(responseParams);
-
-        let textContent = '';
-        let reasoningSummary = '';
-        let responseId = null;
-        let outputItems = [];
-        let firstEventLogged = false;
-        let finalUsage = null;
-
-        for await (const chunk of stream) {
-          if (!firstEventLogged) {
-            console.log(`[CODEX STREAM] First event:`, JSON.stringify(chunk).substring(0, 500));
-            firstEventLogged = true;
-          }
-
-          if (chunk.type === 'response.created') {
-            responseId = chunk.response?.id;
-          }
-
-          if (chunk.type === 'response.reasoning_text.delta') {
-            const delta = chunk.delta || '';
-            if (eventEmitter) {
-              eventEmitter({ type: 'thinking', content: delta });
-            }
-            reasoningSummary += delta;
-          }
-
-          if (chunk.type === 'response.output_text.delta') {
-            const delta = chunk.delta || '';
-            textContent += delta;
-            if (eventEmitter) {
-              eventEmitter({ type: 'response_chunk', chunk: delta });
-            }
-          }
-
-          if (chunk.type === 'response.completed') {
-            finalUsage = chunk.response?.usage;
-            outputItems = chunk.response?.output || [];
-          }
-        }
-
-        // Extract tool calls from output items
-        const toolCalls = outputItems
-          .filter(item => item.type === 'function_call')
-          .map(item => ({
-            id: item.id || `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            type: 'function',
-            function: {
-              name: item.name,
-              arguments: JSON.stringify(item.arguments || {})
-            }
-          }));
-
-        if (toolCalls.length > 0) {
-          console.log(`[AI] Codex requested ${toolCalls.length} tool calls`);
-          const toolResults = await executeToolCalls(toolCalls, toolExecutor, eventEmitter);
-          messages.push({
-            role: 'assistant',
-            content: textContent || null,
-            tool_calls: toolCalls
-          });
-
-          for (const result of toolResults) {
-            messages.push({
-              role: 'tool',
-              tool_call_id: result.tool_call_id,
-              content: result.output
-            });
-          }
-
-          xaiPreviousResponseId = responseId;
-          continue;
-        }
-
-        assistantResponse = textContent;
-        console.log(`[AI] ✅ Complete: ${iterations} iterations, ${finalUsage?.total_tokens || 0} tokens`);
-        break;
-
       } else if (isOllamaModel) {
         // ============ OLLAMA (Local Models) ============
         const trimmedMessages = trimMessages(messages, 200000);
@@ -1928,24 +1778,7 @@ async function handleFunctionCalling(openai, anthropic, xai, codex, indexer, par
               const matches = result.results?.length || result.matches?.length || 0;
               summary = `${matches} match${matches !== 1 ? 'es' : ''} for "${(args?.query || args?.pattern || '').substring(0, 30)}"`;
             } else if (toolName === 'run_terminal') {
-              const commandPreview = (args?.command || '').substring(0, 40);
-              const exitCode = Number.isInteger(result.exitCode) ? result.exitCode : '?';
-              const status = result.success ? 'ok' : 'failed';
-              summary = `Terminal ${status} (exit ${exitCode}): ${commandPreview}`;
-            } else if (toolName === 'terminal_open') {
-              summary = `Terminal opened: ${result.session_id || 'session'}`;
-            } else if (toolName === 'terminal_write') {
-              summary = `Terminal input sent: ${result.session_id || args?.session_id || 'session'}`;
-            } else if (toolName === 'terminal_wait') {
-              const status = result.timed_out ? 'timeout' : (result.matched ? 'matched' : (result.exited ? 'exited' : 'ok'));
-              const sessionId = result.session_id || args?.session_id || 'session';
-              summary = `Terminal wait (${status}): ${sessionId}`;
-            } else if (toolName === 'terminal_resize') {
-              summary = `Terminal resized: ${result.cols || args?.cols}x${result.rows || args?.rows}`;
-            } else if (toolName === 'terminal_close') {
-              summary = `Terminal closed: ${result.session_id || args?.session_id || 'session'}`;
-            } else if (toolName === 'terminal_list') {
-              summary = `${result.count || 0} terminal session(s)`;
+              summary = `Ran: ${(args?.command || '').substring(0, 60)}`;
             } else if (toolName === 'delete_file') {
               summary = `Deleted: ${args?.file_path || 'file'}`;
             } else if (result.files) {

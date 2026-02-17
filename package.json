@@ -1,6 +1,6 @@
 {
   "name": "evobrew",
-  "version": "1.0.2",
+  "version": "1.0.0",
   "description": "Model-agnostic AI workspace with semantic knowledge graphs, function calling, and persistent memory",
   "main": "server/server.js",
   "bin": {
@@ -25,10 +25,6 @@
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "db:generate": "prisma generate",
-    "ship": "npm run release:patch",
-    "release:patch": "npm version patch && git push --follow-tags",
-    "release:minor": "npm version minor && git push --follow-tags",
-    "release:major": "npm version major && git push --follow-tags",
     "postinstall": "node -e \"console.log('\\n🧪 Evobrew installed! Run: evobrew setup\\n')\""
   },
   "keywords": [
@@ -59,11 +55,6 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.1",
     "@prisma/client": "^5.0.0",
-    "@xterm/addon-fit": "^0.11.0",
-    "@xterm/addon-search": "^0.16.0",
-    "@xterm/addon-serialize": "^0.14.0",
-    "@xterm/addon-web-links": "^0.12.0",
-    "@xterm/xterm": "^6.0.0",
     "cors": "^2.8.5",
     "docx": "^8.5.0",
     "dotenv": "^16.3.1",
@@ -72,9 +63,7 @@
     "mammoth": "^1.6.0",
     "msgreader": "^1.0.1",
     "node-fetch": "^2.7.0",
-    "node-pty": "^1.1.0",
     "openai": "^4.20.0",
-    "ws": "^8.19.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

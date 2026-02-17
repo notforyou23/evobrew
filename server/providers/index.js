@@ -41,16 +41,17 @@ const { OllamaAdapter, createOllamaAdapter } = require('./adapters/ollama.js');
 const { ProviderRegistry } = require('./registry.js');
 
 /**
- * Detect if Ollama is running locally
+ * Detect if Ollama is running at the given URL
+ * @param {string} [baseUrl] - Ollama base URL (default: http://localhost:11434)
  * @param {number} [timeoutMs=1000] - Timeout in milliseconds
  * @returns {Promise<boolean>}
  */
-async function detectOllama(timeoutMs = 1000) {
+async function detectOllama(baseUrl = 'http://localhost:11434', timeoutMs = 1000) {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     
-    const res = await fetch('http://localhost:11434/api/tags', {
+    const res = await fetch(`${baseUrl}/api/tags`, {
       signal: controller.signal
     });
     
@@ -58,6 +59,29 @@ async function detectOllama(timeoutMs = 1000) {
     return res.ok;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Load evobrew config from ~/.evobrew/config.json
+ * @returns {Promise<Object|null>}
+ */
+async function loadEvobrewConfig() {
+  try {
+    const os = require('os');
+    const path = require('path');
+    const fs = require('fs');
+    const configPath = path.join(os.homedir(), '.evobrew', 'config.json');
+    
+    if (!fs.existsSync(configPath)) {
+      return null;
+    }
+    
+    const raw = fs.readFileSync(configPath, 'utf-8');
+    return JSON.parse(raw);
+  } catch (err) {
+    console.warn('[Providers] ⚠️ Failed to load evobrew config:', err.message);
+    return null;
   }
 }
 
@@ -108,28 +132,6 @@ async function createRegistry(options = {}) {
     console.warn('[Providers] ⚠️ OPENAI_API_KEY not set, OpenAI provider unavailable');
   }
 
-  // Initialize OpenAI Codex (ChatGPT OAuth)
-  try {
-    const { getCredentials } = require('../../lib/oauth-codex.cjs');
-    const creds = await getCredentials();
-    if (creds) {
-      registry.initializeProvider('openai-codex', {
-        apiKey: creds.accessToken,
-        baseUrl: 'https://chatgpt.com/backend-api',
-        defaultHeaders: {
-          'chatgpt-account-id': creds.accountId,
-        }
-      });
-      // Register Codex models explicitly
-      registry.registerModel('gpt-5.2', 'openai-codex');
-      registry.registerModel('gpt-5.3-codex', 'openai-codex');
-      registry.registerModel('gpt-5.3-codex-spark', 'openai-codex');
-      console.log('[Providers] ✅ OpenAI Codex registered (OAuth)');
-    }
-  } catch (e) {
-    console.warn('[Providers] ⚠️ OpenAI Codex OAuth unavailable:', e.message);
-  }
-
   // Initialize xAI (Grok)
   if (process.env.XAI_API_KEY) {
     registry.initializeProvider('xai', { 
@@ -143,22 +145,53 @@ async function createRegistry(options = {}) {
     console.log('[Providers] ✅ xAI (Grok) registered');
   }
 
-  // Detect and initialize Ollama (for local embeddings)
+  // Load evobrew config for local LLM settings
+  const evobrewConfig = await loadEvobrewConfig();
+  const ollamaConfig = evobrewConfig?.providers?.ollama || { enabled: true, auto_detect: true, base_url: 'http://localhost:11434' };
+  const lmstudioConfig = evobrewConfig?.providers?.lmstudio || { enabled: false, base_url: 'http://localhost:1234/v1' };
+  
+  // Detect and initialize Ollama (for local embeddings + chat)
   // Skip on Raspberry Pi - no local model support
   const platform = getPlatform();
-  if (detectOllamaEnabled && platform.supportsLocalModels) {
-    const ollamaAvailable = await detectOllama();
-    if (ollamaAvailable) {
-      registry.initializeProvider('ollama', {
-        baseUrl: 'http://localhost:11434',
-        embeddingModel: 'nomic-embed-text'
-      });
-      console.log('[Providers] ✅ Ollama detected - local embeddings available');
+  if (platform.supportsLocalModels) {
+    // Ollama
+    if (ollamaConfig.enabled !== false) {
+      const ollamaBaseUrl = ollamaConfig.base_url || 'http://localhost:11434';
+      const shouldAutoDetect = ollamaConfig.auto_detect !== false && detectOllamaEnabled;
+      
+      if (shouldAutoDetect) {
+        const ollamaAvailable = await detectOllama(ollamaBaseUrl);
+        if (ollamaAvailable) {
+          registry.initializeProvider('ollama', {
+            baseUrl: ollamaBaseUrl,
+            embeddingModel: 'nomic-embed-text'
+          });
+          console.log(`[Providers] ✅ Ollama detected at ${ollamaBaseUrl} - local models available`);
+        } else {
+          console.log(`[Providers] ℹ️ Ollama not detected at ${ollamaBaseUrl}`);
+        }
+      } else if (!shouldAutoDetect && ollamaConfig.enabled) {
+        // Explicitly enabled without auto-detect - assume it's there
+        registry.initializeProvider('ollama', {
+          baseUrl: ollamaBaseUrl,
+          embeddingModel: 'nomic-embed-text'
+        });
+        console.log(`[Providers] ✅ Ollama configured at ${ollamaBaseUrl} (auto-detect disabled)`);
+      }
     } else {
-      console.log('[Providers] ℹ️ Ollama not detected - local embeddings unavailable');
+      console.log('[Providers] ℹ️ Ollama disabled in config');
+    }
+    
+    // LMStudio (uses OpenAI-compatible API)
+    if (lmstudioConfig.enabled) {
+      const lmstudioBaseUrl = lmstudioConfig.base_url || 'http://localhost:1234/v1';
+      registry.initializeProvider('lmstudio', {
+        baseUrl: lmstudioBaseUrl
+      });
+      console.log(`[Providers] ✅ LMStudio configured at ${lmstudioBaseUrl}`);
     }
   } else if (detectOllamaEnabled && !platform.supportsLocalModels) {
-    console.log(`[Providers] ℹ️ Skipping Ollama detection on ${platform.platform} (local models not supported)`);
+    console.log(`[Providers] ℹ️ Skipping local models on ${platform.platform} (not supported)`);
   }
 
   return registry;

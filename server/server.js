@@ -50,15 +50,12 @@ const fs = require('fs').promises;
 const fsSync = require('fs');
 const { execFile } = require('child_process');
 const cors = require('cors');
-const { WebSocketServer } = require('ws');
 const OpenAI = require('openai');
 const Anthropic = require('@anthropic-ai/sdk');
 const CodebaseIndexer = require('./codebase-indexer');
 const { handleFunctionCalling } = require('./ai-handler');
 const { getAnthropicApiKey } = require('./services/anthropic-oauth');
 const { loadSecurityProfile, isOnlyOfficeCallbackUrlAllowed } = require('../lib/security-profile');
-const { configureTerminalSessionManager, toBool, toInt } = require('./terminal/session-manager');
-const { createTerminalWsProtocol } = require('./terminal/ws-protocol');
 const zlib = require('zlib');
 const { promisify } = require('util');
 const gunzip = promisify(zlib.gunzip);
@@ -107,32 +104,6 @@ const READ_ONLY_CHAT_TOOLS = new Set([
   'brain_stats'
 ]);
 
-const TERMINAL_CHAT_TOOLS = new Set([
-  'run_terminal',
-  'terminal_open',
-  'terminal_write',
-  'terminal_wait',
-  'terminal_resize',
-  'terminal_close',
-  'terminal_list'
-]);
-
-const terminalFeatureConfig = {
-  enabled: toBool(process.env.TERMINAL_ENABLED, true),
-  maxSessionsPerClient: toInt(process.env.TERMINAL_MAX_SESSIONS_PER_CLIENT, 6, 1, 100),
-  idleTimeoutMs: toInt(process.env.TERMINAL_IDLE_TIMEOUT_MS, 30 * 60 * 1000, 10_000, 24 * 60 * 60 * 1000),
-  maxBufferBytes: toInt(process.env.TERMINAL_MAX_BUFFER_BYTES, 2 * 1024 * 1024, 64 * 1024, 64 * 1024 * 1024)
-};
-
-const terminalSessionManager = configureTerminalSessionManager(terminalFeatureConfig);
-const terminalWsProtocol = createTerminalWsProtocol({
-  sessionManager: terminalSessionManager,
-  maxIncomingMessageBytes: toInt(process.env.TERMINAL_MAX_INCOMING_MESSAGE_BYTES, 128 * 1024, 512, 2 * 1024 * 1024),
-  queueHighWatermarkBytes: toInt(process.env.TERMINAL_WS_HIGH_WATERMARK_BYTES, 256 * 1024, 16 * 1024, 16 * 1024 * 1024),
-  queueLowWatermarkBytes: toInt(process.env.TERMINAL_WS_LOW_WATERMARK_BYTES, 96 * 1024, 8 * 1024, 8 * 1024 * 1024),
-  maxQueuedOutboundBytes: toInt(process.env.TERMINAL_WS_MAX_QUEUED_BYTES, 2 * 1024 * 1024, 64 * 1024, 64 * 1024 * 1024)
-});
-
 // ============================================================================
 // NETWORK UTILITIES
 // ============================================================================
@@ -161,25 +132,6 @@ const getOpenAI = () => {
   }
   return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 };
-
-// OpenAI Codex via ChatGPT OAuth
-const getOpenAICodex = async () => {
-  const { getCredentials } = require('../lib/oauth-codex.cjs');
-  const creds = await getCredentials();
-  
-  if (!creds) {
-    return null; // Codex OAuth not configured
-  }
-  
-  return new OpenAI({
-    apiKey: creds.accessToken,
-    baseURL: 'https://chatgpt.com/backend-api',
-    defaultHeaders: {
-      'chatgpt-account-id': creds.accountId,
-    },
-  });
-};
-
 // Anthropic uses OAuth service (Token Sink Pattern from Claude CLI)
 const getAnthropic = async () => {
   const credentials = await getAnthropicApiKey();
@@ -279,99 +231,6 @@ function shouldDisableGatewayProxy() {
   return securityConfig.isInternetProfile && !securityConfig.internetEnableGatewayProxy;
 }
 
-function isTerminalEnabledForRequest(req) {
-  if (!terminalSessionManager.isEnabled()) return false;
-  if (securityConfig.isInternetProfile && !securityConfig.internetEnableTerminal) return false;
-  return true;
-}
-
-function getTerminalAllowedRoot() {
-  if (securityConfig.isInternetProfile) {
-    return securityConfig.workspaceRoot;
-  }
-  return null; // Local profile is intentionally unrestricted.
-}
-
-function getTerminalClientId(req) {
-  const fromHeader = getHeaderValue(req, 'x-evobrew-terminal-client-id').trim();
-  const fromBody = typeof req.body?.clientId === 'string' ? req.body.clientId.trim() : '';
-  const fromTerminalBody = typeof req.body?.terminalClientId === 'string' ? req.body.terminalClientId.trim() : '';
-  const fromQuery = typeof req.query?.clientId === 'string' ? req.query.clientId.trim() : '';
-  const raw = fromBody || fromTerminalBody || fromQuery || fromHeader;
-  if (!raw) return '';
-  if (!/^[A-Za-z0-9:_-]{1,128}$/.test(raw)) return '';
-  return raw;
-}
-
-function ensureTerminalEnabled(req, res) {
-  if (isTerminalEnabledForRequest(req)) {
-    return true;
-  }
-  res.status(403).json({
-    error: securityConfig.isInternetProfile
-      ? 'Terminal is disabled in internet profile (set INTERNET_ENABLE_TERMINAL=true to enable)'
-      : 'Terminal feature is disabled (set TERMINAL_ENABLED=true to enable)'
-  });
-  return false;
-}
-
-function isTerminalEnabledForUpgrade() {
-  if (!terminalSessionManager.isEnabled()) return false;
-  if (securityConfig.isInternetProfile && !securityConfig.internetEnableTerminal) return false;
-  return true;
-}
-
-function isAllowedLocalOrigin(origin) {
-  const allowed = [
-    'http://localhost:4410',
-    'https://localhost:4411',
-    /^http:\/\/localhost:\d+$/,
-    /^https:\/\/localhost:\d+$/,
-    /^http:\/\/127\.0\.0\.1:\d+$/,
-    /^http:\/\/192\.168\.\d+\.\d+:\d+$/,
-    /^http:\/\/10\.\d+\.\d+\.\d+:\d+$/,
-    /^http:\/\/172\.(1[6-9]|2\d|3[01])\.\d+\.\d+:\d+$/
-  ];
-
-  return allowed.some((pattern) =>
-    pattern instanceof RegExp ? pattern.test(origin) : pattern === origin
-  );
-}
-
-function isAllowedTerminalWsOrigin(req) {
-  const origin = getHeaderValue(req, 'origin').trim();
-  if (!origin) return true; // same-origin/non-browser clients
-  if (securityConfig.isInternetProfile) return true; // reverse proxy boundary
-  return isAllowedLocalOrigin(origin);
-}
-
-async function resolveTerminalCwd(inputCwd) {
-  const candidate = typeof inputCwd === 'string' && inputCwd.trim()
-    ? inputCwd.trim()
-    : process.cwd();
-  const resolved = path.resolve(candidate);
-  const stat = await fs.stat(resolved).catch(() => null);
-  if (!stat || !stat.isDirectory()) {
-    throw new Error('Terminal cwd must be an existing directory');
-  }
-
-  const allowedRoot = getTerminalAllowedRoot();
-  if (allowedRoot) {
-    const normalizedRoot = path.resolve(allowedRoot);
-    if (!(resolved === normalizedRoot || resolved.startsWith(normalizedRoot + path.sep))) {
-      throw new Error('Terminal cwd is outside allowed workspace root');
-    }
-
-    const canonicalRoot = resolveCanonicalPathForBoundary(normalizedRoot);
-    const canonicalTarget = resolveCanonicalPathForBoundary(resolved);
-    if (!(canonicalTarget === canonicalRoot || canonicalTarget.startsWith(canonicalRoot + path.sep))) {
-      throw new Error('Terminal cwd escapes allowed workspace root');
-    }
-  }
-
-  return resolved;
-}
-
 function sanitizeHostHeader(hostValue) {
   const raw = String(hostValue || '').trim();
   if (!raw) return '';
@@ -393,32 +252,9 @@ function getRequestBaseUrl(req) {
   return `${protocol}://${host}`;
 }
 
-function isRequestAdmin(req) {
-  if (securityConfig.isInternetProfile) {
-    return false;
-  }
-  if (process.env.COSMO_ADMIN_MODE === 'true') {
-    return true;
-  }
-  if (process.env.COSMO_ADMIN_MODE === 'false') {
-    return false;
-  }
-
-  const remoteAddress =
-    req?.ip ||
-    req?.socket?.remoteAddress ||
-    req?.connection?.remoteAddress ||
-    '';
-
-  return ['127.0.0.1', '::1', '::ffff:127.0.0.1', 'localhost'].includes(remoteAddress);
-}
-
-function getEffectiveAllowedRoot(options = {}) {
+function getEffectiveAllowedRoot() {
   if (securityConfig.isInternetProfile) {
     return securityConfig.workspaceRoot;
-  }
-  if (options.requestIsAdmin === true) {
-    return null;
   }
   return getAllowedRoot();
 }
@@ -433,12 +269,11 @@ function resolveCanonicalPathForBoundary(absolutePath) {
   return fsSync.realpathSync(candidate);
 }
 
-async function resolvePathForRequest(req, inputPath, options = {}) {
+async function resolvePathWithinAllowedRoot(inputPath, options = {}) {
   const {
     mustExist = false,
     expectFile = false,
-    expectDirectory = false,
-    requestIsAdmin = isRequestAdmin(req)
+    expectDirectory = false
   } = options;
 
   if (typeof inputPath !== 'string' || inputPath.trim() === '') {
@@ -448,7 +283,7 @@ async function resolvePathForRequest(req, inputPath, options = {}) {
     throw new Error('Invalid path');
   }
 
-  const allowedRoot = getEffectiveAllowedRoot({ requestIsAdmin });
+  const allowedRoot = getEffectiveAllowedRoot();
   const resolutionBase = allowedRoot || process.cwd();
   const resolved = path.isAbsolute(inputPath)
     ? path.resolve(inputPath)
@@ -514,12 +349,27 @@ app.use(cors({
       return callback(null, true);
     }
 
-    if (isAllowedLocalOrigin(origin)) return callback(null, true);
+    const allowed = [
+      'http://localhost:4410',
+      'https://localhost:4411',
+      /^http:\/\/localhost:\d+$/,
+      /^https:\/\/localhost:\d+$/,
+      /^http:\/\/127\.0\.0\.1:\d+$/,
+      /^http:\/\/192\.168\.\d+\.\d+:\d+$/,
+      /^http:\/\/10\.\d+\.\d+\.\d+:\d+$/,
+      /^http:\/\/172\.(1[6-9]|2\d|3[01])\.\d+\.\d+:\d+$/
+    ];
+
+    const isAllowed = allowed.some((pattern) =>
+      pattern instanceof RegExp ? pattern.test(origin) : pattern === origin
+    );
+
+    if (isAllowed) return callback(null, true);
     return callback(new Error(`CORS policy: Origin ${origin} not allowed`));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Evobrew-Proxy-Secret', 'X-Evobrew-Terminal-Client-Id']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Evobrew-Proxy-Secret']
 }));
 
 // Large limit for saving big documents/code files - local mode still supports heavy payloads.
@@ -527,11 +377,6 @@ app.use(express.json({ limit: '500mb' }));
 app.use(express.urlencoded({ limit: '500mb', extended: true }));
 app.use(proxyAuthMiddleware);
 app.use(express.static('public'));
-app.use('/vendor/xterm', express.static(path.join(__dirname, '../node_modules/@xterm/xterm')));
-app.use('/vendor/xterm-addon-fit', express.static(path.join(__dirname, '../node_modules/@xterm/addon-fit')));
-app.use('/vendor/xterm-addon-web-links', express.static(path.join(__dirname, '../node_modules/@xterm/addon-web-links')));
-app.use('/vendor/xterm-addon-search', express.static(path.join(__dirname, '../node_modules/@xterm/addon-search')));
-app.use('/vendor/xterm-addon-serialize', express.static(path.join(__dirname, '../node_modules/@xterm/addon-serialize')));
 
 // ============================================================================
 // PATH SECURITY - Restrict file access to brain folder
@@ -599,7 +444,7 @@ app.get('/api/folder/browse', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Path required' });
     }
 
-    const resolvedFolderPath = await resolvePathForRequest(req, folderPath, {
+    const resolvedFolderPath = await resolvePathWithinAllowedRoot(folderPath, {
       mustExist: true,
       expectDirectory: true
     });
@@ -717,7 +562,7 @@ app.get('/api/folder/read', async (req, res) => {
       return res.status(400).json({ error: 'Path required' });
     }
 
-    const resolvedFilePath = await resolvePathForRequest(req, filePath, {
+    const resolvedFilePath = await resolvePathWithinAllowedRoot(filePath, {
       mustExist: true,
       expectFile: true
     });
@@ -739,7 +584,7 @@ app.put('/api/folder/write', mutationGuard, async (req, res) => {
       return res.status(400).json({ error: 'Path required' });
     }
 
-    const resolvedFilePath = await resolvePathForRequest(req, filePath);
+    const resolvedFilePath = await resolvePathWithinAllowedRoot(filePath);
 
     console.log(`[WRITE] Writing file: ${resolvedFilePath} (${content?.length || 0} chars)`);
     await fs.writeFile(resolvedFilePath, content, 'utf-8');
@@ -761,7 +606,7 @@ app.put('/api/folder/write-docx', mutationGuard, async (req, res) => {
       return res.status(400).json({ error: 'Path required' });
     }
 
-    const resolvedFilePath = await resolvePathForRequest(req, filePath);
+    const resolvedFilePath = await resolvePathWithinAllowedRoot(filePath);
 
     let buffer;
     const trimmedContent = (content || '').trim();
@@ -894,7 +739,7 @@ app.post('/api/folder/create', mutationGuard, async (req, res) => {
       return res.status(400).json({ error: 'Path required' });
     }
 
-    const resolvedFilePath = await resolvePathForRequest(req, filePath);
+    const resolvedFilePath = await resolvePathWithinAllowedRoot(filePath);
 
     const dir = path.dirname(resolvedFilePath);
     await fs.mkdir(dir, { recursive: true });
@@ -921,7 +766,7 @@ app.put('/api/folder/upload-binary', mutationGuard, async (req, res) => {
       return res.status(400).json({ error: 'Content required' });
     }
 
-    const resolvedFilePath = await resolvePathForRequest(req, filePath);
+    const resolvedFilePath = await resolvePathWithinAllowedRoot(filePath);
 
     // Convert base64 to buffer
     const buffer = Buffer.from(content, encoding);
@@ -950,7 +795,7 @@ app.delete('/api/folder/delete', mutationGuard, async (req, res) => {
       return res.status(400).json({ error: 'Path required' });
     }
 
-    const resolvedFilePath = await resolvePathForRequest(req, filePath, {
+    const resolvedFilePath = await resolvePathWithinAllowedRoot(filePath, {
       mustExist: true,
       expectFile: true
     });
@@ -973,7 +818,7 @@ app.get('/api/serve-file', async (req, res) => {
       return res.status(400).json({ error: 'Path required' });
     }
 
-    const resolvedFilePath = await resolvePathForRequest(req, filePath, {
+    const resolvedFilePath = await resolvePathWithinAllowedRoot(filePath, {
       mustExist: true,
       expectFile: true
     });
@@ -1034,7 +879,7 @@ app.get('/api/extract-office-text', async (req, res) => {
       return res.status(400).json({ error: 'Path required' });
     }
 
-    const resolvedFilePath = await resolvePathForRequest(req, filePath, {
+    const resolvedFilePath = await resolvePathWithinAllowedRoot(filePath, {
       mustExist: true,
       expectFile: true
     });
@@ -1170,7 +1015,7 @@ app.get('/api/preview-office-file', async (req, res) => {
       return res.status(400).json({ error: 'Path required' });
     }
 
-    const resolvedFilePath = await resolvePathForRequest(req, filePath, {
+    const resolvedFilePath = await resolvePathWithinAllowedRoot(filePath, {
       mustExist: true,
       expectFile: true
     });
@@ -1400,7 +1245,7 @@ app.post('/api/reveal-in-finder', mutationGuard, async (req, res) => {
       return res.status(400).json({ error: 'Path required' });
     }
 
-    const resolvedFilePath = await resolvePathForRequest(req, filePath, {
+    const resolvedFilePath = await resolvePathWithinAllowedRoot(filePath, {
       mustExist: true
     });
 
@@ -1488,7 +1333,7 @@ app.post('/api/onlyoffice/config', async (req, res) => {
       return res.status(400).json({ error: 'File path required' });
     }
 
-    const resolvedFilePath = await resolvePathForRequest(req, filePath, {
+    const resolvedFilePath = await resolvePathWithinAllowedRoot(filePath, {
       mustExist: true,
       expectFile: true
     });
@@ -1584,7 +1429,7 @@ app.get('/api/onlyoffice/download/:filename?', async (req, res) => {
       return res.status(400).send('File path required');
     }
 
-    const resolvedFilePath = await resolvePathForRequest(req, filePath, {
+    const resolvedFilePath = await resolvePathWithinAllowedRoot(filePath, {
       mustExist: true,
       expectFile: true
     });
@@ -1638,7 +1483,7 @@ app.post('/api/onlyoffice/save', mutationGuard, async (req, res) => {
       return res.json({ error: 1 });
     }
 
-    const resolvedFilePath = await resolvePathForRequest(req, filePath, {
+    const resolvedFilePath = await resolvePathWithinAllowedRoot(filePath, {
       mustExist: true,
       expectFile: true
     });
@@ -1760,7 +1605,7 @@ app.post('/api/collabora/config', async (req, res) => {
       return res.status(400).json({ error: 'File path required' });
     }
 
-    const resolvedFilePath = await resolvePathForRequest(req, filePath, {
+    const resolvedFilePath = await resolvePathWithinAllowedRoot(filePath, {
       mustExist: true,
       expectFile: true
     });
@@ -1817,7 +1662,7 @@ app.get('/wopi/files/:id', async (req, res) => {
       return res.status(403).json({ error: 'File mismatch' });
     }
 
-    const resolvedPath = await resolvePathForRequest(req, decodedPath, {
+    const resolvedPath = await resolvePathWithinAllowedRoot(decodedPath, {
       mustExist: true,
       expectFile: true
     });
@@ -1871,7 +1716,7 @@ app.get('/wopi/files/:id/contents', async (req, res) => {
       return res.status(403).json({ error: 'File mismatch' });
     }
 
-    const resolvedPath = await resolvePathForRequest(req, decodedPath, {
+    const resolvedPath = await resolvePathWithinAllowedRoot(decodedPath, {
       mustExist: true,
       expectFile: true
     });
@@ -1915,7 +1760,7 @@ app.post('/wopi/files/:id/contents', mutationGuard, express.raw({ type: '*/*', l
       return res.status(403).json({ error: 'File mismatch' });
     }
 
-    const resolvedPath = await resolvePathForRequest(req, decodedPath, {
+    const resolvedPath = await resolvePathWithinAllowedRoot(decodedPath, {
       mustExist: true,
       expectFile: true
     });
@@ -1943,7 +1788,7 @@ app.post('/api/open-in-app', mutationGuard, async (req, res) => {
       return res.status(400).json({ error: 'Path required' });
     }
 
-    const resolvedFilePath = await resolvePathForRequest(req, filePath, {
+    const resolvedFilePath = await resolvePathWithinAllowedRoot(filePath, {
       mustExist: true
     });
 
@@ -2001,28 +1846,15 @@ app.post('/api/chat', async (req, res) => {
     }
 
     // Security: enforce root boundary and tool policy by deployment profile
-    params.allowedRoot = getEffectiveAllowedRoot({ requestIsAdmin: isRequestAdmin(req) });
+    params.allowedRoot = getEffectiveAllowedRoot();
     params.disableSpreadsheetParsing = securityConfig.isInternetProfile;
-    const terminalEnabled = isTerminalEnabledForRequest(req);
-    const terminalClientId = getTerminalClientId(req) || 'ai';
-    params.terminalPolicy = {
-      enabled: terminalEnabled,
-      allowedRoot: getTerminalAllowedRoot(),
-      defaultClientId: terminalClientId
-    };
-    params.terminalManager = terminalSessionManager;
     if (securityConfig.isInternetProfile && !securityConfig.internetEnableMutations) {
-      const allowed = new Set(READ_ONLY_CHAT_TOOLS);
-      if (terminalEnabled) {
-        TERMINAL_CHAT_TOOLS.forEach((toolName) => allowed.add(toolName));
-      }
-      params.allowedToolNames = Array.from(allowed);
+      params.allowedToolNames = Array.from(READ_ONLY_CHAT_TOOLS);
     }
 
     // Log brain status for debugging
     const brainEnabled = params.brainEnabled || false;
-    const requestedModel = params.model || 'UNDEFINED';
-    console.log(`[CHAT] "${message.substring(0, 60)}..." model="${requestedModel}" brainEnabled=${brainEnabled}`);
+    console.log(`[CHAT] "${message.substring(0, 60)}..." (brainEnabled: ${brainEnabled})`);
 
     if (stream) {
       // SSE streaming
@@ -2066,19 +1898,10 @@ app.post('/api/chat', async (req, res) => {
       };
       
       try {
-        // Provider registry handles routing - pass null for unavailable providers
-        let anthropicClient = null;
-        try {
-          anthropicClient = await getAnthropic();
-        } catch (e) {
-          // Anthropic not configured - registry will handle other models
-        }
-        
         const result = await handleFunctionCalling(
           getOpenAI(),
-          anthropicClient,
+          await getAnthropic(),
           getXAI(),
-          await getOpenAICodex(),
           codebaseIndexer,
           params,
           eventEmitter
@@ -2123,18 +1946,10 @@ app.post('/api/chat', async (req, res) => {
 
     } else {
       // Non-streaming
-      let anthropicClient = null;
-      try {
-        anthropicClient = await getAnthropic();
-      } catch (e) {
-        // Anthropic not configured - registry will handle other models
-      }
-      
       const result = await handleFunctionCalling(
         getOpenAI(),
-        anthropicClient,
+        await getAnthropic(),
         getXAI(),
-        await getOpenAICodex(),
         codebaseIndexer,
         params
       );
@@ -2157,90 +1972,6 @@ app.post('/api/chat', async (req, res) => {
     if (!res.headersSent) {
       res.status(500).json({ error: error.message });
     }
-  }
-});
-
-// ============================================================================
-// TERMINAL API - PTY-backed interactive sessions
-// ============================================================================
-
-app.post('/api/terminal/sessions', async (req, res) => {
-  try {
-    if (!ensureTerminalEnabled(req, res)) return;
-
-    const clientId = getTerminalClientId(req);
-    if (!clientId) {
-      return res.status(400).json({ success: false, error: 'clientId is required' });
-    }
-
-    const cwd = await resolveTerminalCwd(req.body?.cwd || process.cwd());
-    const session = terminalSessionManager.createSession({
-      clientId,
-      cwd,
-      shell: req.body?.shell || '',
-      cols: req.body?.cols,
-      rows: req.body?.rows,
-      name: req.body?.name,
-      persistent: req.body?.persistent !== false,
-      allowedRoot: getTerminalAllowedRoot()
-    });
-
-    res.json({
-      success: true,
-      session
-    });
-  } catch (error) {
-    console.error('[TERMINAL] Failed to create session:', error.message);
-    res.status(400).json({ success: false, error: error.message });
-  }
-});
-
-app.get('/api/terminal/sessions', async (req, res) => {
-  try {
-    if (!ensureTerminalEnabled(req, res)) return;
-
-    const clientId = getTerminalClientId(req);
-    if (!clientId) {
-      return res.status(400).json({ success: false, error: 'clientId is required' });
-    }
-
-    const sessions = terminalSessionManager.listSessions(clientId);
-    res.json({
-      success: true,
-      sessions
-    });
-  } catch (error) {
-    console.error('[TERMINAL] Failed to list sessions:', error.message);
-    res.status(400).json({ success: false, error: error.message });
-  }
-});
-
-app.delete('/api/terminal/sessions/:id', async (req, res) => {
-  try {
-    if (!ensureTerminalEnabled(req, res)) return;
-
-    const clientId = getTerminalClientId(req);
-    if (!clientId) {
-      return res.status(400).json({ success: false, error: 'clientId is required' });
-    }
-
-    const sessionIdValue = String(req.params.id || '').trim();
-    if (!sessionIdValue) {
-      return res.status(400).json({ success: false, error: 'Session id is required' });
-    }
-
-    const result = terminalSessionManager.closeSession(sessionIdValue, clientId, {
-      force: true,
-      reason: 'api-delete'
-    });
-
-    res.json({
-      success: true,
-      result
-    });
-  } catch (error) {
-    console.error('[TERMINAL] Failed to close session:', error.message);
-    res.status(400).json({ success: false, error: error.message });
   }
 });
 
@@ -2764,9 +2495,7 @@ app.get('/api/health', (req, res) => {
     config: {
       source: configSource,
       http_port: PORT,
-      https_port: HTTPS_PORT,
-      terminal_enabled: terminalSessionManager.isEnabled(),
-      terminal_internet_enabled: securityConfig.internetEnableTerminal
+      https_port: HTTPS_PORT
     }
   });
 });
@@ -2792,61 +2521,6 @@ httpServer.listen(PORT, '0.0.0.0', () => {
 // Start HTTPS server if certificates exist
 const certPath = path.join(__dirname, '../ssl/cert.pem');
 const keyPath = path.join(__dirname, '../ssl/key.pem');
-const TERMINAL_WS_PATH = '/api/terminal/ws';
-
-function attachTerminalWs(server) {
-  const wss = new WebSocketServer({
-    noServer: true,
-    maxPayload: toInt(process.env.TERMINAL_WS_MAX_PAYLOAD_BYTES, 256 * 1024, 1024, 8 * 1024 * 1024)
-  });
-
-  wss.on('connection', (ws, req, context = {}) => {
-    terminalWsProtocol.handleConnection(ws, req, context);
-  });
-
-  server.on('upgrade', (req, socket, head) => {
-    const upgradePath = String(req.url || '').split('?')[0];
-    if (upgradePath !== TERMINAL_WS_PATH) return;
-
-    if (!isTerminalEnabledForUpgrade()) {
-      socket.end('HTTP/1.1 403 Forbidden\r\n\r\n');
-      return;
-    }
-
-    if (!isAllowedTerminalWsOrigin(req)) {
-      socket.end('HTTP/1.1 403 Forbidden\r\n\r\n');
-      return;
-    }
-
-    if (securityConfig.isInternetProfile) {
-      if (!hasValidProxySecret(req) || !getAuthenticatedProxyUser(req)) {
-        socket.end('HTTP/1.1 401 Unauthorized\r\n\r\n');
-        return;
-      }
-    }
-
-    let parsedUrl;
-    try {
-      const base = `http://${sanitizeHostHeader(getHeaderValue(req, 'host')) || 'localhost'}`;
-      parsedUrl = new URL(req.url, base);
-    } catch (error) {
-      socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
-      return;
-    }
-
-    const clientId = String(parsedUrl.searchParams.get('clientId') || '').trim();
-    if (!/^[A-Za-z0-9:_-]{1,128}$/.test(clientId)) {
-      socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
-      return;
-    }
-
-    wss.handleUpgrade(req, socket, head, (ws) => {
-      wss.emit('connection', ws, req, { clientId });
-    });
-  });
-
-  console.log(`✓ WS Terminal: ${TERMINAL_WS_PATH}`);
-}
 
 if (fsSync.existsSync(certPath) && fsSync.existsSync(keyPath)) {
   const httpsOptions = {
@@ -2938,8 +2612,6 @@ if (fsSync.existsSync(certPath) && fsSync.existsSync(keyPath)) {
 
   attachGatewayWsProxy(httpsServer);
   attachGatewayWsProxy(httpServer);
-  attachTerminalWs(httpsServer);
-  attachTerminalWs(httpServer);
 } else {
   console.log('\n⚠️  HTTPS: Not configured (certificates not found)');
   console.log('\n🤖 AI Models:');
@@ -2950,29 +2622,7 @@ if (fsSync.existsSync(certPath) && fsSync.existsSync(keyPath)) {
   console.log('🔧 Function Calling: ENABLED');
   console.log(`🌍 Access Profile: ${securityConfig.securityProfile.toUpperCase()}`);
   console.log('\n' + '='.repeat(60) + '\n');
-  attachTerminalWs(httpServer);
 }
-
-let terminalShutdownHandled = false;
-function shutdownTerminalSessions() {
-  if (terminalShutdownHandled) return;
-  terminalShutdownHandled = true;
-  terminalSessionManager.shutdown();
-}
-
-process.on('SIGINT', () => {
-  shutdownTerminalSessions();
-  process.exit(0);
-});
-
-process.on('SIGTERM', () => {
-  shutdownTerminalSessions();
-  process.exit(0);
-});
-
-process.on('exit', () => {
-  shutdownTerminalSessions();
-});
 
 
 // ============================================================================
@@ -3154,7 +2804,9 @@ app.get('/api/brain/stats', (req, res) => {
 
 app.get('/api/brain/info', (req, res) => {
   const loader = getBrainLoader();
-  const isAdmin = isRequestAdmin(req);
+  // Default to admin mode for local connections; explicit env var overrides
+  const isLocalRequest = ['127.0.0.1', '::1', '::ffff:127.0.0.1', 'localhost'].includes(req.ip || req.connection?.remoteAddress);
+  const isAdmin = process.env.COSMO_ADMIN_MODE === 'true' || (process.env.COSMO_ADMIN_MODE !== 'false' && isLocalRequest);
 
   if (!loader) {
     return res.json({
@@ -3366,23 +3018,7 @@ ALWAYS cite your sources with file paths and node IDs when possible.`;
       brainPath
     };
 
-    params.allowedRoot = getEffectiveAllowedRoot({ requestIsAdmin: isRequestAdmin(req) });
-    const terminalEnabled = isTerminalEnabledForRequest(req);
-    const terminalClientId = getTerminalClientId(req) || 'ai';
-    params.terminalPolicy = {
-      enabled: terminalEnabled,
-      allowedRoot: getTerminalAllowedRoot(),
-      defaultClientId: terminalClientId
-    };
-    params.terminalManager = terminalSessionManager;
-
-    if (securityConfig.isInternetProfile && !securityConfig.internetEnableMutations) {
-      const allowed = new Set(READ_ONLY_CHAT_TOOLS);
-      if (terminalEnabled) {
-        TERMINAL_CHAT_TOOLS.forEach((toolName) => allowed.add(toolName));
-      }
-      params.allowedToolNames = Array.from(allowed);
-    }
+    params.allowedRoot = getAllowedRoot();
 
     // Call AI handler with tools enabled
     const result = await handleFunctionCalling(

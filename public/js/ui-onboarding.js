@@ -22,7 +22,7 @@
         <p>Choose a folder to work in and optionally connect a brain. This stays non-blocking so you can keep navigating while setting context.</p>
         <div class="onboarding-actions">
           <button class="onboarding-action primary" data-action="showFolderBrowser()">Choose Folder</button>
-          <button class="onboarding-action" data-action="toggleBrainPicker()">Load Brain</button>
+          <button class="onboarding-action" data-action="toggleBrainPicker()">Connect Brain</button>
           <button class="onboarding-action" data-action="showRecentFiles()">Open Recent</button>
         </div>
       </div>

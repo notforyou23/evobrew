@@ -25,21 +25,27 @@ Think of it as a workspace where you and AI build together — with memory, tool
 ## Quick Start
 
 ```bash
-# Install globally
-npm install -g evobrew
+# Clone
+git clone https://github.com/notforyou23/evobrew.git
+cd evobrew
 
-# Run setup wizard
-evobrew setup
+# Install
+npm install
 
-# Start server
-evobrew start
+# Configure
+cp .env.example .env
+# Edit .env with your API keys
+
+# Initialize database
+npm run db:migrate
+
+# Start
+npm start
 ```
 
 Open http://localhost:3405 (or https://localhost:3406 for HTTPS)
 
-**For contributors:** See [INSTALL.md](./INSTALL.md) for development setup.
-
-Full documentation: [docs/CLI.md](./docs/CLI.md)
+Full installation guide: [INSTALL.md](./INSTALL.md)
 
 ---
 
@@ -54,12 +60,6 @@ Full documentation: [docs/CLI.md](./docs/CLI.md)
 - AI can read, edit, and search your codebase
 - Real-time streaming responses
 - Tool execution with diff preview
-- Shared PTY terminal tools (`terminal_*`, `run_terminal` compatibility wrapper)
-
-### 💻 **Real Terminal Dock**
-- True PTY-backed terminal sessions (not one-shot command exec)
-- Multi-session tabs with reconnect/resume after refresh
-- AI and user can target the same terminal client/session model
 
 ### 📁 **Office File Support**
 - Read Word (.docx), Excel (.xlsx), Outlook (.msg)
@@ -103,24 +103,6 @@ Full documentation: [docs/CLI.md](./docs/CLI.md)
 
 ---
 
-## 🧠 Sample Brains
-
-Evobrew works with `.brain` knowledge graphs. Want some to explore?
-
-Check out **[COSMO BrainStudio](https://github.com/notforyou23/COSMO_BrainStudio)** for pre-built research artifacts:
-
-| Domain | Description |
-|--------|-------------|
-| 🎨 Art & Music | 5,000+ nodes on aesthetics & musicology |
-| 📐 Mathematics | Algebra to probability modeling |
-| ⚛️ Physics | Quantum dynamics, unified field theory |
-| 🧠 Psychology | Behavioral synthesis & cognitive frameworks |
-| 🚗 Big Auto | Future of global mobility |
-
-Clone the repo, grab the brains from `brains/`, and load them in Evobrew.
-
----
-
 ## Documentation
 
 - [Installation Guide](./INSTALL.md)
@@ -151,15 +133,6 @@ HTTPS_PORT=3406
 OPENCLAW_GATEWAY_URL=ws://localhost:18789
 OPENCLAW_GATEWAY_TOKEN=your_token
 OPENCLAW_GATEWAY_PASSWORD=your_password
-
-# Terminal feature flags
-TERMINAL_ENABLED=true
-TERMINAL_MAX_SESSIONS_PER_CLIENT=6
-TERMINAL_IDLE_TIMEOUT_MS=1800000
-TERMINAL_MAX_BUFFER_BYTES=2097152
-
-# Internet profile only (default-off terminal in internet mode)
-INTERNET_ENABLE_TERMINAL=false
 ```
 
 ---

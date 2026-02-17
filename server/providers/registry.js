@@ -51,17 +51,23 @@ class ProviderRegistry {
       adapter.getAvailableModels = () => ['grok-code-fast-1', 'grok-2', 'grok-beta'];
       return adapter;
     });
-    // OpenAI Codex via ChatGPT OAuth - uses OpenAI adapter with Codex endpoint
-    this.adapterFactories.set('openai-codex', (config) => {
+    
+    // LMStudio uses OpenAI adapter with local URL and custom ID
+    this.adapterFactories.set('lmstudio', (config) => {
       const adapter = new OpenAIAdapter({
-        ...config,
-        baseUrl: config.baseUrl || 'https://chatgpt.com/backend-api'
+        apiKey: 'not-needed',  // LMStudio doesn't require API key
+        baseUrl: config.baseUrl || 'http://localhost:1234/v1'
       });
       // Override ID for routing
-      Object.defineProperty(adapter, 'id', { value: 'openai-codex', writable: false });
-      Object.defineProperty(adapter, 'name', { value: 'OpenAI Codex (OAuth)', writable: false });
-      // Override available models for Codex
-      adapter.getAvailableModels = () => ['gpt-5.2', 'gpt-5.3-codex', 'gpt-5.3-codex-spark'];
+      Object.defineProperty(adapter, 'id', { value: 'lmstudio', writable: false });
+      Object.defineProperty(adapter, 'name', { value: 'LMStudio', writable: false });
+      // Set reduced parallelism for local models
+      const originalCaps = adapter.capabilities;
+      Object.defineProperty(adapter, 'capabilities', {
+        get: () => ({ ...originalCaps, reducedParallelism: true })
+      });
+      // Dynamic model discovery - models loaded in LMStudio
+      adapter.getAvailableModels = () => [];  // Will be populated by listModels()
       return adapter;
     });
   }

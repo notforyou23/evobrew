@@ -24,8 +24,23 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const https = require('https');
-const { PrismaClient } = require('@prisma/client');
 const { encryptApiKey, decryptApiKey } = require('./encryption');
+
+// Ensure DATABASE_URL is set before Prisma import
+// This supports both global config (~/.evobrew/database.db) and local (.env)
+if (!process.env.DATABASE_URL) {
+  // Check for global config first
+  const globalConfigPath = path.join(os.homedir(), '.evobrew', 'config.json');
+  if (fs.existsSync(globalConfigPath)) {
+    const globalDbPath = path.join(os.homedir(), '.evobrew', 'database.db');
+    process.env.DATABASE_URL = `file:${globalDbPath}`;
+  } else {
+    // Fall back to project-local database
+    process.env.DATABASE_URL = 'file:./prisma/studio.db';
+  }
+}
+
+const { PrismaClient } = require('@prisma/client');
 
 // Lazy-load Prisma client
 let prisma = null;
@@ -107,6 +122,7 @@ function getAuthorizationUrl() {
   const { verifier, challenge } = generatePKCE();
 
   const authParams = new URLSearchParams({
+    code: 'true',
     client_id: OAUTH_CLIENT_ID,
     response_type: 'code',
     redirect_uri: OAUTH_REDIRECT_URI,

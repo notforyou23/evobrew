@@ -1,12 +1,12 @@
-# Evobrew - Raspberry Pi Deployment
+# COSMO IDE - Raspberry Pi Deployment
 
 ## Overview
 
-Evobrew runs on Raspberry Pi with **cloud providers only**. Local AI models (Ollama) are automatically disabled because Pi hardware cannot run them effectively.
+COSMO IDE runs on Raspberry Pi with **cloud providers only**. Local AI models (Ollama) are automatically disabled because Pi hardware cannot run them effectively.
 
 ## Automatic Platform Detection
 
-Evobrew automatically detects when running on Raspberry Pi and:
+COSMO IDE automatically detects when running on Raspberry Pi and:
 - **Skips Ollama detection** (saves startup time)
 - **Disables local model options** in the UI
 - **Uses cloud-only model assignments**

@@ -41,20 +41,12 @@
     display: none;
   }
 
-  body.ui-refresh-enabled #brainStudioTitle {
-    min-width: 0;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
   body.ui-refresh-enabled .header-actions {
     max-width: min(58vw, 420px);
   }
 
   body.ui-refresh-enabled .sidebar-header .sidebar-actions {
-    max-width: 100%;
+    max-width: 160px;
   }
 
   body.ui-refresh-enabled .tablet-panel-bar {
@@ -121,33 +113,5 @@
     padding: 0 12px;
     min-width: 84px;
     justify-content: center;
-  }
-}
-
-@media (max-width: 480px) {
-  body.ui-refresh-enabled .ide-header {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      "title"
-      "actions"
-      "nav";
-    row-gap: 4px;
-  }
-
-  body.ui-refresh-enabled .ide-title {
-    min-width: 0;
-    width: 100%;
-  }
-
-  body.ui-refresh-enabled #brainStudioTitle {
-    font-size: 13px;
-  }
-
-  body.ui-refresh-enabled .header-actions {
-    justify-self: stretch;
-    justify-content: flex-start;
-    max-width: 100%;
-    width: 100%;
-    padding-bottom: 0;
   }
 }

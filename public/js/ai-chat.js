@@ -129,7 +129,7 @@ async function sendMessage() {
     // Get current context
     const fileInfo = getCurrentFile();
     const selectedText = getSelectedText();
-    const model = document.getElementById('ai-model-select').value;
+    const model = document.getElementById('model-select').value;
     
     // Add user message to chat
     addChatMessage('user', message);
@@ -450,13 +450,7 @@ function getToolIcon(toolName) {
         'create_file': '📝',
         'create_docx': '📄',
         'create_xlsx': '📊',
-        'run_terminal': '💻',
-        'terminal_open': '💻',
-        'terminal_write': '💻',
-        'terminal_wait': '💻',
-        'terminal_resize': '💻',
-        'terminal_close': '💻',
-        'terminal_list': '💻',
+        'run_terminal': '⚡',
         'delete_file': '🗑️'
     };
     return icons[toolName] || '🔧';

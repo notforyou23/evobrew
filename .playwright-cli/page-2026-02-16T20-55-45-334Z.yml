@@ -1,0 +1,180 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - img [ref=e5]
+        - generic [ref=e9]: Brain Studio (IDE Mode)
+      - button "🧠 Connect or switch brain" [ref=e250] [cursor=pointer]
+      - navigation [ref=e13]:
+        - 'button "Docs Documentation: View the platform README and guide." [ref=e14] [cursor=pointer]':
+          - img [ref=e15]
+          - text: "Docs Documentation: View the platform README and guide."
+        - 'button "Research Research Mode: Deep dive into memory, find evidence, and synthesize knowledge." [ref=e18] [cursor=pointer]':
+          - img [ref=e19]
+          - text: "Research Research Mode: Deep dive into memory, find evidence, and synthesize knowledge."
+        - 'button "Agent IDE Agent IDE: Operation mode. Create files, write code, and execute tasks." [ref=e22] [cursor=pointer]':
+          - img [ref=e23]
+          - text: "Agent IDE Agent IDE: Operation mode. Create files, write code, and execute tasks."
+        - 'button "Explore Explore Mode: Visualize and navigate the knowledge graph." [ref=e26] [cursor=pointer]':
+          - img [ref=e27]
+          - text: "Explore Explore Mode: Visualize and navigate the knowledge graph."
+        - 'button "🐾 OpenClaw OpenClaw: AI agent with memory and tools" [ref=e30] [cursor=pointer]':
+          - generic [ref=e31]: 🐾
+          - generic [ref=e32]: OpenClaw
+          - text: "OpenClaw: AI agent with memory and tools"
+      - generic [ref=e33]:
+        - generic [ref=e34]: New File (Cmd+N) New Folder New CSV Table Download File Upload Replacement (Re-upload edited file) Edit in OnlyOffice (Full WYSIWYG)
+        - generic [ref=e50]:
+          - text: Search (Cmd+F) Toggle Preview File History
+          - button "AI AI Assistant (Cmd+K A)" [ref=e60] [cursor=pointer]:
+            - img [ref=e61]
+            - text: AI AI Assistant (Cmd+K A)
+        - generic [ref=e63]:
+          - button "Save Save (Cmd+S)" [disabled] [ref=e64]:
+            - img [ref=e65]
+            - text: Save Save (Cmd+S)
+          - text: Save All (Cmd+Shift+S)
+        - generic [ref=e70]:
+          - button "Settings" [ref=e71] [cursor=pointer]:
+            - img [ref=e72]
+            - text: Settings
+          - text: Keyboard Shortcuts (?)
+    - generic [ref=e81]:
+      - generic [ref=e82]:
+        - generic [ref=e84]:
+          - generic [ref=e85]: FILES
+          - generic [ref=e86]:
+            - button "🏠 Home" [ref=e87] [cursor=pointer]
+            - button "⬆️ Go Up" [ref=e88] [cursor=pointer]
+            - text: Switch to Brain Folder
+            - button "🔄 Refresh File Tree" [ref=e89] [cursor=pointer]
+            - button "⏱️ Auto Refresh" [ref=e90] [cursor=pointer]
+            - button "⏴ Hide Sidebar" [ref=e91] [cursor=pointer]
+        - generic "/Users (Click to change folder)" [ref=e247] [cursor=pointer]: /Users
+      - generic [ref=e96]:
+        - code [ref=e100]:
+          - generic [ref=e101]:
+            - generic [ref=e270]: "1"
+            - textbox "Editor content;Press Alt+F1 for Accessibility Options." [ref=e104]
+        - generic [ref=e108]:
+          - generic [ref=e110]:
+            - generic [ref=e112]: AI Assistant
+            - generic [ref=e113]:
+              - generic "Enable brain context injection" [ref=e114] [cursor=pointer]:
+                - generic [ref=e115]: Brain
+              - generic "🧬 PGS (Full Graph) - Partitioned Graph Synthesis for comprehensive brain analysis" [ref=e116] [cursor=pointer]:
+                - generic [ref=e117]: PGS
+              - button "H" [ref=e118]
+              - button "+" [ref=e119]
+              - button "x" [ref=e120]
+          - generic [ref=e121]:
+            - generic [ref=e122]: MODEL
+            - combobox [ref=e123] [cursor=pointer]:
+              - option "Claude Opus 4 6 (Anthropic)" [selected]
+              - option "Claude Opus 4 5 (Anthropic)"
+              - option "Claude Sonnet 4 5 (Anthropic)"
+              - option "Claude Sonnet 5 (Anthropic)"
+              - option "Grok Code Fast 1 (xAI (Grok))"
+              - option "Grok 2 (xAI (Grok))"
+              - option "Grok Beta (xAI (Grok))"
+              - option "gemma3:12b (Ollama)"
+              - option "qwen2.5-coder:7b (Ollama)"
+              - option "nomic-embed-text:latest (Ollama)"
+              - option "COZ — Agent with Memory"
+            - generic "3 AI providers connected" [ref=e246]: 3 providers
+          - generic [ref=e125]:
+            - generic [ref=e126]: CONVERSATIONS
+            - button "Clear All" [ref=e127] [cursor=pointer]
+          - generic [ref=e129]:
+            - img [ref=e130]
+            - generic [ref=e132]: Ask me anything about your brain or documents.
+          - generic [ref=e134]:
+            - textbox "Message AI Assistant..." [ref=e135]
+            - generic [ref=e136]:
+              - generic [ref=e137]: Enter to send, Shift+Enter for new line
+              - button "Send" [ref=e139] [cursor=pointer]
+          - generic [ref=e140]:
+            - generic [ref=e141]:
+              - generic [ref=e142]: "0"
+              - generic [ref=e143]: / 200K tokens
+            - button "Summarize" [ref=e145] [cursor=pointer]
+    - generic [ref=e251]:
+      - button "Files" [ref=e252] [cursor=pointer]:
+        - img [ref=e253]
+        - text: Files
+      - button "Editor" [ref=e255] [cursor=pointer]:
+        - img [ref=e256]
+        - text: Editor
+      - button "Chat" [ref=e259] [cursor=pointer]:
+        - img [ref=e260]
+        - text: Chat
+    - generic [ref=e146]:
+      - generic [ref=e147]:
+        - generic [ref=e148]: No file open
+        - generic [ref=e149]: Ln 1, Col 1
+      - generic [ref=e150]:
+        - generic [ref=e151]: Plain Text
+        - generic [ref=e152]: UTF-8
+  - generic [ref=e153]:
+    - generic [ref=e154]:
+      - generic [ref=e155]: ⚙️ Settings
+      - button "×" [ref=e156] [cursor=pointer]
+    - generic [ref=e157]:
+      - generic [ref=e158]:
+        - generic [ref=e159]: Editor
+        - generic [ref=e160]:
+          - generic [ref=e161]: Theme
+          - combobox [ref=e162]:
+            - option "Light (default)" [selected]
+            - option "Dark"
+            - option "High Contrast Dark"
+            - option "High Contrast Light"
+        - generic [ref=e163]:
+          - generic [ref=e164]: Font Size
+          - spinbutton [ref=e165]: "14"
+        - generic [ref=e166]:
+          - generic [ref=e167]: Tab Size
+          - spinbutton [ref=e168]: "2"
+      - generic [ref=e169]:
+        - generic [ref=e170]: View
+        - generic [ref=e172] [cursor=pointer]:
+          - checkbox "Show Minimap" [checked] [ref=e173]
+          - generic [ref=e174]: Show Minimap
+        - generic [ref=e176] [cursor=pointer]:
+          - checkbox "Show Line Numbers" [checked] [ref=e177]
+          - generic [ref=e178]: Show Line Numbers
+        - generic [ref=e180] [cursor=pointer]:
+          - checkbox "Word Wrap" [checked] [ref=e181]
+          - generic [ref=e182]: Word Wrap
+      - generic [ref=e183]:
+        - generic [ref=e184]: Auto-Save
+        - generic [ref=e185]:
+          - generic [ref=e186]: Auto-Save Mode
+          - combobox [ref=e187]:
+            - option "Off" [selected]
+            - option "After Delay"
+            - option "On Focus Change"
+        - generic [ref=e188]:
+          - generic [ref=e189]: Auto-Save Delay (ms)
+          - spinbutton [ref=e190]: "1000"
+      - button "Reset to Defaults" [ref=e192] [cursor=pointer]
+  - generic [ref=e217]:
+    - generic [ref=e218]:
+      - heading "AI Edits (0)" [level=3] [ref=e219]
+      - button "×" [ref=e220] [cursor=pointer]
+    - generic [ref=e221]:
+      - button "✓ Accept All" [ref=e222] [cursor=pointer]
+      - button "✗ Reject All" [ref=e223] [cursor=pointer]
+      - button "Clear" [ref=e224] [cursor=pointer]
+    - generic [ref=e226]: No pending edits
+  - generic [ref=e227]:
+    - generic [ref=e228]:
+      - 'heading "⏪ File History: -" [level=3] [ref=e229]'
+      - button "×" [ref=e230] [cursor=pointer]
+    - generic [ref=e231]:
+      - generic [ref=e232]: Auto-snapshots created before AI edits
+      - button "🗑️ Clear All History" [ref=e233] [cursor=pointer]
+    - generic [ref=e235]: No snapshots yet
+  - generic [ref=e236]:
+    - alert
+    - alert

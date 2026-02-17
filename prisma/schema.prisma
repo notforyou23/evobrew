@@ -4,7 +4,9 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = "file:./studio.db"
+  // Default to local ./studio.db, but can be overridden by DATABASE_URL env var
+  // For global install: DATABASE_URL="file:~/.evobrew/database.db"
+  url      = env("DATABASE_URL")
 }
 
 // System-wide configuration storage (OAuth tokens, feature flags, etc.)

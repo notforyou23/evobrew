@@ -17,11 +17,6 @@ body.ui-refresh-enabled .brain-toggle {
   padding: 0 var(--ui-space-2);
 }
 
-body.ui-refresh-enabled .brain-toggle.disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
 body.ui-refresh-enabled .status-bar {
   font-size: 12px;
 }
