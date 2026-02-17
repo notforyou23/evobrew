@@ -450,7 +450,13 @@ function getToolIcon(toolName) {
         'create_file': '📝',
         'create_docx': '📄',
         'create_xlsx': '📊',
-        'run_terminal': '⚡',
+        'run_terminal': '💻',
+        'terminal_open': '💻',
+        'terminal_write': '💻',
+        'terminal_wait': '💻',
+        'terminal_resize': '💻',
+        'terminal_close': '💻',
+        'terminal_list': '💻',
         'delete_file': '🗑️'
     };
     return icons[toolName] || '🔧';

@@ -765,6 +765,163 @@
             display: none;
         }
 
+        /* Terminal Dock */
+        .terminal-dock {
+            height: 280px;
+            min-height: 140px;
+            max-height: 70vh;
+            background: #0b0f17;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+            flex: 0 0 auto;
+        }
+
+        .terminal-dock.hidden {
+            display: none;
+        }
+
+        .terminal-resize-handle {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 8px;
+            cursor: row-resize;
+            z-index: 10;
+            background: transparent;
+        }
+
+        .terminal-resize-handle::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 2px;
+            transform: translateX(-50%);
+            width: 40px;
+            height: 2px;
+            border-radius: 2px;
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .terminal-header {
+            height: 34px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            background: #101827;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 10px;
+            gap: 8px;
+            color: #d3dbe8;
+            user-select: none;
+        }
+
+        .terminal-tabs {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
+            overflow-x: auto;
+            scrollbar-width: thin;
+        }
+
+        .terminal-tab {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border: 1px solid transparent;
+            border-radius: 6px;
+            color: #b8c4d9;
+            font-size: 11px;
+            cursor: pointer;
+            white-space: nowrap;
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .terminal-tab.active {
+            color: #ffffff;
+            border-color: rgba(45, 212, 191, 0.6);
+            background: rgba(45, 212, 191, 0.12);
+        }
+
+        .terminal-tab .state-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #34d399;
+            display: inline-block;
+        }
+
+        .terminal-tab.exited .state-dot {
+            background: #f59e0b;
+        }
+
+        .terminal-tab.disconnected .state-dot {
+            background: #ef4444;
+        }
+
+        .terminal-actions {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            flex: 0 0 auto;
+        }
+
+        .terminal-actions button {
+            height: 24px;
+            min-width: 24px;
+            padding: 0 8px;
+            border-radius: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.06);
+            color: #dbe7ff;
+            font-size: 11px;
+            cursor: pointer;
+        }
+
+        .terminal-actions button:hover {
+            background: rgba(255, 255, 255, 0.14);
+        }
+
+        .terminal-body {
+            flex: 1;
+            min-height: 0;
+            position: relative;
+            background: #0b0f17;
+        }
+
+        .terminal-empty {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #7f8ba1;
+            font-size: 12px;
+        }
+
+        .terminal-view {
+            width: 100%;
+            height: 100%;
+            padding: 8px;
+            overflow: hidden;
+            display: none;
+        }
+
+        .terminal-view.active {
+            display: block;
+        }
+
+        @media (max-width: 900px) {
+            .terminal-dock {
+                display: none !important;
+            }
+        }
+
         .ai-header {
             height: 40px;
             background: var(--bg-tertiary);
@@ -3947,6 +4104,7 @@
     <link rel="stylesheet" href="css/ui-shell.css">
     <link rel="stylesheet" href="css/ui-components.css">
     <link rel="stylesheet" href="css/ui-responsive.css">
+    <link rel="stylesheet" href="/vendor/xterm/css/xterm.css">
 </head>
 <body>
     <script>
@@ -3983,12 +4141,12 @@
             </div>
 
             <!-- Brain Picker Button -->
-            <button id="brainPickerBtn" data-action="toggleBrainPicker()" style="margin-left: 12px; padding: 4px 10px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-secondary); cursor: pointer; font-size: 11px; display: flex; align-items: center; gap: 5px; white-space: nowrap;" data-tooltip="Connect or switch brain">
+            <button id="brainPickerBtn" data-action="toggleBrainPicker()" style="margin-left: 12px; padding: 4px 10px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-secondary); cursor: pointer; font-size: 11px; display: flex; align-items: center; gap: 5px; white-space: nowrap;" data-tooltip="Load or switch brain memory for this workspace" aria-label="Load or switch brain">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
                     <path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7z"/>
                     <path d="M9 21h6"/>
                 </svg>
-                <span id="brainPickerLabel">No Brain</span>
+                <span id="brainPickerLabel">Load Brain</span>
             </button>
 
             <!-- BRAIN STUDIO TABS (Main App Modes) -->
@@ -4074,6 +4232,10 @@
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/><circle cx="5" cy="12" r="1.5"/></svg>
                         </button>
                         <div class="header-overflow-menu" id="header-overflow-menu" role="menu" aria-label="More actions">
+                            <button class="overflow-item" data-action="showFolderBrowser()" role="menuitem">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v2H3z"/><path d="M3 10h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                                Choose Folder
+                            </button>
                             <button class="overflow-item" data-action="createNewFile()" role="menuitem">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M14 2v6h6"/><path d="M12 12v6"/><path d="M9 15h6"/></svg>
                                 New File
@@ -4166,13 +4328,16 @@
                 <div class="sidebar-header">
                     <span>FILES</span>
                     <div class="sidebar-actions" style="display: flex; gap: 4px;">
-                        <button class="btn btn-icon" id="go-home-btn" data-action="goToHomeFolder()" data-tooltip="Home" style="background: none; padding: 4px 8px; font-size: 14px;" title="Go to outputs folder">
+                        <button class="btn btn-icon" id="choose-folder-btn" data-action="showFolderBrowser()" data-tooltip="Choose Folder" style="background: none; padding: 4px 8px; font-size: 14px;" title="Open folder picker">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v2H3z"/><path d="M3 10h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                        </button>
+                        <button class="btn btn-icon" id="go-home-btn" data-action="goToHomeFolder()" data-tooltip="Working Folder" style="background: none; padding: 4px 8px; font-size: 14px;" title="Go to working folder">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/></svg>
                         </button>
                         <button class="btn btn-icon" id="go-up-btn" data-action="goUpDirectory()" data-tooltip="Go Up" style="background: none; padding: 4px 8px; font-size: 14px;" title="Go to parent folder">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"/><path d="m6 11 6-6 6 6"/></svg>
                         </button>
-                        <button class="btn btn-icon" id="brain-folder-btn" data-action="toggleBrainFolder()" data-tooltip="Switch to Brain Folder" style="background: none; padding: 4px 8px; font-size: 14px; display: none;" title="Switch between working folder and brain folder">
+                        <button class="btn btn-icon" id="brain-folder-btn" data-action="toggleBrainFolder()" data-tooltip="Brain Folder" style="background: none; padding: 4px 8px; font-size: 14px; display: none;" title="Open connected brain folder">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7z"/><path d="M9 21h6"/></svg>
                         </button>
                         <button class="btn btn-icon" data-action="refreshFileTree()" data-tooltip="Refresh File Tree" style="background: none; padding: 4px 8px; font-size: 14px;" title="Refresh file tree">
@@ -4235,13 +4400,13 @@
                                     <span>AI Assistant</span>
                                 </div>
                                 <div style="display: flex; gap: 8px; align-items: center;">
-                                    <label class="brain-toggle" title="Enable brain context injection">
+                                    <label class="brain-toggle" id="brainContextToggleLabel" title="Use loaded brain context in this AI chat. This does not load or switch brains.">
                                         <input type="checkbox" id="brainEnabled" checked>
-                                        <span class="brain-toggle-label">Brain</span>
+                                        <span class="brain-toggle-label">Use Brain</span>
                                     </label>
-                                    <label class="brain-toggle" title="🧬 PGS (Full Graph) - Partitioned Graph Synthesis for comprehensive brain analysis">
+                                    <label class="brain-toggle" id="pgsToggleLabel" title="Use PGS retrieval strategy for this chat when Brain context is enabled (slower, deeper).">
                                         <input type="checkbox" id="query-pgs" onchange="togglePGSControls()">
-                                        <span class="brain-toggle-label">PGS</span>
+                                        <span class="brain-toggle-label">Use PGS</span>
                                     </label>
                                     <div id="pgs-controls" style="display:none; align-items:center; gap:6px;">
                                         <select id="query-pgs-mode" style="background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 2px 6px; font-size: 10px;">
@@ -4255,6 +4420,9 @@
                                     <button class="btn-icon" data-action="startNewChat()" title="New Chat">+</button>
                                     <button class="btn-icon" data-action="toggleAI()" title="Close">x</button>
                                 </div>
+                            </div>
+                            <div id="ai-context-hint" style="padding: 6px 12px; border-bottom: 1px solid var(--border-color); background: var(--bg-secondary); font-size: 10px; color: var(--text-secondary);">
+                                Load/Switch brain from the top <strong>Load Brain</strong> button. Toggles here only affect this chat request.
                             </div>
                             
                             <!-- Model Selector (Inline Style) -->
@@ -4317,6 +4485,23 @@
                                 </button>
                             </div>
                         </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="terminal-dock hidden" id="terminal-dock">
+            <div class="terminal-resize-handle" id="terminal-resize-handle"></div>
+            <div class="terminal-header">
+                <div class="terminal-tabs" id="terminal-tabs"></div>
+                <div class="terminal-actions">
+                    <button id="terminal-new-btn" title="New Terminal">+</button>
+                    <button id="terminal-kill-btn" title="Kill Active Terminal">Kill</button>
+                    <button id="terminal-toggle-btn" title="Hide Terminal">Hide</button>
+                </div>
+            </div>
+            <div class="terminal-body" id="terminal-body">
+                <div class="terminal-empty" id="terminal-empty">
+                    No terminal session. Create one with + or Cmd+Shift+`
                 </div>
             </div>
         </div>
@@ -4564,7 +4749,7 @@
             <div style="padding: 12px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color);">
                 <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
                     <button onclick="navigateUp()" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;">Up</button>
-                    <button onclick="navigateToHome()" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;">Home</button>
+                    <button onclick="navigateToHome()" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;" title="Jump to working folder start">Working</button>
                     <div style="flex: 1; padding: 6px 12px; background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; font-size: 12px; font-family: monospace; overflow-x: auto; white-space: nowrap;" id="current-path-display">
                         /Users
                     </div>
@@ -6160,7 +6345,6 @@
                 const sidebarPath = document.getElementById('sidebar-path');
                 if (sidebarPath) {
                     sidebarPath.textContent = folderPath;
-                    sidebarPath.title = `${folderPath}\n(Click to change folder)`;
                 }
 
                 // Update go-up button state
@@ -6168,6 +6352,10 @@
                 if (goUpBtn) {
                     goUpBtn.style.opacity = folderPath === '/' ? '0.3' : '1';
                     goUpBtn.style.pointerEvents = folderPath === '/' ? 'none' : 'auto';
+                }
+
+                if (typeof refreshFolderContextButtons === 'function') {
+                    refreshFolderContextButtons();
                 }
 
                 const data = await FileAPI.listFiles();
@@ -8051,29 +8239,10 @@ ${result.content}`;
         }
 
         async function goUpDirectory() {
-            const brainRoot = window.currentBrainInfo?.brainPath;
-            const isAdmin = window.currentBrainInfo?.isAdmin;
-
             // Stop at root
             if (!folderPath || folderPath === '/') {
                 showToast('Already at root', 'info');
                 return;
-            }
-
-            // Admin mode bypasses brain folder restrictions
-            if (!isAdmin) {
-                if (brainRoot && folderPath === brainRoot) {
-                    showToast('Already at brain folder', 'info');
-                    return;
-                }
-
-                const parentPath = folderPath.split('/').slice(0, -1).join('/') || '/';
-
-                // Don't allow going above brain folder
-                if (brainRoot && !parentPath.startsWith(brainRoot)) {
-                    showToast('Cannot navigate outside brain folder', 'info');
-                    return;
-                }
             }
 
             const parentPath = folderPath.split('/').slice(0, -1).join('/') || '/';
@@ -8081,12 +8250,14 @@ ${result.content}`;
         }
 
         async function goToHomeFolder() {
-            // Use the brain's outputs folder if available
-            const homePath = window.currentBrainInfo?.outputsPath;
+            // Home means user's working folder, not brain outputs.
+            const homePath = workingDirectory;
             if (homePath) {
-                await selectAndLoadFolder(homePath);
+                await selectAndLoadFolder(homePath, { setAsWorkingDirectory: false, forceBrainView: false, toast: false });
+                showToast('Back to working folder', 'success');
             } else {
-                showToast('No home folder set', 'info');
+                showToast('No working folder set yet. Choose a folder first.', 'info');
+                await showFolderBrowser(isWindows ? 'C:\\Users' : '/Users');
             }
         }
 
@@ -8814,10 +8985,43 @@ ${result.content}`;
             addChatMessage('system', 'Request stopped by user');
         }
         
+        function syncBrainContextControls() {
+            const brainToggle = document.getElementById('brainEnabled');
+            const pgsToggle = document.getElementById('query-pgs');
+            const pgsControls = document.getElementById('pgs-controls');
+            const brainLabel = document.getElementById('brainContextToggleLabel');
+            const pgsLabel = document.getElementById('pgsToggleLabel');
+
+            if (!brainToggle || !pgsToggle) return;
+
+            const canUseBrainContext = !brainToggle.disabled && brainToggle.checked;
+
+            if (brainLabel) {
+                brainLabel.classList.toggle('disabled', brainToggle.disabled);
+            }
+
+            pgsToggle.disabled = !canUseBrainContext;
+            if (!canUseBrainContext) {
+                pgsToggle.checked = false;
+            }
+
+            if (pgsLabel) {
+                pgsLabel.classList.toggle('disabled', !canUseBrainContext);
+                pgsLabel.setAttribute(
+                    'title',
+                    canUseBrainContext
+                        ? 'Use PGS retrieval strategy for this chat when brain context is enabled (slower, deeper).'
+                        : 'Enable "Use Brain" first to enable PGS retrieval.'
+                );
+            }
+
+            if (pgsControls) {
+                pgsControls.style.display = canUseBrainContext && pgsToggle.checked ? 'flex' : 'none';
+            }
+        }
+
         function togglePGSControls() {
-            const enabled = document.getElementById('query-pgs')?.checked;
-            const controls = document.getElementById('pgs-controls');
-            if (controls) controls.style.display = enabled ? 'flex' : 'none';
+            syncBrainContextControls();
         }
 
         async function sendAIMessage() {
@@ -8868,6 +9072,9 @@ ${result.content}`;
                 // Get selected model
                 const selectedModel = document.getElementById('ai-model-select')?.value || 'claude-sonnet-4-5';
 
+                const brainContextEnabled = (document.getElementById('brainEnabled')?.checked ?? false) && !(document.getElementById('brainEnabled')?.disabled ?? false);
+                const pgsEnabled = brainContextEnabled && (document.getElementById('query-pgs')?.checked || false) && !(document.getElementById('query-pgs')?.disabled ?? false);
+
                 // Route to OpenClaw Gateway if OpenClaw model selected
                 if (selectedModel.startsWith('openclaw:')) {
                     try {
@@ -8875,8 +9082,9 @@ ${result.content}`;
                             fileName, language, documentContent, selectedText,
                             currentFolder: IDE_MODE === 'filesystem' ? folderPath : (currentBrowsePath || '.'),
                             fileTreeContext,
-                            brainEnabled: document.getElementById('brainEnabled')?.checked ?? false,
+                            brainEnabled: brainContextEnabled,
                             brainPath: window.currentBrainInfo?.brainPath || null,
+                            terminalClientId: window.getTerminalClientId ? window.getTerminalClientId() : '',
                             conversationHistory: aiConversationHistory.slice(-12)
                         });
                     } catch (err) {
@@ -8904,9 +9112,10 @@ ${result.content}`;
                     conversationHistory: aiConversationHistory.slice(-12),
                     conversationSummary: conversationSummary, // Include summary for context
                     stream: true,  // Enable streaming
-                    brainEnabled: document.getElementById('brainEnabled')?.checked ?? false,
+                    brainEnabled: brainContextEnabled,
                     brainPath: window.currentBrainInfo?.brainPath || null,
-                    enablePGS: document.getElementById('query-pgs')?.checked || false,
+                    terminalClientId: window.getTerminalClientId ? window.getTerminalClientId() : '',
+                    enablePGS: pgsEnabled,
                     pgsMode: document.getElementById('query-pgs-mode')?.value || 'full',
                     pgsSessionId: (document.getElementById('query-pgs-session')?.value || '').trim() || 'default',
                     pgsFullSweep: (document.getElementById('query-pgs-mode')?.value || 'full') === 'full'
@@ -9069,7 +9278,7 @@ ${result.content}`;
                                                 event.tool === 'create_file' ? '📝' :
                                                 event.tool === 'create_docx' ? '📄' :
                                                 event.tool === 'create_xlsx' ? '📊' :
-                                                event.tool === 'run_terminal' ? '⚡' :
+                                                (event.tool === 'run_terminal' || event.tool.startsWith('terminal_')) ? '💻' :
                                                 event.tool === 'delete_file' ? '🗑️' : '🔧';
 
                                     let toolsContainer = document.getElementById(toolsContainerId);
@@ -9142,7 +9351,7 @@ ${result.content}`;
                                                 event.tool === 'create_file' ? '📝' :
                                                 event.tool === 'create_docx' ? '📄' :
                                                 event.tool === 'create_xlsx' ? '📊' :
-                                                event.tool === 'run_terminal' ? '⚡' :
+                                                (event.tool === 'run_terminal' || event.tool.startsWith('terminal_')) ? '💻' :
                                                 event.tool === 'delete_file' ? '🗑️' : '🔧';
 
                                     // Get or create tools container (using turn-specific ID)
@@ -9230,7 +9439,7 @@ ${result.content}`;
                                                 event.tool === 'create_file' ? '📝' :
                                                 event.tool === 'create_docx' ? '📄' :
                                                 event.tool === 'create_xlsx' ? '📊' :
-                                                event.tool === 'run_terminal' ? '⚡' :
+                                                (event.tool === 'run_terminal' || event.tool.startsWith('terminal_')) ? '💻' :
                                                 event.tool === 'delete_file' ? '🗑️' : '🔧';
                                     const statusIcon = event.success ? '✓' : '✗';
 
@@ -10913,16 +11122,97 @@ ${html}
         // FOLDER BROWSER
         // ============================================================================
 
-        // Default browse path - limited to brain folder when loaded
+        // Default browse path
         const isWindows = navigator.userAgent.toLowerCase().includes('windows');
         let currentBrowsePath = isWindows ? 'C:\\Users' : '/';
+        const WORKING_FOLDER_STORAGE_KEY = 'evobrew.ui.workingFolder.v2';
+        let workingDirectory = null; // User's chosen working folder (non-brain by default)
+        let viewingBrainFolder = false; // Whether sidebar is currently showing the connected brain folder
 
-        async function showFolderBrowser() {
+        try {
+            const savedWorkingFolder = localStorage.getItem(WORKING_FOLDER_STORAGE_KEY);
+            if (savedWorkingFolder) {
+                workingDirectory = savedWorkingFolder;
+            }
+        } catch (_error) {
+            // Ignore localStorage failures
+        }
+
+        function normalizeFolderPath(path) {
+            if (!path) return '';
+            if (path === '/') return '/';
+            if (/^[A-Za-z]:\\?$/.test(path)) return path.toUpperCase();
+            return path.replace(/[\\/]+$/, '');
+        }
+
+        function pathsEqual(a, b) {
+            return normalizeFolderPath(a) === normalizeFolderPath(b);
+        }
+
+        function getConnectedBrainFolderPath() {
+            return window.brainOutputsPath || window.currentBrainInfo?.outputsPath || null;
+        }
+
+        function persistWorkingDirectory(path) {
+            if (!path) return;
+            workingDirectory = path;
+            try {
+                localStorage.setItem(WORKING_FOLDER_STORAGE_KEY, path);
+            } catch (_error) {
+                // Ignore localStorage failures
+            }
+        }
+
+        function refreshFolderContextButtons() {
+            const brainPath = getConnectedBrainFolderPath();
+            const inBrainFolder = Boolean(brainPath && folderPath && pathsEqual(folderPath, brainPath));
+            viewingBrainFolder = inBrainFolder;
+
+            const brainBtn = document.getElementById('brain-folder-btn');
+            if (brainBtn) {
+                brainBtn.style.display = brainPath ? '' : 'none';
+                if (brainPath) {
+                    if (inBrainFolder) {
+                        brainBtn.style.background = 'rgba(255, 180, 50, 0.22)';
+                        brainBtn.setAttribute('title', 'Return to working folder');
+                        brainBtn.setAttribute('data-tooltip', 'Working Folder');
+                        brainBtn.setAttribute('aria-label', 'Return to working folder');
+                    } else {
+                        brainBtn.style.background = 'none';
+                        brainBtn.setAttribute('title', 'Open connected brain folder');
+                        brainBtn.setAttribute('data-tooltip', 'Brain Folder');
+                        brainBtn.setAttribute('aria-label', 'Open connected brain folder');
+                    }
+                }
+            }
+
+            const homeBtn = document.getElementById('go-home-btn');
+            if (homeBtn) {
+                const hasWorkingFolder = Boolean(workingDirectory);
+                homeBtn.style.opacity = hasWorkingFolder ? '1' : '0.55';
+                homeBtn.setAttribute('title', hasWorkingFolder ? `Go to working folder (${workingDirectory})` : 'Choose a working folder');
+            }
+
+            const sidebarPath = document.getElementById('sidebar-path');
+            if (sidebarPath && folderPath) {
+                const scope = inBrainFolder ? 'Brain folder' : 'Working folder';
+                sidebarPath.title = `${folderPath}\n(${scope} - click to choose folder)`;
+            }
+        }
+
+        function getFolderBrowserStartPath(overridePath) {
+            if (overridePath) return overridePath;
+            const brainPath = getConnectedBrainFolderPath();
+            if (workingDirectory) return workingDirectory;
+            if (folderPath && !(brainPath && pathsEqual(folderPath, brainPath))) return folderPath;
+            if (currentBrowsePath && currentBrowsePath !== '/') return currentBrowsePath;
+            return isWindows ? 'C:\\Users' : '/Users';
+        }
+
+        async function showFolderBrowser(startPathOverride) {
             document.getElementById('folder-browser').classList.remove('hidden');
             document.getElementById('overlay').classList.remove('hidden');
-            // Start browsing at brain folder if available
-            const brainRoot = window.currentBrainInfo?.brainPath;
-            const startPath = brainRoot || currentBrowsePath;
+            const startPath = getFolderBrowserStartPath(startPathOverride);
             await browseFolders(startPath);
         }
         
@@ -10970,24 +11260,9 @@ ${html}
         }
         
         async function navigateUp() {
-            const brainRoot = window.currentBrainInfo?.brainPath;
-            const isAdmin = window.currentBrainInfo?.isAdmin;
-
-            // Admin mode bypasses all path restrictions
-            if (!isAdmin) {
-                // Stop at brain folder boundary
-                if (brainRoot && currentBrowsePath === brainRoot) {
-                    showToast('Already at brain folder', 'info');
-                    return;
-                }
-
-                const parentPath = currentBrowsePath.substring(0, currentBrowsePath.lastIndexOf('/')) || '/';
-
-                // Don't allow going above brain folder
-                if (brainRoot && !parentPath.startsWith(brainRoot)) {
-                    showToast('Cannot navigate outside brain folder', 'info');
-                    return;
-                }
+            if (!currentBrowsePath || currentBrowsePath === '/') {
+                showToast('Already at root', 'info');
+                return;
             }
 
             const parentPath = currentBrowsePath.substring(0, currentBrowsePath.lastIndexOf('/')) || '/';
@@ -10995,8 +11270,7 @@ ${html}
         }
         
         async function navigateToHome() {
-            // Navigate to root URL
-            window.location.href = '/';
+            await browseFolders(getFolderBrowserStartPath());
         }
         
         function selectCurrentFolder() {
@@ -11005,53 +11279,63 @@ ${html}
                 return;
             }
             closeFolderBrowser();
-            selectAndLoadFolder(currentBrowsePath);
+            selectAndLoadFolder(currentBrowsePath, { setAsWorkingDirectory: true, forceBrainView: false });
         }
-        
-        let workingDirectory = null;  // User's chosen working folder
-        let viewingBrainFolder = false;  // Whether we're currently browsing the brain folder
 
-        async function selectAndLoadFolder(path) {
+        async function selectAndLoadFolder(path, options = {}) {
+            if (!path) return;
             folderPath = path;
-            // Track working directory (but not when switching to brain folder)
-            if (!viewingBrainFolder && path !== window.brainOutputsPath) {
-                workingDirectory = path;
+
+            const brainPath = getConnectedBrainFolderPath();
+            const isBrainPath = Boolean(brainPath && pathsEqual(path, brainPath));
+            const shouldSetAsWorking = options.setAsWorkingDirectory === true || (!isBrainPath && options.setAsWorkingDirectory !== false);
+
+            if (shouldSetAsWorking) {
+                persistWorkingDirectory(path);
             }
+
+            if (options.forceBrainView === true) {
+                viewingBrainFolder = true;
+            } else if (options.forceBrainView === false) {
+                viewingBrainFolder = false;
+            } else {
+                viewingBrainFolder = isBrainPath;
+            }
+
             await loadFileTree();
-            showToast(`Loaded: ${path.split('/').pop()}`, 'success');
+            refreshFolderContextButtons();
+
+            if (options.toast !== false) {
+                showToast(`Loaded: ${path.split('/').pop() || path}`, 'success');
+            }
         }
 
         async function toggleBrainFolder() {
-            const brainPath = window.brainOutputsPath;
+            const brainPath = getConnectedBrainFolderPath();
             if (!brainPath) {
                 showToast('No brain connected', 'error');
                 return;
             }
 
-            const btn = document.getElementById('brain-folder-btn');
+            const currentlyInBrainFolder = Boolean(folderPath && pathsEqual(folderPath, brainPath));
 
-            if (viewingBrainFolder) {
-                // Switch back to working directory
-                if (workingDirectory) {
-                    await selectAndLoadFolder(workingDirectory);
-                    viewingBrainFolder = false;
-                    if (btn) {
-                        btn.style.background = 'none';
-                        btn.title = 'Switch to brain folder';
-                    }
+            if (currentlyInBrainFolder) {
+                if (workingDirectory && !pathsEqual(workingDirectory, brainPath)) {
+                    await selectAndLoadFolder(workingDirectory, { setAsWorkingDirectory: false, forceBrainView: false, toast: false });
                     showToast('Back to working folder', 'success');
+                } else {
+                    showToast('No working folder set yet. Choose a folder first.', 'info');
+                    await showFolderBrowser(isWindows ? 'C:\\Users' : '/Users');
                 }
-            } else {
-                // Save current folder as working directory and switch to brain
-                if (!workingDirectory) workingDirectory = folderPath;
-                await selectAndLoadFolder(brainPath);
-                viewingBrainFolder = true;
-                if (btn) {
-                    btn.style.background = 'rgba(255,180,50,0.2)';
-                    btn.title = 'Switch back to working folder';
-                }
-                showToast('Browsing brain folder', 'success');
+                return;
             }
+
+            if (folderPath && !pathsEqual(folderPath, brainPath)) {
+                persistWorkingDirectory(folderPath);
+            }
+
+            await selectAndLoadFolder(brainPath, { setAsWorkingDirectory: false, forceBrainView: true, toast: false });
+            showToast('Browsing connected brain folder', 'success');
         }
         
         function goToManualPath() {
@@ -11059,14 +11343,6 @@ ${html}
             const manualPath = input.value.trim();
             if (!manualPath) {
                 showToast('Please enter a path', 'error');
-                return;
-            }
-
-            // Check if path is within brain folder boundary (unless admin)
-            const brainRoot = window.currentBrainInfo?.brainPath;
-            const isAdmin = window.currentBrainInfo?.isAdmin;
-            if (!isAdmin && brainRoot && !manualPath.startsWith(brainRoot)) {
-                showToast('Path must be within brain folder', 'error');
                 return;
             }
 
@@ -11095,6 +11371,10 @@ ${html}
                 { id: 'export.pdf', label: 'Export Markdown to PDF', action: exportMarkdownToPDF },
                 { id: 'view.toggleSidebar', label: 'Toggle Sidebar', action: toggleSidebar, keys: 'Cmd+B' },
                 { id: 'view.togglePreview', label: 'Toggle Preview (MD/HTML/JSON/CSS/SVG/Images)', action: togglePreview, keys: 'Cmd+K V' },
+                { id: 'terminal.toggle', label: 'Toggle Terminal Dock', action: () => window.toggleTerminalDock && window.toggleTerminalDock(), keys: 'Cmd+J' },
+                { id: 'terminal.new', label: 'New Terminal Session', action: () => window.newTerminalSession && window.newTerminalSession(), keys: 'Cmd+Shift+`' },
+                { id: 'terminal.focus', label: 'Focus Terminal', action: () => window.focusTerminal && window.focusTerminal(), keys: 'Ctrl+`' },
+                { id: 'terminal.kill', label: 'Kill Active Terminal', action: () => window.killActiveTerminal && window.killActiveTerminal() },
                 { id: 'view.settings', label: 'Open Settings', action: toggleSettings, keys: 'Cmd+,' },
                 { id: 'editor.action.formatDocument', label: 'Format Document', action: () => editor && editor.getAction('editor.action.formatDocument').run() },
                 { id: 'editor.find', label: 'Find', action: toggleSearch, keys: 'Cmd+F' },
@@ -12063,6 +12343,19 @@ ${html}
 
             // Set initial tab state
             switchBrainTab('files');
+
+            const brainToggle = document.getElementById('brainEnabled');
+            const pgsToggle = document.getElementById('query-pgs');
+            if (brainToggle && !brainToggle.dataset.boundContextSync) {
+                brainToggle.addEventListener('change', syncBrainContextControls);
+                brainToggle.dataset.boundContextSync = 'true';
+            }
+            if (pgsToggle && !pgsToggle.dataset.boundContextSync) {
+                pgsToggle.addEventListener('change', syncBrainContextControls);
+                pgsToggle.dataset.boundContextSync = 'true';
+            }
+            syncBrainContextControls();
+            refreshFolderContextButtons();
             
             // Hard fail-safe: if any modal/overlay got stuck open from a prior session, close it.
             try { closeAllModals(); } catch (e) {}
@@ -12076,9 +12369,9 @@ ${html}
                     // Update title with brain name
                     const stats = await fetch('/api/brain/stats').then(r => r.json());
                     document.getElementById('brainStudioTitle').textContent = `Brain Studio · ${brainInfo.brainName} · ${stats.nodes} nodes`;
+                    updateBrainLabel(brainInfo.brainName, stats.nodes);
 
                     // Enable brain toggle
-                    const brainToggle = document.getElementById('brainEnabled');
                     if (brainToggle) {
                         brainToggle.disabled = false;
                         brainToggle.checked = true;
@@ -12090,24 +12383,47 @@ ${html}
                     if (brainInfo.outputsPath) {
                         console.log('Brain outputs available at:', brainInfo.outputsPath);
                         window.brainOutputsPath = brainInfo.outputsPath;
-                        // Show the brain folder toggle button
-                        const brainBtn = document.getElementById('brain-folder-btn');
-                        if (brainBtn) brainBtn.style.display = '';
-                        // Only auto-load brain folder if no working directory is set
+                        // Only auto-load brain folder if no folder is currently selected
                         if (!folderPath) {
-                            await selectAndLoadFolder(brainInfo.outputsPath);
+                            await selectAndLoadFolder(brainInfo.outputsPath, {
+                                setAsWorkingDirectory: false,
+                                forceBrainView: true
+                            });
+                        }
+                    } else {
+                        window.brainOutputsPath = null;
+                    }
+
+                    if (folderPath) {
+                        if (!window.brainOutputsPath || !pathsEqual(folderPath, window.brainOutputsPath)) {
+                            persistWorkingDirectory(folderPath);
+                            viewingBrainFolder = false;
+                        } else {
+                            viewingBrainFolder = true;
                         }
                     }
+                    syncBrainContextControls();
+                    refreshFolderContextButtons();
                 } else {
                     document.getElementById('brainStudioTitle').textContent = 'Brain Studio (IDE Mode)';
+                    window.brainOutputsPath = null;
+                    updateBrainLabel(null);
+                    viewingBrainFolder = false;
+                    if (folderPath) {
+                        persistWorkingDirectory(folderPath);
+                    }
 
                     // Disable brain toggle when no brain loaded
-                    const brainToggle = document.getElementById('brainEnabled');
                     if (brainToggle) {
                         brainToggle.disabled = true;
                         brainToggle.checked = false;
                         console.log('⚠️ No brain loaded - brain toggle disabled');
                     }
+                    if (pgsToggle) {
+                        pgsToggle.checked = false;
+                    }
+                    syncBrainContextControls();
+                    refreshFolderContextButtons();
 
                     // Keep startup non-blocking. Show guided empty-state instead of forcing a modal.
                     setTimeout(() => {
@@ -12119,10 +12435,27 @@ ${html}
             } catch (error) {
                 console.error('Failed to load brain info:', error);
                 document.getElementById('brainStudioTitle').textContent = 'Brain Studio (IDE Mode)';
+                updateBrainLabel(null);
+                if (brainToggle) {
+                    brainToggle.disabled = true;
+                    brainToggle.checked = false;
+                }
+                if (pgsToggle) {
+                    pgsToggle.checked = false;
+                }
+                syncBrainContextControls();
+                refreshFolderContextButtons();
             }
         });
     </script>
     
+    <script src="/vendor/xterm/lib/xterm.js"></script>
+    <script src="/vendor/xterm-addon-fit/lib/addon-fit.js"></script>
+    <script src="/vendor/xterm-addon-web-links/lib/addon-web-links.js"></script>
+    <script src="/vendor/xterm-addon-search/lib/addon-search.js"></script>
+    <script src="/vendor/xterm-addon-serialize/lib/addon-serialize.js"></script>
+    <script src="js/terminal.js"></script>
+
     <!-- Brain Studio Tab Modules -->
     <script src="js/query-tab.js"></script>
     <script src="js/explore-tab.js"></script>
@@ -12135,7 +12468,7 @@ ${html}
     <div id="brainPickerModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; z-index:10000; background:rgba(0,0,0,0.5); align-items:center; justify-content:center;">
       <div style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:12px; max-width:520px; width:90vw; max-height:70vh; display:flex; flex-direction:column; box-shadow:0 8px 32px rgba(0,0,0,0.4);">
         <div style="padding:16px 20px; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
-          <h3 style="margin:0; font-size:15px; color:var(--text-primary);">🧠 Connect Brain</h3>
+          <h3 style="margin:0; font-size:15px; color:var(--text-primary);">🧠 Load or Switch Brain</h3>
           <button onclick="toggleBrainPicker()" style="background:none; border:none; color:var(--text-secondary); cursor:pointer; font-size:18px; min-width:44px; min-height:44px; display:flex; align-items:center; justify-content:center;">✕</button>
         </div>
         <div style="padding:8px 12px; border-bottom:1px solid var(--border-color);">
@@ -12242,23 +12575,30 @@ ${html}
         document.getElementById('brainStudioTitle').textContent = `Brain Studio · ${data.brain.name} · ${data.brain.nodes} nodes`;
         // Enable brain toggle
         const brainToggle = document.getElementById('brainEnabled');
+        const pgsToggle = document.getElementById('query-pgs');
         if (brainToggle) {
           brainToggle.disabled = false;
           brainToggle.checked = true;
         }
+        if (pgsToggle) {
+          pgsToggle.checked = false;
+        }
+        syncBrainContextControls();
         // Update cached brain info — re-fetch full info to preserve isAdmin, outputsPath, etc.
         try {
           const freshInfo = await fetch('/api/brain/info').then(r => r.json());
           window.currentBrainInfo = freshInfo;
           if (freshInfo.outputsPath) {
             window.brainOutputsPath = freshInfo.outputsPath;
-            const brainBtn = document.getElementById('brain-folder-btn');
-            if (brainBtn) brainBtn.style.display = '';
+          } else {
+            window.brainOutputsPath = null;
           }
         } catch (_e) {
           // Fallback if info endpoint fails
           window.currentBrainInfo = { hasBrain: true, brainName: data.brain.name, brainPath: data.brain.path || brainPath };
+          window.brainOutputsPath = null;
         }
+        refreshFolderContextButtons();
         // Reset stale state: refresh explore tab if loaded
         if (typeof initExploreGraph === 'function') { try { initExploreGraph(); } catch(e) {} }
         // Reload query history for new brain
@@ -12273,7 +12613,7 @@ ${html}
         toggleBrainPicker();
         // Show success toast if available
         if (typeof showToast === 'function') {
-          showToast(`Brain loaded: ${data.brain.name} (${data.brain.nodes} nodes)`, 'success');
+          showToast(`Brain loaded: ${data.brain.name}. Folder stays unchanged; use Brain Folder button to browse brain files.`, 'success');
         }
       } catch (err) {
         if (typeof showToast === 'function') {
@@ -12292,10 +12632,12 @@ ${html}
         label.textContent = name;
         btn.style.borderColor = 'var(--accent-primary)';
         btn.style.color = 'var(--text-primary)';
+        btn.setAttribute('title', `Loaded brain: ${name}. Click to load or switch brain.`);
       } else {
-        label.textContent = 'No Brain';
+        label.textContent = 'Load Brain';
         btn.style.borderColor = 'var(--border-color)';
         btn.style.color = 'var(--text-secondary)';
+        btn.setAttribute('title', 'Load brain memory for this workspace');
       }
     }
 
@@ -12303,8 +12645,12 @@ ${html}
     fetch('/api/brain/info').then(r => r.json()).then(info => {
       if (info.hasBrain) {
         updateBrainLabel(info.brainName);
+      } else {
+        updateBrainLabel(null);
       }
-    }).catch(() => {});
+    }).catch(() => {
+      updateBrainLabel(null);
+    });
     </script>
 
     <!-- Tablet Panel Switching Logic -->

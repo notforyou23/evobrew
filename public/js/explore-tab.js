@@ -129,7 +129,7 @@ function initExploreTab() {
       <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:16px;color:var(--text-secondary);padding:40px;">
         <div style="font-size:48px;">🧠</div>
         <div style="font-size:18px;font-weight:600;color:var(--text-primary);">No Brain Loaded</div>
-        <div style="text-align:center;max-width:400px;line-height:1.6;">Load a COSMO brain first using the brain picker in the sidebar to explore its memory network.</div>
+        <div style="text-align:center;max-width:400px;line-height:1.6;">Load a brain first using the top "Load Brain" button to explore its memory network.</div>
       </div>`;
     return;
   }

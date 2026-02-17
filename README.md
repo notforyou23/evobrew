@@ -54,6 +54,12 @@ Full documentation: [docs/CLI.md](./docs/CLI.md)
 - AI can read, edit, and search your codebase
 - Real-time streaming responses
 - Tool execution with diff preview
+- Shared PTY terminal tools (`terminal_*`, `run_terminal` compatibility wrapper)
+
+### 💻 **Real Terminal Dock**
+- True PTY-backed terminal sessions (not one-shot command exec)
+- Multi-session tabs with reconnect/resume after refresh
+- AI and user can target the same terminal client/session model
 
 ### 📁 **Office File Support**
 - Read Word (.docx), Excel (.xlsx), Outlook (.msg)
@@ -145,6 +151,15 @@ HTTPS_PORT=3406
 OPENCLAW_GATEWAY_URL=ws://localhost:18789
 OPENCLAW_GATEWAY_TOKEN=your_token
 OPENCLAW_GATEWAY_PASSWORD=your_password
+
+# Terminal feature flags
+TERMINAL_ENABLED=true
+TERMINAL_MAX_SESSIONS_PER_CLIENT=6
+TERMINAL_IDLE_TIMEOUT_MS=1800000
+TERMINAL_MAX_BUFFER_BYTES=2097152
+
+# Internet profile only (default-off terminal in internet mode)
+INTERNET_ENABLE_TERMINAL=false
 ```
 
 ---
