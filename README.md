@@ -97,6 +97,24 @@ Full documentation: [docs/CLI.md](./docs/CLI.md)
 
 ---
 
+## 🧠 Sample Brains
+
+Evobrew works with `.brain` knowledge graphs. Want some to explore?
+
+Check out **[COSMO BrainStudio](https://github.com/notforyou23/COSMO_BrainStudio)** for pre-built research artifacts:
+
+| Domain | Description |
+|--------|-------------|
+| 🎨 Art & Music | 5,000+ nodes on aesthetics & musicology |
+| 📐 Mathematics | Algebra to probability modeling |
+| ⚛️ Physics | Quantum dynamics, unified field theory |
+| 🧠 Psychology | Behavioral synthesis & cognitive frameworks |
+| 🚗 Big Auto | Future of global mobility |
+
+Clone the repo, grab the brains from `brains/`, and load them in Evobrew.
+
+---
+
 ## Documentation
 
 - [Installation Guide](./INSTALL.md)
