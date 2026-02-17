@@ -17,7 +17,6 @@
   "scripts": {
     "start": "node server/server.js",
     "dev": "nodemon server/server.js",
-    "setup": "node ./bin/evobrew setup",
     "import-oauth": "node import-oauth.js",
     "import-token": "node import-oauth-token.js",
     "security:validate-internet": "node scripts/validate-internet-config.js",
