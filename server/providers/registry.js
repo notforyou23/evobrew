@@ -38,6 +38,7 @@ class ProviderRegistry {
     this.adapterFactories.set('anthropic', (config) => new AnthropicAdapter(config));
     this.adapterFactories.set('openai', (config) => new OpenAIAdapter(config));
     this.adapterFactories.set('ollama', (config) => new OllamaAdapter(config));
+    
     // xAI uses OpenAI adapter with different base URL and custom ID
     this.adapterFactories.set('xai', (config) => {
       const adapter = new OpenAIAdapter({
@@ -49,6 +50,20 @@ class ProviderRegistry {
       Object.defineProperty(adapter, 'name', { value: 'xAI (Grok)', writable: false });
       // Override available models for xAI
       adapter.getAvailableModels = () => ['grok-code-fast-1', 'grok-2', 'grok-beta'];
+      return adapter;
+    });
+    
+    // LM Studio uses OpenAI-compatible API
+    this.adapterFactories.set('lmstudio', (config) => {
+      const adapter = new OpenAIAdapter({
+        apiKey: 'not-needed', // LM Studio doesn't require API key
+        baseUrl: config.baseUrl || 'http://localhost:1234/v1'
+      });
+      // Override ID for routing
+      Object.defineProperty(adapter, 'id', { value: 'lmstudio', writable: false });
+      Object.defineProperty(adapter, 'name', { value: 'LM Studio', writable: false });
+      // Mark as local provider
+      adapter.capabilities.reducedParallelism = true;
       return adapter;
     });
   }
