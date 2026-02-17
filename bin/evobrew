@@ -16,6 +16,7 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const { checkAndKillStaleProcess } = require('../lib/process-utils.js');
 
 const projectRoot = path.join(__dirname, '..');
 
@@ -681,6 +682,10 @@ async function handleConfigCommand() {
     
     switch (command) {
       case 'start':
+        if (!(await checkAndKillStaleProcess(3405))) {
+          process.exit(1);
+        }
+
         // Auto-detect first run
         if (needsSetup()) {
           console.log('🔍 First-time setup detected...\n');
@@ -709,6 +714,10 @@ async function handleConfigCommand() {
         break;
         
       case 'setup':
+        if (!(await checkAndKillStaleProcess(3405))) {
+          process.exit(1);
+        }
+
         await runSetupWizard();
         break;
         
