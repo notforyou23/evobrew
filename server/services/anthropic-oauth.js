@@ -67,6 +67,31 @@ const OAUTH_SCOPES = 'org:create_api_key user:profile user:inference';
 // In-memory cache to avoid DB hits on every request
 let tokenCache = null;
 let cacheExpiry = 0;
+let systemConfigTableEnsured = false;
+
+async function ensureSystemConfigTable(db) {
+  if (systemConfigTableEnsured) {
+    return;
+  }
+
+  try {
+    const result = await db.$queryRaw`SELECT name FROM sqlite_master WHERE type='table' AND name='SystemConfig'`;
+    if (Array.isArray(result) && result.length === 0) {
+      await db.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS "SystemConfig" (
+          "key" TEXT NOT NULL PRIMARY KEY,
+          "value" TEXT NOT NULL,
+          "expiresAt" DATETIME,
+          "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+    }
+    systemConfigTableEnsured = true;
+  } catch (error) {
+    throw error;
+  }
+}
 
 /**
  * Detect if a token is an OAuth token (from setup-token flow)
@@ -334,6 +359,7 @@ async function importFromClaudeCLI() {
 async function storeToken(token, expiresAt = null, refreshToken = null) {
   try {
     const db = getPrisma();
+    await ensureSystemConfigTable(db);
 
     const tokenData = JSON.stringify({
       token,
@@ -392,6 +418,7 @@ async function getStoredToken() {
     }
 
     const db = getPrisma();
+    await ensureSystemConfigTable(db);
     const config = await db.systemConfig.findUnique({
       where: { key: OAUTH_DB_KEY }
     });
@@ -423,6 +450,7 @@ async function getStoredToken() {
 async function clearToken() {
   try {
     const db = getPrisma();
+    await ensureSystemConfigTable(db);
     await db.systemConfig.delete({
       where: { key: OAUTH_DB_KEY }
     });
