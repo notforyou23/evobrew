@@ -124,10 +124,10 @@
   }
 
   function ensureXtermAvailable() {
-    const hasTerminal = typeof window.Terminal === 'function';
+    const TerminalCtor = getTerminalCtor();
     const getCtor = getAddonCtor;
     const hasFit = Boolean(getCtor(window.FitAddon, 'FitAddon'));
-    if (!hasTerminal || !hasFit) {
+    if (!TerminalCtor || !hasFit) {
       return false;
     }
 
@@ -140,6 +140,10 @@
     if (typeof namespace === 'function') return namespace;
     if (typeof namespace[className] === 'function') return namespace[className];
     return null;
+  }
+
+  function getTerminalCtor() {
+    return getAddonCtor(window.Terminal, 'Terminal') || getAddonCtor(window.XTerm, 'Terminal');
   }
 
   async function fetchJson(url, options = {}) {
@@ -197,7 +201,12 @@
     view.dataset.sessionId = raw.session_id;
     els.body.appendChild(view);
 
-    const terminal = new window.Terminal({
+    const TerminalCtor = getTerminalCtor();
+    if (!TerminalCtor) {
+      return null;
+    }
+
+    const terminal = new TerminalCtor({
       convertEol: false,
       cursorBlink: true,
       scrollback: 5000,

@@ -621,7 +621,8 @@ app.use(cors({
 app.use(express.json({ limit: '500mb' }));
 app.use(express.urlencoded({ limit: '500mb', extended: true }));
 app.use(proxyAuthMiddleware);
-app.use(express.static('public'));
+const PUBLIC_DIR = path.join(__dirname, '../public');
+app.use(express.static(PUBLIC_DIR));
 app.use('/vendor/xterm', express.static(path.join(__dirname, '../node_modules/@xterm/xterm')));
 app.use('/vendor/xterm-addon-fit', express.static(path.join(__dirname, '../node_modules/@xterm/addon-fit')));
 app.use('/vendor/xterm-addon-web-links', express.static(path.join(__dirname, '../node_modules/@xterm/addon-web-links')));
