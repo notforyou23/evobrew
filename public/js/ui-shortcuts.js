@@ -60,6 +60,7 @@
 
     let key = event.key.toLowerCase();
     if (key === ' ') key = 'space';
+    if (key === '~') key = '`';
     if (key === 'arrowup') key = 'up';
     if (key === 'arrowdown') key = 'down';
     if (key === 'arrowleft') key = 'left';

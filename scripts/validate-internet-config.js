@@ -19,6 +19,7 @@ try {
   console.log(`  workspaceRoot=${config.workspaceRoot}`);
   console.log(`  internetEnableMutations=${config.internetEnableMutations}`);
   console.log(`  internetEnableGatewayProxy=${config.internetEnableGatewayProxy}`);
+  console.log(`  internetEnableTerminal=${config.internetEnableTerminal}`);
 } catch (error) {
   fail(error.message);
 }
