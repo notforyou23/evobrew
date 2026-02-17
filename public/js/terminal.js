@@ -125,10 +125,21 @@
 
   function ensureXtermAvailable() {
     const hasTerminal = typeof window.Terminal === 'function';
-    const hasFit = Boolean(window.FitAddon && typeof window.FitAddon.FitAddon === 'function');
-    const hasWebLinks = Boolean(window.WebLinksAddon && typeof window.WebLinksAddon.WebLinksAddon === 'function');
-    const hasSearch = Boolean(window.SearchAddon && typeof window.SearchAddon.SearchAddon === 'function');
-    return hasTerminal && hasFit && hasWebLinks && hasSearch;
+    const getCtor = getAddonCtor;
+    const hasFit = Boolean(getCtor(window.FitAddon, 'FitAddon'));
+    if (!hasTerminal || !hasFit) {
+      return false;
+    }
+
+    // Web links and search are optional enhancements; missing one should not block terminal bootstrap.
+    return true;
+  }
+
+  function getAddonCtor(namespace, className) {
+    if (!namespace) return null;
+    if (typeof namespace === 'function') return namespace;
+    if (typeof namespace[className] === 'function') return namespace[className];
+    return null;
   }
 
   async function fetchJson(url, options = {}) {
@@ -200,12 +211,27 @@
       }
     });
 
-    const fitAddon = new window.FitAddon.FitAddon();
-    const webLinksAddon = new window.WebLinksAddon.WebLinksAddon();
-    const searchAddon = new window.SearchAddon.SearchAddon();
+    const fitAddon = new (getAddonCtor(window.FitAddon, 'FitAddon'))();
+    const webLinksCtor = getAddonCtor(window.WebLinksAddon, 'WebLinksAddon');
+    const searchCtor = getAddonCtor(window.SearchAddon, 'SearchAddon');
+
     terminal.loadAddon(fitAddon);
-    terminal.loadAddon(webLinksAddon);
-    terminal.loadAddon(searchAddon);
+    if (webLinksCtor) {
+      try {
+        const webLinksAddon = new webLinksCtor();
+        terminal.loadAddon(webLinksAddon);
+      } catch (error) {
+        console.warn('[terminal] Failed to load WebLinksAddon:', error);
+      }
+    }
+    if (searchCtor) {
+      try {
+        const searchAddon = new searchCtor();
+        terminal.loadAddon(searchAddon);
+      } catch (error) {
+        console.warn('[terminal] Failed to load SearchAddon:', error);
+      }
+    }
 
     terminal.open(view);
 
