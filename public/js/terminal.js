@@ -76,6 +76,10 @@
     }
   }
 
+  function notifyUnavailable() {
+    showToast('Terminal is not available. Verify terminal assets and restart Evobrew.', 'error');
+  }
+
   function setDockHeight(px) {
     if (!els.dock) return;
     const parentRect = els.dock.parentElement.getBoundingClientRect();
@@ -639,28 +643,51 @@
     }
   }
 
-  function exposeApi() {
-    window.toggleTerminalDock = function () {
-      toggleDock({ focus: false });
+  function exposeApi(enabled = false) {
+    const unavailable = () => {
+      notifyUnavailable();
+      return null;
     };
 
-    window.newTerminalSession = function () {
-      openDock({ focus: false });
-      return createSession();
-    };
+    if (!enabled) {
+      window.toggleTerminalDock = function () {
+        unavailable();
+      };
 
-    window.focusTerminal = function () {
-      openDock({ focus: true });
-      if (!state.activeSessionId && state.sessions.size === 0) {
-        createSession();
-      } else {
-        focusActiveTerminal();
-      }
-    };
+      window.newTerminalSession = function () {
+        return unavailable();
+      };
 
-    window.killActiveTerminal = function () {
-      return killActiveSession();
-    };
+      window.focusTerminal = function () {
+        return unavailable();
+      };
+
+      window.killActiveTerminal = function () {
+        return unavailable();
+      };
+    } else {
+      window.toggleTerminalDock = function () {
+        toggleDock({ focus: false });
+      };
+
+      window.newTerminalSession = function () {
+        openDock({ focus: false });
+        return createSession();
+      };
+
+      window.focusTerminal = function () {
+        openDock({ focus: true });
+        if (!state.activeSessionId && state.sessions.size === 0) {
+          createSession();
+        } else {
+          focusActiveTerminal();
+        }
+      };
+
+      window.killActiveTerminal = function () {
+        return killActiveSession();
+      };
+    }
 
     window.getTerminalClientId = function () {
       return getClientId();
@@ -669,9 +696,9 @@
     window.evobrewTerminal = {
       getClientId,
       toggleDock,
-      createSession,
+      createSession: enabled ? createSession : unavailable,
       focusTerminal: window.focusTerminal,
-      killActiveSession,
+      killActiveSession: enabled ? killActiveSession : unavailable,
       listSessions: () => Array.from(state.sessions.values()).map((s) => ({
         session_id: s.session_id,
         state: s.state,
@@ -684,6 +711,7 @@
   async function init() {
     if (state.initialized) return;
     state.initialized = true;
+    exposeApi(false);
 
     if (!ensureXtermAvailable()) {
       console.warn('[terminal] xterm assets not available; terminal disabled');
@@ -704,7 +732,7 @@
       return;
     }
 
-    exposeApi();
+    exposeApi(true);
     bindControls();
     bindResizeHandle();
     restoreDockState();
