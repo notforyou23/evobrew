@@ -530,8 +530,26 @@ The user will review in a diff viewer before accepting.
 ### create_file
 Create new files. Use RELATIVE paths from current folder.
 
+### terminal_open
+Open a real PTY terminal session.
+
+### terminal_write
+Send keystrokes/commands to a terminal session.
+
+### terminal_wait
+Wait for output marker/timeout/exit and collect terminal output.
+
+### terminal_resize
+Resize terminal viewport (cols/rows).
+
+### terminal_close
+Close a terminal session.
+
+### terminal_list
+List terminal sessions for the active terminal client.
+
 ### run_terminal
-Execute commands (npm, git, build, test, etc.)
+Compatibility wrapper around terminal tools for one-shot command execution.
 
 ### delete_file
 Delete files/directories. Use carefully.
@@ -791,7 +809,9 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
     fileTreeContext, conversationHistory, conversationSummary,
     allowedRoot, brainEnabled = false,
     allowedToolNames = null,
-    disableSpreadsheetParsing = false
+    disableSpreadsheetParsing = false,
+    terminalPolicy = null,
+    terminalManager = null
   } = params;
   
   // ═══════════════════════════════════════════════════════════════════════════
@@ -847,6 +867,20 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
     const explicitAllow = new Set(allowedToolNames);
     availableTools = availableTools.filter((tool) => explicitAllow.has(tool.function.name));
     console.log(`[AI] Security policy restricted tools to ${availableTools.length} entries`);
+  }
+
+  if (terminalPolicy?.enabled === false) {
+    const terminalToolNames = new Set([
+      'run_terminal',
+      'terminal_open',
+      'terminal_write',
+      'terminal_wait',
+      'terminal_resize',
+      'terminal_close',
+      'terminal_list'
+    ]);
+    availableTools = availableTools.filter((tool) => !terminalToolNames.has(tool.function.name));
+    console.log(`[AI] Terminal tools disabled by policy; ${availableTools.length} tools remain`);
   }
 
   const availableAnthropicTools = availableTools.map((t) => ({
@@ -1075,7 +1109,9 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
   const effectiveRoot = isAdminMode ? null : allowedRoot;
   const toolExecutor = new ToolExecutor(indexer, currentFolder || process.cwd(), effectiveRoot, {
     allowedToolNames: availableTools.map((tool) => tool.function.name),
-    disableSpreadsheetParsing: disableSpreadsheetParsing === true
+    disableSpreadsheetParsing: disableSpreadsheetParsing === true,
+    terminalPolicy,
+    terminalManager
   });
   
   // Function calling loop
@@ -1786,7 +1822,24 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
               const matches = result.results?.length || result.matches?.length || 0;
               summary = `${matches} match${matches !== 1 ? 'es' : ''} for "${(args?.query || args?.pattern || '').substring(0, 30)}"`;
             } else if (toolName === 'run_terminal') {
-              summary = `Ran: ${(args?.command || '').substring(0, 60)}`;
+              const commandPreview = (args?.command || '').substring(0, 40);
+              const exitCode = Number.isInteger(result.exitCode) ? result.exitCode : '?';
+              const status = result.success ? 'ok' : 'failed';
+              summary = `Terminal ${status} (exit ${exitCode}): ${commandPreview}`;
+            } else if (toolName === 'terminal_open') {
+              summary = `Terminal opened: ${result.session_id || 'session'}`;
+            } else if (toolName === 'terminal_write') {
+              summary = `Terminal input sent: ${result.session_id || args?.session_id || 'session'}`;
+            } else if (toolName === 'terminal_wait') {
+              const status = result.timed_out ? 'timeout' : (result.matched ? 'matched' : (result.exited ? 'exited' : 'ok'));
+              const sessionId = result.session_id || args?.session_id || 'session';
+              summary = `Terminal wait (${status}): ${sessionId}`;
+            } else if (toolName === 'terminal_resize') {
+              summary = `Terminal resized: ${result.cols || args?.cols}x${result.rows || args?.rows}`;
+            } else if (toolName === 'terminal_close') {
+              summary = `Terminal closed: ${result.session_id || args?.session_id || 'session'}`;
+            } else if (toolName === 'terminal_list') {
+              summary = `${result.count || 0} terminal session(s)`;
             } else if (toolName === 'delete_file') {
               summary = `Deleted: ${args?.file_path || 'file'}`;
             } else if (result.files) {
