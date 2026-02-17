@@ -56,6 +56,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 const CodebaseIndexer = require('./codebase-indexer');
 const { handleFunctionCalling } = require('./ai-handler');
 const { getAnthropicApiKey } = require('./services/anthropic-oauth');
+const { getOpenAICodexCredentials } = require('../lib/oauth-codex');
 const { loadSecurityProfile, isOnlyOfficeCallbackUrlAllowed } = require('../lib/security-profile');
 const { configureTerminalSessionManager, toBool, toInt } = require('./terminal/session-manager');
 const { createTerminalWsProtocol } = require('./terminal/ws-protocol');
@@ -161,6 +162,22 @@ const getOpenAI = () => {
   }
   return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 };
+
+const getOpenAICodex = async () => {
+  const profile = await getOpenAICodexCredentials();
+  if (!profile || !profile.accessToken || !profile.accountId) {
+    return null;
+  }
+
+  return new OpenAI({
+    apiKey: profile.accessToken,
+    baseURL: 'https://chatgpt.com/backend-api',
+    defaultHeaders: {
+      Authorization: `Bearer ${profile.accessToken}`,
+      'chatgpt-account-id': profile.accountId
+    }
+  });
+};
 // Anthropic uses OAuth service (Token Sink Pattern from Claude CLI)
 const getAnthropic = async () => {
   const credentials = await getAnthropicApiKey();
@@ -186,6 +203,158 @@ const getXAI = () => {
     baseURL: 'https://api.x.ai/v1'
   });
 };
+
+// Model-based routing by selected model name (no prefer_local toggle)
+function extractProviderFromModel(requestModel = '') {
+  const model = String(requestModel || '').trim().toLowerCase();
+  if (!model) {
+    return 'auto';
+  }
+
+  // Explicit provider prefix support: anthropic/xxx, openai/xxx, openai-codex/xxx, xai/xxx
+  if (model.includes('/')) {
+    const prefix = model.split('/')[0];
+    if (['anthropic', 'openai', 'openai-codex', 'xai', 'ollama', 'lmstudio'].includes(prefix)) {
+      return prefix;
+    }
+  }
+
+  if (model.startsWith('claude')) return 'anthropic';
+  if (model.startsWith('gpt') || model.startsWith('o1') || model.startsWith('o3')) return 'openai';
+  if (model.startsWith('grok')) return 'xai';
+
+  const localPrefixes = ['gemma', 'qwen', 'llama', 'mistral', 'mixtral', 'deepseek', 'nomic', 'phi'];
+  if (localPrefixes.some((prefix) => model.startsWith(prefix))) {
+    return 'ollama';
+  }
+
+  return 'auto';
+}
+
+function normalizeModelForProvider(requestModel = '', providerId = 'auto') {
+  const model = String(requestModel || '').trim();
+  if (providerId === 'openai-codex' && model.includes('/')) {
+    return model.split('/').slice(1).join('/');
+  }
+  return model;
+}
+
+function normalizeLocalEndpoint(baseUrl = '') {
+  if (!baseUrl || typeof baseUrl !== 'string') return LOCAL_LLM_DEFAULT_ENDPOINT;
+  const trimmed = baseUrl.trim().replace(/\/+$/, '');
+  return trimmed.endsWith('/v1') ? trimmed : `${trimmed}/v1`;
+}
+
+async function getPreferredChatProvider(requestModel = '') {
+  const targetModel = String(requestModel || '').trim();
+  const providerId = extractProviderFromModel(targetModel);
+  const configProviders = serverConfig?.providers || {};
+
+  const anthropicClient = await getAnthropic();
+  const openaiClient = getOpenAI();
+  const openAICodexClient = await getOpenAICodex();
+  const xaiClient = getXAI();
+
+  if (providerId === 'openai-codex') {
+    const codexModel = normalizeModelForProvider(targetModel, 'openai-codex');
+    if (openAICodexClient) {
+      return {
+        anthropic: anthropicClient,
+        openai: openAICodexClient,
+        xai: xaiClient,
+        useLocal: false,
+        normalizedModel: codexModel,
+        fallbackReason: null
+      };
+    }
+
+    if (openaiClient) {
+      return {
+        anthropic: anthropicClient,
+        openai: openaiClient,
+        xai: xaiClient,
+        useLocal: false,
+        normalizedModel: codexModel,
+        fallbackReason: 'openai-codex-no-profile'
+      };
+    }
+  }
+
+  if (providerId === 'anthropic' && anthropicClient) {
+    return {
+      anthropic: anthropicClient,
+      openai: openaiClient,
+      xai: xaiClient,
+      useLocal: false,
+      normalizedModel: targetModel
+    };
+  }
+
+  if (providerId === 'xai' && xaiClient) {
+    return {
+      anthropic: anthropicClient,
+      openai: openaiClient,
+      xai: xaiClient,
+      useLocal: false,
+      normalizedModel: targetModel
+    };
+  }
+
+  if (providerId === 'openai' && openaiClient) {
+    return {
+      anthropic: anthropicClient,
+      openai: openaiClient,
+      xai: xaiClient,
+      useLocal: false,
+      normalizedModel: targetModel
+    };
+  }
+
+  if (providerId === 'ollama' || providerId === 'lmstudio') {
+    const localProvider = configProviders?.ollama?.enabled ? configProviders.ollama : configProviders?.lmstudio;
+    const localEndpoint = localProvider?.base_url || 'http://localhost:11434';
+    return {
+      anthropic: anthropicClient,
+      openai: new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY || 'local',
+        baseURL: normalizeLocalEndpoint(localEndpoint)
+      }),
+      xai: xaiClient,
+      useLocal: true,
+      localModel: targetModel,
+      normalizedModel: targetModel
+    };
+  }
+
+  // Auto fallback order: OpenAI -> Anthropic -> xAI
+  if (openaiClient) {
+    return {
+      anthropic: anthropicClient,
+      openai: openaiClient,
+      xai: xaiClient,
+      useLocal: false,
+      normalizedModel: targetModel
+    };
+  }
+  if (anthropicClient) {
+    return {
+      anthropic: anthropicClient,
+      openai: null,
+      xai: xaiClient,
+      useLocal: false,
+      normalizedModel: targetModel
+    };
+  }
+
+  return {
+    anthropic: anthropicClient,
+    openai: null,
+    xai: xaiClient,
+    useLocal: false,
+    normalizedModel: targetModel
+  };
+}
+
 
 // Lazy-init codebase indexer (requires OpenAI)
 let codebaseIndexer = null;
@@ -2046,12 +2215,19 @@ app.post('/api/chat', async (req, res) => {
       };
       
       try {
+        const providerSelection = await getPreferredChatProvider(params.model);
+        const chatParams = { ...params };
+
+        if (providerSelection.normalizedModel) {
+          chatParams.model = providerSelection.normalizedModel;
+        }
+
         const result = await handleFunctionCalling(
-          getOpenAI(),
-          await getAnthropic(),
+          providerSelection.openai,
+          providerSelection.anthropic,
           getXAI(),
           codebaseIndexer,
-          params,
+          chatParams,
           eventEmitter
         );
 
@@ -2094,12 +2270,19 @@ app.post('/api/chat', async (req, res) => {
 
     } else {
       // Non-streaming
+      const providerSelection = await getPreferredChatProvider(params.model);
+      const chatParams = { ...params };
+
+      if (providerSelection.normalizedModel) {
+        chatParams.model = providerSelection.normalizedModel;
+      }
+
       const result = await handleFunctionCalling(
-        getOpenAI(),
-        await getAnthropic(),
+        providerSelection.openai,
+        providerSelection.anthropic,
         getXAI(),
         codebaseIndexer,
-        params
+        chatParams
       );
       
       if (!result.success) {
@@ -2966,39 +3149,81 @@ app.get('/api/gateway-auth', (req, res) => {
   res.json(auth);
 });
 
-/**
- * GET /api/providers/models - List available models across all providers
- * Returns models for UI dropdown selection
- */
-app.get('/api/providers/models', async (req, res) => {
-  try {
-    const { getDefaultRegistry } = require('./providers');
+function modelProviderLabel(providerId, modelId) {
+  return {
+    openai: 'OpenAI',
+    'openai-codex': 'ChatGPT Codex',
+    anthropic: 'Anthropic',
+    xai: 'xAI',
+    ollama: 'Ollama',
+    lmstudio: 'LM Studio',
+    openclaw: 'COZ'
+  }[providerId] || providerId;
+}
+
+function mergeConfigModels(models, serverConfigModels = {}, providerId) {
+  const provider = serverConfigModels?.providers?.[providerId];
+  if (!provider || !provider.enabled || !Array.isArray(provider.models)) {
+    return models;
+  }
+
+  const existing = new Set(models.map((entry) => `${entry.provider}|${entry.id}`));
+  const merged = [...models];
+  for (const modelId of provider.models) {
+    const id = String(modelId || '').trim();
+    if (!id) continue;
+
+    const key = `${providerId}|${id}`;
+    if (existing.has(key)) continue;
+
+    merged.push({
+      id,
+      provider: providerId,
+      label: `${id} (${modelProviderLabel(providerId)})`
+    });
+    existing.add(key);
+  }
+  return merged;
+}
+
+function buildProviderModelCatalog() {
+  const { getDefaultRegistry, getPlatform } = require('./providers');
+  const providers = serverConfig?.providers || {};
+
+  return Promise.resolve().then(async () => {
     const registry = await getDefaultRegistry();
     let models = registry.listModels();
 
-    // For Ollama, fetch actually installed models instead of defaults
+    // Prefer locally configured models for providers that were enabled in setup.
+    models = mergeConfigModels(models, serverConfig, 'openai');
+    models = mergeConfigModels(models, serverConfig, 'anthropic');
+    models = mergeConfigModels(models, serverConfig, 'openai-codex');
+    models = mergeConfigModels(models, serverConfig, 'xai');
+    models = mergeConfigModels(models, serverConfig, 'ollama');
+    models = mergeConfigModels(models, serverConfig, 'lmstudio');
+
+    // For Ollama, fetch actually installed models when the service is available.
     const ollamaProvider = registry.getProviderById('ollama');
-    if (ollamaProvider) {
+    if (ollamaProvider && providers?.ollama?.enabled) {
       try {
         const ollamaHealth = await ollamaProvider.healthCheck();
         if (ollamaHealth.healthy) {
           const installedModels = await ollamaProvider.listModels();
 
-          // Remove default Ollama models from list
-          models = models.filter(m => m.provider !== 'ollama');
-
-          // Add actually installed Ollama models
-          installedModels.forEach(modelId => {
+          const existing = new Set(models.map((entry) => `${entry.provider}|${entry.id}`));
+          for (const modelId of installedModels) {
+            if (!modelId) continue;
+            const key = `ollama|${modelId}`;
+            if (existing.has(key)) continue;
             models.push({
               id: modelId,
               provider: 'ollama',
               label: `${modelId} (Ollama)`
             });
-          });
+            existing.add(key);
+          }
 
           console.log(`[PROVIDERS] Fetched ${installedModels.length} installed Ollama models`);
-        } else {
-          console.log('[PROVIDERS] Ollama not running, using default model list');
         }
       } catch (ollamaErr) {
         console.warn('[PROVIDERS] Failed to fetch Ollama models:', ollamaErr.message);
@@ -3009,14 +3234,13 @@ app.get('/api/providers/models', async (req, res) => {
     models.push({
       id: 'openclaw:coz',
       provider: 'openclaw',
-      label: 'COZ \u2014 Agent with Memory'
+      label: 'COZ — Agent with Memory'
     });
 
     // Include platform info for UI awareness
-    const { getPlatform } = require('./providers');
     const platform = getPlatform();
 
-    res.json({
+    return {
       success: true,
       models,
       providerCount: registry.getProviderIds().length,
@@ -3025,7 +3249,31 @@ app.get('/api/providers/models', async (req, res) => {
         supportsLocalModels: platform.supportsLocalModels,
         hostname: platform.hostname
       }
-    });
+    };
+  });
+}
+
+/**
+ * GET /api/models - Compatibility endpoint used by UI dropdown
+ */
+app.get('/api/models', async (req, res) => {
+  try {
+    const payload = await buildProviderModelCatalog();
+    res.json(payload);
+  } catch (error) {
+    console.error('[PROVIDERS] Error listing models:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/providers/models - List available models across all providers
+ * Returns models for UI dropdown selection
+ */
+app.get('/api/providers/models', async (req, res) => {
+  try {
+    const payload = await buildProviderModelCatalog();
+    res.json(payload);
   } catch (error) {
     console.error('[PROVIDERS] Error listing models:', error.message);
     res.status(500).json({ success: false, error: error.message });
