@@ -2021,7 +2021,8 @@ app.post('/api/chat', async (req, res) => {
 
     // Log brain status for debugging
     const brainEnabled = params.brainEnabled || false;
-    console.log(`[CHAT] "${message.substring(0, 60)}..." (brainEnabled: ${brainEnabled})`);
+    const requestedModel = params.model || 'UNDEFINED';
+    console.log(`[CHAT] "${message.substring(0, 60)}..." model="${requestedModel}" brainEnabled=${brainEnabled}`);
 
     if (stream) {
       // SSE streaming
@@ -2065,9 +2066,17 @@ app.post('/api/chat', async (req, res) => {
       };
       
       try {
+        // Provider registry handles routing - pass null for unavailable providers
+        let anthropicClient = null;
+        try {
+          anthropicClient = await getAnthropic();
+        } catch (e) {
+          // Anthropic not configured - registry will handle other models
+        }
+        
         const result = await handleFunctionCalling(
           getOpenAI(),
-          await getAnthropic(),
+          anthropicClient,
           getXAI(),
           codebaseIndexer,
           params,
@@ -2113,9 +2122,16 @@ app.post('/api/chat', async (req, res) => {
 
     } else {
       // Non-streaming
+      let anthropicClient = null;
+      try {
+        anthropicClient = await getAnthropic();
+      } catch (e) {
+        // Anthropic not configured - registry will handle other models
+      }
+      
       const result = await handleFunctionCalling(
         getOpenAI(),
-        await getAnthropic(),
+        anthropicClient,
         getXAI(),
         codebaseIndexer,
         params
