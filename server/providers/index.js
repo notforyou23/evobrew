@@ -132,10 +132,40 @@ async function createRegistry(options = {}) {
     console.warn('[Providers] ⚠️ OPENAI_API_KEY not set, OpenAI provider unavailable');
   }
 
+  // Initialize OpenAI Codex (ChatGPT OAuth)
+  try {
+    const { getCredentials } = require('../../lib/oauth-codex.cjs');
+    const creds = await getCredentials();
+    if (creds) {
+      registry.initializeProvider('openai-codex', {
+        apiKey: creds.accessToken,
+        baseUrl: 'https://chatgpt.com/backend-api',
+        defaultHeaders: {
+          'chatgpt-account-id': creds.accountId,
+          'OpenAI-Beta': 'responses=experimental',
+          'originator': 'evobrew',
+          'accept': 'text/event-stream',
+          'User-Agent': `evobrew/${require('../../package.json').version}`
+        }
+      });
+      // Register Codex models explicitly
+      registry.registerModel('gpt-5.2', 'openai-codex');
+      registry.registerModel('gpt-5.3-codex', 'openai-codex');
+      registry.registerModel('gpt-5.3-codex-spark', 'openai-codex');
+      console.log('[Providers] ✅ OpenAI Codex registered (OAuth)');
+    }
+  } catch (e) {
+    console.warn('[Providers] ⚠️ OpenAI Codex OAuth unavailable:', e.message);
+  }
+
+  // Load evobrew config for provider + local LLM settings
+  const evobrewConfig = await loadEvobrewConfig();
+
   // Initialize xAI (Grok)
-  if (process.env.XAI_API_KEY) {
-    registry.initializeProvider('xai', { 
-      apiKey: process.env.XAI_API_KEY,
+  const xaiKey = process.env.XAI_API_KEY || evobrewConfig?.providers?.xai?.api_key;
+  if (xaiKey) {
+    registry.initializeProvider('xai', {
+      apiKey: xaiKey,
       baseUrl: 'https://api.x.ai/v1'
     });
     // Register Grok models explicitly
@@ -144,9 +174,6 @@ async function createRegistry(options = {}) {
     registry.registerModel('grok-beta', 'xai');
     console.log('[Providers] ✅ xAI (Grok) registered');
   }
-
-  // Load evobrew config for local LLM settings
-  const evobrewConfig = await loadEvobrewConfig();
   const ollamaConfig = evobrewConfig?.providers?.ollama || { enabled: true, auto_detect: true, base_url: 'http://localhost:11434' };
   const lmstudioConfig = evobrewConfig?.providers?.lmstudio || { enabled: false, base_url: 'http://localhost:1234/v1' };
   

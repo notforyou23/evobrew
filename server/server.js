@@ -132,6 +132,119 @@ const getOpenAI = () => {
   }
   return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 };
+
+const getOpenAICodex = async () => {
+  try {
+    const { getCredentials } = require('../lib/oauth-codex.cjs');
+    const creds = await getCredentials();
+    if (!creds?.accessToken) return null;
+
+    const headers = {
+      Authorization: `Bearer ${creds.accessToken}`,
+      'chatgpt-account-id': creds.accountId,
+      'OpenAI-Beta': 'responses=experimental',
+      originator: 'evobrew',
+      accept: 'text/event-stream',
+      'content-type': 'application/json',
+      'User-Agent': `evobrew/${require('../package.json').version}`
+    };
+
+    const parseSSE = async function* (stream) {
+      const reader = stream.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let currentEventType = null;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let idx;
+        while ((idx = buffer.indexOf('\n\n')) !== -1) {
+          const chunk = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 2);
+
+          if (!chunk.trim()) continue;
+
+          const lines = chunk.split('\n');
+          let data = [];
+          for (const line of lines) {
+            if (line.startsWith('event:')) {
+              currentEventType = line.slice(6).trim();
+            } else if (line.startsWith('data:')) {
+              data.push(line.slice(5).trim());
+            }
+          }
+
+          if (data.length === 0) continue;
+          const payload = data.join('\n').trim();
+          if (!payload || payload === '[DONE]') continue;
+
+          try {
+            const parsed = JSON.parse(payload);
+            if (currentEventType) {
+              parsed.event = currentEventType;
+            }
+            currentEventType = null;
+            yield parsed;
+          } catch {
+            // Ignore malformed SSE payloads.
+          }
+        }
+      }
+    };
+
+    return {
+      responses: {
+        create: async function* (params = {}) {
+          const body = {
+            model: params.model,
+            instructions: params.instructions,
+            input: params.input,
+            tools: params.tools,
+            tool_choice: params.tool_choice,
+            parallel_tool_calls: params.parallel_tool_calls,
+            reasoning: params.reasoning,
+            text: params.text,
+            previous_response_id: params.previous_response_id,
+            stream: true,
+            store: false
+          };
+
+          const response = await fetch('https://chatgpt.com/backend-api/codex/responses', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(body)
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text().catch(() => '');
+            throw new Error(`AI request failed — codex responses request error ${response.status}: ${errorText}`);
+          }
+
+          if (!response.body) {
+            throw new Error('AI request failed — codex responses response missing body');
+          }
+
+          for await (const chunk of parseSSE(response.body)) {
+            yield chunk;
+          }
+        }
+      }
+    };
+  } catch (err) {
+    console.warn('[CODEx] Failed to initialize OpenAI Codex client:', err.message);
+    return null;
+  }
+};
+
+function isCodexModel(modelId) {
+  const normalized = String(modelId || '').trim();
+  return normalized.startsWith('gpt-5.2') ||
+    normalized === 'gpt-5.3-codex' ||
+    normalized === 'gpt-5.3-codex-spark' ||
+    normalized.startsWith('gpt-5.3-codex');
+}
 // Anthropic uses OAuth service (Token Sink Pattern from Claude CLI)
 const getAnthropic = async () => {
   const credentials = await getAnthropicApiKey();
@@ -149,11 +262,12 @@ const getAnthropic = async () => {
   return new Anthropic({ apiKey: credentials.apiKey });
 };
 const getXAI = () => {
-  if (!process.env.XAI_API_KEY) {
+  const xaiKey = process.env.XAI_API_KEY || serverConfig?.providers?.xai?.api_key;
+  if (!xaiKey) {
     return null; // xAI not configured
   }
   return new OpenAI({
-    apiKey: process.env.XAI_API_KEY,
+    apiKey: xaiKey,
     baseURL: 'https://api.x.ai/v1'
   });
 };
@@ -1898,8 +2012,17 @@ app.post('/api/chat', async (req, res) => {
       };
       
       try {
+        const requestedModel = String(params?.model || '').trim();
+        const openAICodexClient = isCodexModel(requestedModel)
+          ? await getOpenAICodex()
+          : null;
+        const selectedOpenAI = openAICodexClient || getOpenAI();
+        if (isCodexModel(requestedModel) && !selectedOpenAI) {
+          throw new Error('OpenAI Codex model selected but no OAuth token/profile found. Run `evobrew setup` and configure OpenAI Codex OAuth.');
+        }
+
         const result = await handleFunctionCalling(
-          getOpenAI(),
+          selectedOpenAI,
           await getAnthropic(),
           getXAI(),
           codebaseIndexer,
@@ -1946,8 +2069,17 @@ app.post('/api/chat', async (req, res) => {
 
     } else {
       // Non-streaming
+      const requestedModel = String(params?.model || '').trim();
+      const openAICodexClient = isCodexModel(requestedModel)
+        ? await getOpenAICodex()
+        : null;
+      const selectedOpenAI = openAICodexClient || getOpenAI();
+      if (isCodexModel(requestedModel) && !selectedOpenAI) {
+        return res.status(500).json({ error: 'OpenAI Codex model selected but no OAuth token/profile found. Run `evobrew setup` and configure OpenAI Codex OAuth.' });
+      }
+
       const result = await handleFunctionCalling(
-        getOpenAI(),
+        selectedOpenAI,
         await getAnthropic(),
         getXAI(),
         codebaseIndexer,
@@ -2648,8 +2780,10 @@ app.get('/api/gateway-auth', (req, res) => {
   }
 
   const auth = {};
-  if (process.env.OPENCLAW_GATEWAY_PASSWORD) auth.password = process.env.OPENCLAW_GATEWAY_PASSWORD;
-  if (process.env.OPENCLAW_GATEWAY_TOKEN) auth.token = process.env.OPENCLAW_GATEWAY_TOKEN;
+  const gatewayPassword = process.env.OPENCLAW_GATEWAY_PASSWORD || serverConfig?.openclaw?.password;
+  const gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN || serverConfig?.openclaw?.token;
+  if (gatewayPassword) auth.password = gatewayPassword;
+  if (gatewayToken) auth.token = gatewayToken;
   res.json(auth);
 });
 
@@ -3021,8 +3155,17 @@ ALWAYS cite your sources with file paths and node IDs when possible.`;
     params.allowedRoot = getAllowedRoot();
 
     // Call AI handler with tools enabled
+    const requestedModel = String(params?.model || '').trim();
+    const openAICodexClient = isCodexModel(requestedModel)
+      ? await getOpenAICodex()
+      : null;
+    const selectedOpenAI = openAICodexClient || getOpenAI();
+    if (isCodexModel(requestedModel) && !selectedOpenAI) {
+      return res.status(500).json({ error: 'OpenAI Codex model selected but no OAuth token/profile found. Run `evobrew setup` and configure OpenAI Codex OAuth.' });
+    }
+
     const result = await handleFunctionCalling(
-      getOpenAI(),
+      selectedOpenAI,
       await getAnthropic(),
       getXAI(),
       codebaseIndexer,

@@ -51,7 +51,21 @@ class ProviderRegistry {
       adapter.getAvailableModels = () => ['grok-code-fast-1', 'grok-2', 'grok-beta'];
       return adapter;
     });
-    
+
+    // OpenAI Codex via ChatGPT OAuth - uses OpenAI adapter with Codex endpoint
+    this.adapterFactories.set('openai-codex', (config) => {
+      const adapter = new OpenAIAdapter({
+        ...config,
+        baseUrl: config.baseUrl || 'https://chatgpt.com/backend-api'
+      });
+      // Override ID for routing
+      Object.defineProperty(adapter, 'id', { value: 'openai-codex', writable: false });
+      Object.defineProperty(adapter, 'name', { value: 'OpenAI Codex (OAuth)', writable: false });
+      // Override available models for Codex
+      adapter.getAvailableModels = () => ['gpt-5.2', 'gpt-5.3-codex', 'gpt-5.3-codex-spark'];
+      return adapter;
+    });
+
     // LMStudio uses OpenAI adapter with local URL and custom ID
     this.adapterFactories.set('lmstudio', (config) => {
       const adapter = new OpenAIAdapter({

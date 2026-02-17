@@ -1104,7 +1104,7 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
     model.startsWith('qwen') ||
     model.includes(':') // Ollama models typically use format like "llama3.3:70b"
   ));
-  const isOpenAIModel = providerId === 'openai' || (!providerId && !isClaudeModel && !isGrokModel && !isOllamaModel);
+  const isOpenAIModel = providerId === 'openai' || providerId === 'openai-codex' || (!providerId && !isClaudeModel && !isGrokModel && !isOllamaModel);
 
   const providerName = providerId || (isClaudeModel ? 'anthropic' : isGrokModel ? 'xai' : isOllamaModel ? 'ollama' : 'openai');
   console.log(`[AI] Starting ${providerName}/${model} in ${currentFolder}`);
@@ -1501,11 +1501,19 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
         console.log(`[AI] Calling Ollama with model ${model}`);
 
         try {
-          // Use the provider's streamMessage method with filtered tools
+          // Some local models (e.g., gemma) don't support tool calling reliably.
+          // Keep tools enabled for models that can handle them (e.g., qwen), disable for gemma.
+          const disableToolsForModel = String(model).toLowerCase().startsWith('gemma');
+          const ollamaTools = disableToolsForModel ? [] : availableTools;
+          if (disableToolsForModel) {
+            console.log(`[AI] Disabling tools for Ollama model ${model} (tool-calling unsupported)`);
+          }
+
+          // Use the provider's streamMessage method with model-appropriate tools
           const stream = ollamaProvider.streamMessage({
             model: model,
             messages: trimmedMessages,
-            tools: availableTools,
+            tools: ollamaTools,
             temperature: 0.7
           });
 

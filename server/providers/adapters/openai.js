@@ -99,6 +99,10 @@ class OpenAIAdapter extends ProviderAdapter {
       options.organization = this.config.organization;
     }
 
+    if (this.config.defaultHeaders) {
+      options.defaultHeaders = this.config.defaultHeaders;
+    }
+
     this._client = new OpenAI(options);
   }
 
