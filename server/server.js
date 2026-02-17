@@ -3500,15 +3500,24 @@ app.post('/api/oauth/anthropic/logout', async (req, res) => {
 // BRAIN PICKER - Browse and load brains at runtime
 // ============================================================================
 
-// Check if brains feature is enabled in config
-const brainsConfig = serverConfig?.features?.brains || { enabled: false, directories: [] };
-const BRAINS_ENABLED = brainsConfig.enabled;
+// Check if brains feature is enabled in config (supports both new and legacy schemas)
+const legacyBrainDirs = (process.env.COSMO_BRAIN_DIRS || '').split(',').map(s => s.trim()).filter(Boolean);
+const brainsConfig = serverConfig?.features?.brains
+  || serverConfig?.brains
+  || { enabled: false, directories: [] };
+const configBrainDirs = Array.isArray(brainsConfig?.directories)
+  ? brainsConfig.directories.map(d => String(d).trim()).filter(Boolean)
+  : [];
+
+const BRAINS_ENABLED = Boolean(
+  brainsConfig.enabled ?? (configBrainDirs.length > 0 ? true : legacyBrainDirs.length > 0)
+);
 
 // Get brain directories from config, fallback to env var for backwards compat
-const BRAIN_DIRS = BRAINS_ENABLED 
-  ? (brainsConfig.directories?.length > 0 
-      ? brainsConfig.directories 
-      : (process.env.COSMO_BRAIN_DIRS || '').split(',').map(s => s.trim()).filter(Boolean))
+const BRAIN_DIRS = BRAINS_ENABLED
+  ? (configBrainDirs.length > 0
+      ? configBrainDirs
+      : legacyBrainDirs)
   : [];
 
 const BRAIN_DIR_LABELS = {};
