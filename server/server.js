@@ -2259,30 +2259,6 @@ app.get('/api/ollama/models', async (req, res) => {
   }
 });
 
-/**
- * GET /api/local-models
- * Returns status and available models for all local model providers (Ollama, LM Studio)
- */
-app.get('/api/local-models', async (req, res) => {
-  try {
-    const { getLocalModelsStatus } = require('./providers');
-    const status = await getLocalModelsStatus();
-    
-    res.json({
-      success: true,
-      ...status
-    });
-  } catch (error) {
-    console.error('[LocalModels] Error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      ollama: { available: false, models: [] },
-      lmstudio: { available: false, models: [] }
-    });
-  }
-});
-
 // ============================================================================
 // CONVERSATION MANAGEMENT
 // ============================================================================
