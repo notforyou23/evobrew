@@ -741,8 +741,9 @@ async function handleConfigCommand() {
     }
     
     switch (command) {
-      case 'start':
-        if (!(await checkAndKillStaleProcess(3405))) {
+      case 'start': {
+        const staleResult = await checkAndKillStaleProcess(3405);
+        if (!staleResult.ok) {
           process.exit(1);
         }
 
@@ -772,14 +773,35 @@ async function handleConfigCommand() {
           process.exit(0);
         });
         break;
+      }
         
-      case 'setup':
-        if (!(await checkAndKillStaleProcess(3405))) {
+      case 'setup': {
+        const staleCheck = await checkAndKillStaleProcess(3405);
+        if (!staleCheck.ok) {
           process.exit(1);
         }
 
         await runSetupWizard(process.argv.slice(3));
-        break;
+        
+        // If we killed a server to run setup, restart it
+        if (staleCheck.killed) {
+          console.log('\n🔄 Restarting server (was stopped for setup)...');
+          const { spawn } = require('child_process');
+          const serverPath = path.join(projectRoot, 'server', 'server.js');
+          const server = spawn(process.execPath, [serverPath], {
+            detached: true,
+            stdio: 'ignore',
+            cwd: projectRoot
+          });
+          server.unref();
+          
+          // Give it a moment to start
+          await new Promise(r => setTimeout(r, 1500));
+          console.log('✅ Server restarted in background.');
+        }
+        
+        process.exit(0);
+      }
         
       case 'config':
         await handleConfigCommand();
