@@ -114,28 +114,34 @@ async function showVersion() {
 
 // Check if first-run setup is needed
 function needsSetup() {
-  const envPath = path.join(projectRoot, '.env');
-  const dbPath = path.join(projectRoot, 'prisma', 'studio.db');
+  const os = require('os');
+  const configPath = path.join(os.homedir(), '.evobrew', 'config.json');
   
-  // No .env = definitely needs setup
-  if (!fs.existsSync(envPath)) {
+  // No config file = definitely needs setup
+  if (!fs.existsSync(configPath)) {
     return true;
   }
   
-  // Check if .env has placeholder values
-  const envContent = fs.readFileSync(envPath, 'utf8');
-  if (envContent.includes('your_64_character_hex_string_here') ||
-      envContent.includes('your_openai_key_here') ||
-      envContent.includes('your_anthropic_key_here')) {
+  // Check if at least one provider is configured
+  try {
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    const hasAnthropic = config.providers?.anthropic?.enabled && 
+      (config.providers.anthropic.oauth || config.providers.anthropic.api_key);
+    const hasOpenAI = config.providers?.openai?.enabled && config.providers.openai.api_key;
+    const hasOpenAICodex = config.providers?.['openai-codex']?.enabled;
+    const hasXAI = config.providers?.xai?.enabled && config.providers.xai.api_key;
+    const hasOllama = config.providers?.ollama?.enabled;
+    
+    // Need setup if no providers are configured
+    if (!hasAnthropic && !hasOpenAI && !hasOpenAICodex && !hasXAI && !hasOllama) {
+      return true;
+    }
+    
+    return false;
+  } catch {
+    // Config exists but can't be read/parsed = needs setup
     return true;
   }
-  
-  // Check if database is initialized
-  if (!fs.existsSync(dbPath)) {
-    return true;
-  }
-  
-  return false;
 }
 
 function parseCsvList(input) {
