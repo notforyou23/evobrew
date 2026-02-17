@@ -28,6 +28,9 @@ Usage: evobrew [command] [options]
 
 Commands:
   setup              Run first-time setup wizard
+           --only <providers>    configure only selected providers (comma-separated)
+           --skip <providers>    skip selected providers (comma-separated)
+           --status              show current configuration status and exit
   start              Start server in foreground
   status             Show service status (alias: daemon status)
   logs               View recent logs (alias: daemon logs)
@@ -56,7 +59,10 @@ Options:
   --version, -v      Show version number
 
 Examples:
-  evobrew setup                First-time setup
+  evobrew setup                  First-time setup
+  evobrew setup --only anthropic,xai   Configure only anthropic and xAI
+  evobrew setup --skip ollama          Skip Ollama configuration
+  evobrew setup --status             Show provider status
   evobrew daemon install       Run as background service
   evobrew status               Check if running
   evobrew start                Run in foreground (dev mode)
@@ -132,10 +138,64 @@ function needsSetup() {
   return false;
 }
 
-async function runSetupWizard() {
-  const { setupWizard } = require('../lib/setup-wizard.js');
+function parseCsvList(input) {
+  if (!input) return [];
+  return String(input)
+    .split(',')
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function printConfigStatus(status) {
+  console.log('📋 Current Configuration:');
+
+  const order = ['anthropic', 'openaiCodex', 'xai', 'ollama', 'openclaw'];
+
+  for (const key of order) {
+    const item = status[key];
+    const icon = item.configured ? '✓' : '✗';
+    const label = item.label.padEnd(12);
+    console.log(`  ${icon} ${label} [${item.status}]`);
+  }
+
+  console.log('');
+}
+
+function parseSetupArgs(args) {
+  const options = {
+    only: null,
+    skip: null,
+    showStatus: false
+  };
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--only' && args[i + 1]) {
+      options.only = parseCsvList(args[i + 1]);
+      i++;
+    } else if (args[i] === '--skip' && args[i + 1]) {
+      options.skip = parseCsvList(args[i + 1]);
+      i++;
+    } else if (args[i] === '--status') {
+      options.showStatus = true;
+    }
+  }
+
+  return options;
+}
+
+async function runSetupWizard(argv = []) {
+  const { setupWizard, getConfigStatus } = require('../lib/setup-wizard.js');
+
+  const options = parseSetupArgs(argv);
+
   try {
-    await setupWizard(projectRoot);
+    if (options.showStatus) {
+      const status = await getConfigStatus();
+      printConfigStatus(status);
+      return;
+    }
+
+    await setupWizard(projectRoot, options);
   } catch (err) {
     console.error('❌ Setup failed:', err.message);
     process.exit(1);
@@ -718,7 +778,7 @@ async function handleConfigCommand() {
           process.exit(1);
         }
 
-        await runSetupWizard();
+        await runSetupWizard(process.argv.slice(3));
         break;
         
       case 'config':
