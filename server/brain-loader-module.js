@@ -43,9 +43,17 @@ async function loadBrain(brainPath) {
     edges: state.memory?.edges || []
   };
 
-  brainQueryEngine = new BrainQueryEngine(brainPath, process.env.OPENAI_API_KEY);
-
-  console.log(`✅ Brain loaded: ${brainLoader.nodes.length} nodes, ${brainLoader.edges.length} edges\n`);
+  // QueryEngine requires OpenAI for embeddings - make it optional
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (openaiKey) {
+    brainQueryEngine = new BrainQueryEngine(brainPath, openaiKey);
+    console.log(`✅ Brain loaded: ${brainLoader.nodes.length} nodes, ${brainLoader.edges.length} edges`);
+    console.log(`✅ Query engine initialized with OpenAI embeddings\n`);
+  } else {
+    brainQueryEngine = null;
+    console.log(`✅ Brain loaded: ${brainLoader.nodes.length} nodes, ${brainLoader.edges.length} edges`);
+    console.warn(`⚠️  Query engine disabled (no OPENAI_API_KEY). Brain browsing works, but queries won't.\n`);
+  }
   
   return { brainLoader, brainQueryEngine };
 }
