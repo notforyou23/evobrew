@@ -23,6 +23,23 @@
     terminalApiUnavailable: false
   };
 
+  (function ensureTerminalFallbackActions() {
+    const notifyUnavailable = () => {
+      const message = 'Terminal is not available. Verify terminal assets and restart Evobrew.';
+      if (typeof window.showToast === 'function') {
+        window.showToast(message, 'error');
+      } else {
+        console.warn(`[terminal] ${message}`);
+      }
+    };
+
+    ['toggleTerminalDock', 'newTerminalSession', 'focusTerminal', 'killActiveTerminal'].forEach((fnName) => {
+      if (typeof window[fnName] !== 'function') {
+        window[fnName] = notifyUnavailable;
+      }
+    });
+  })();
+
   const els = {
     dock: null,
     body: null,
@@ -124,14 +141,21 @@
   }
 
   function ensureXtermAvailable() {
-    const TerminalCtor = getTerminalCtor();
-    const getCtor = getAddonCtor;
-    const hasFit = Boolean(getCtor(window.FitAddon, 'FitAddon'));
-    if (!TerminalCtor || !hasFit) {
+    const terminalCtor = getTerminalCtor();
+    const fitCtor = getFitAddonCtor();
+    const hasAddon = Boolean(window.WebLinksAddon || window.webLinksAddon || window.xtermAddonWebLinks || window.XTermAddonWebLinks || window.SearchAddon || window.xtermAddonSearch || window.XTermAddonSearch);
+
+    if (!terminalCtor) {
       return false;
     }
 
-    // Web links and search are optional enhancements; missing one should not block terminal bootstrap.
+    if (!fitCtor) {
+      console.warn('[terminal] FitAddon missing: resize/focus assist disabled, continuing with core terminal support.');
+    }
+    if (!hasAddon) {
+      // Optional only, keep terminal usable without web links/search addons.
+    }
+
     return true;
   }
 
@@ -143,7 +167,23 @@
   }
 
   function getTerminalCtor() {
-    return getAddonCtor(window.Terminal, 'Terminal') || getAddonCtor(window.XTerm, 'Terminal');
+    return (
+      getAddonCtor(window.Terminal, 'Terminal') ||
+      getAddonCtor(window.xterm, 'Terminal') ||
+      getAddonCtor(window.XTerm, 'Terminal') ||
+      getAddonCtor(window.TerminalNamespace, 'Terminal') ||
+      getAddonCtor(window.term, 'Terminal')
+    );
+  }
+
+  function getFitAddonCtor() {
+    return (
+      getAddonCtor(window.FitAddon, 'FitAddon') ||
+      getAddonCtor(window.xtermAddonFit, 'FitAddon') ||
+      getAddonCtor(window.XTermFitAddon, 'FitAddon') ||
+      getAddonCtor(window.XTermAddonFit, 'FitAddon') ||
+      getAddonCtor(window.XTerm?.FitAddon, 'FitAddon')
+    );
   }
 
   async function fetchJson(url, options = {}) {
@@ -220,22 +260,27 @@
       }
     });
 
-    const fitAddon = new (getAddonCtor(window.FitAddon, 'FitAddon'))();
+    const fitAddonCtor = getFitAddonCtor();
+    const fitAddon = fitAddonCtor ? new fitAddonCtor() : null;
     const webLinksCtor = getAddonCtor(window.WebLinksAddon, 'WebLinksAddon');
     const searchCtor = getAddonCtor(window.SearchAddon, 'SearchAddon');
+    const webLinksAddon = webLinksCtor ? new webLinksCtor() : null;
+    const searchAddon = searchCtor ? new searchCtor() : null;
 
-    terminal.loadAddon(fitAddon);
-    if (webLinksCtor) {
+    if (fitAddonCtor) {
+      terminal.loadAddon(fitAddon);
+    } else {
+      console.warn('[terminal] FitAddon not available; resize support disabled');
+    }
+    if (webLinksAddon) {
       try {
-        const webLinksAddon = new webLinksCtor();
         terminal.loadAddon(webLinksAddon);
       } catch (error) {
         console.warn('[terminal] Failed to load WebLinksAddon:', error);
       }
     }
-    if (searchCtor) {
+    if (searchAddon) {
       try {
-        const searchAddon = new searchCtor();
         terminal.loadAddon(searchAddon);
       } catch (error) {
         console.warn('[terminal] Failed to load SearchAddon:', error);
@@ -313,7 +358,9 @@
     if (!record) return;
 
     try {
-      record.fitAddon.fit();
+      if (record.fitAddon) {
+        record.fitAddon.fit();
+      }
       sendWs({
         type: 'resize',
         session_id: sid,
@@ -743,13 +790,30 @@
     };
   }
 
-  async function init() {
+  async function init(attempt = 0) {
     if (state.initialized) return;
     state.initialized = true;
     exposeApi(false);
 
     if (!ensureXtermAvailable()) {
-      console.warn('[terminal] xterm assets not available; terminal disabled');
+      if (attempt < 4) {
+        state.initialized = false;
+        setTimeout(() => {
+          init(attempt + 1);
+        }, 250 * Math.max(1, attempt + 1));
+        return;
+      }
+
+      const globals = [
+        `window.Terminal=${typeof window.Terminal}`,
+        `window.xterm=${typeof window.xterm}`,
+        `window.XTerm=${typeof window.XTerm}`,
+        `window.FitAddon=${typeof window.FitAddon}`,
+        `window.xtermAddonFit=${typeof window.xtermAddonFit}`
+      ].join(', ');
+
+      console.warn('[terminal] xterm assets not available; terminal disabled:', globals);
+      notifyUnavailable();
       return;
     }
 
@@ -775,9 +839,13 @@
     connectWs();
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      init();
+    });
+  } else {
     init();
-  });
+  }
 
   window.addEventListener('beforeunload', () => {
     state.shuttingDown = true;

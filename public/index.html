@@ -12459,11 +12459,77 @@ ${html}
         });
     </script>
     
+    <script>
+      (function () {
+        const notifyUnavailable = () => {
+          const message = 'Terminal is not available. Verify terminal assets and restart Evobrew.';
+          if (typeof window.showToast === 'function') {
+            window.showToast(message, 'error');
+          } else {
+            console.warn(`[terminal] ${message}`);
+          }
+        };
+
+        if (typeof window.toggleTerminalDock !== 'function') {
+          window.toggleTerminalDock = notifyUnavailable;
+        }
+        if (typeof window.newTerminalSession !== 'function') {
+          window.newTerminalSession = notifyUnavailable;
+        }
+        if (typeof window.focusTerminal !== 'function') {
+          window.focusTerminal = () => {
+            notifyUnavailable();
+          };
+        }
+        if (typeof window.killActiveTerminal !== 'function') {
+          window.killActiveTerminal = notifyUnavailable;
+        }
+      })();
+    </script>
+
+    <script>
+      (function () {
+        try {
+          const hasOwnDefine = Object.prototype.hasOwnProperty.call(window, 'define');
+          window.__evobrewTerminalDefineState = {
+            hasOwnDefine: hasOwnDefine,
+            define: window.define
+          };
+          window.define = undefined;
+        } catch (_) {
+          // Best effort only; if assignment fails, continue without modifying loader state.
+        }
+      })();
+    </script>
     <script src="/vendor/xterm/lib/xterm.js"></script>
     <script src="/vendor/xterm-addon-fit/lib/addon-fit.js"></script>
     <script src="/vendor/xterm-addon-web-links/lib/addon-web-links.js"></script>
     <script src="/vendor/xterm-addon-search/lib/addon-search.js"></script>
     <script src="/vendor/xterm-addon-serialize/lib/addon-serialize.js"></script>
+    <script>
+      (function () {
+        const state = window.__evobrewTerminalDefineState;
+        if (!state) return;
+
+        try {
+          if (state.hasOwnDefine) {
+            window.define = state.define;
+          } else {
+            try {
+              delete window.define;
+            } catch (_) {
+              window.define = state.define;
+            }
+          }
+        } finally {
+          try {
+            delete window.__evobrewTerminalDefineState;
+          } catch (_) {
+            window.__evobrewTerminalDefineState = undefined;
+          }
+        }
+      })();
+    </script>
     <script src="js/terminal.js"></script>
 
     <!-- Brain Studio Tab Modules -->

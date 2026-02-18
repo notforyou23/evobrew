@@ -59,6 +59,22 @@ The server automatically detects which mode to use at startup, with global confi
     "https": false,
     "brain_browser": true,
     "function_calling": true
+  },
+  "terminal": {
+    "enabled": true,
+    "max_sessions_per_client": 6,
+    "idle_timeout_ms": 1800000,
+    "max_buffer_bytes": 2097152
+  },
+  "security": {
+    "profile": "local",
+    "internet_enable_terminal": false,
+    "internet_enable_mutations": false,
+    "internet_enable_gateway_proxy": false,
+    "workspace_root": "",
+    "proxy_shared_secret": "",
+    "onlyoffice_callback_allowlist": "",
+    "collabora_secret": ""
   }
 }
 ```

@@ -3,6 +3,29 @@
   let initialized = false;
   let headerMetricsObserver = null;
 
+  const terminalFallbackActions = {
+    toggleTerminalDock: () => {
+      if (typeof window.showToast === 'function') {
+        window.showToast('Terminal is not available. Verify terminal assets and restart Evobrew.', 'error');
+      }
+    },
+    newTerminalSession: () => {
+      if (typeof window.showToast === 'function') {
+        window.showToast('Terminal is not available. Verify terminal assets and restart Evobrew.', 'error');
+      }
+    },
+    focusTerminal: () => {
+      if (typeof window.showToast === 'function') {
+        window.showToast('Terminal is not available. Verify terminal assets and restart Evobrew.', 'error');
+      }
+    },
+    killActiveTerminal: () => {
+      if (typeof window.showToast === 'function') {
+        window.showToast('Terminal is not available. Verify terminal assets and restart Evobrew.', 'error');
+      }
+    }
+  };
+
   function parseArgs(raw) {
     const trimmed = (raw || '').trim();
     if (!trimmed) return [];
@@ -20,7 +43,7 @@
     if (!match) return;
 
     const fnName = match[1];
-    const fn = window[fnName];
+    const fn = window[fnName] || terminalFallbackActions[fnName];
     if (typeof fn !== 'function') {
       console.warn('[UI Refresh] Missing action function:', fnName);
       return;

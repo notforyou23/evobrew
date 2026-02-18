@@ -33,6 +33,37 @@ function safeClientId(clientId) {
   return normalized;
 }
 
+function ensureNodePtySpawnHelper() {
+  if (process.platform !== 'darwin') return;
+
+  const prebuildRoot = path.join(__dirname, '..', '..', 'node_modules', 'node-pty', 'prebuilds');
+  if (!fs.existsSync(prebuildRoot)) {
+    return;
+  }
+
+  let entries = [];
+  try {
+    entries = fs.readdirSync(prebuildRoot, { withFileTypes: true });
+  } catch (_) {
+    return;
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const helperPath = path.join(prebuildRoot, entry.name, 'spawn-helper');
+    try {
+      const stat = fs.statSync(helperPath);
+      if (!stat.isFile()) continue;
+      if ((stat.mode & 0o111) === 0) {
+        const target = stat.mode | 0o755;
+        fs.chmodSync(helperPath, target);
+      }
+    } catch (_) {
+      // Ignore missing platform-specific helper entries.
+    }
+  }
+}
+
 function escapeRegExp(input) {
   return String(input).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -68,12 +99,23 @@ class TerminalSessionManager {
     this._sessions = new Map();
     this._clientSessions = new Map();
     this._options = this._normalizeOptions(options);
+    this._spawnHelperFixApplied = false;
 
     this._sweepTimer = setInterval(() => {
       this._sweepIdleSessions();
     }, 30_000);
     if (typeof this._sweepTimer.unref === 'function') {
       this._sweepTimer.unref();
+    }
+  }
+
+  _ensureSpawnHelperExecutable() {
+    if (this._spawnHelperFixApplied) return;
+    this._spawnHelperFixApplied = true;
+    try {
+      ensureNodePtySpawnHelper();
+    } catch (_) {
+      // Intentionally silent: creation will surface a clear spawn error later.
     }
   }
 
@@ -258,6 +300,7 @@ class TerminalSessionManager {
 
     const clientId = safeClientId(params.clientId);
     const clientSet = this._getClientSessionSet(clientId);
+    this._ensureSpawnHelperExecutable();
 
     if (clientSet.size >= this._options.maxSessionsPerClient) {
       throw new Error(`Client has reached terminal session limit (${this._options.maxSessionsPerClient})`);
