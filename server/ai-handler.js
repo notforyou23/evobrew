@@ -226,6 +226,86 @@ function pruneEphemeralMessages(messages, currentIteration) {
 // ============================================================================
 
 function buildOpenAIResponsesToolsFromChatTools(chatToolDefinitions) {
+  function schemaAllowsNull(schema) {
+    if (!schema || typeof schema !== 'object') return false;
+    if (schema.type === 'null') return true;
+    if (Array.isArray(schema.type)) return schema.type.includes('null');
+    if (Array.isArray(schema.anyOf)) return schema.anyOf.some(schemaAllowsNull);
+    if (Array.isArray(schema.oneOf)) return schema.oneOf.some(schemaAllowsNull);
+    return false;
+  }
+
+  function makeSchemaNullable(schema) {
+    if (!schema || typeof schema !== 'object') return { anyOf: [{ type: 'null' }] };
+    if (schemaAllowsNull(schema)) return schema;
+    return {
+      anyOf: [
+        schema,
+        { type: 'null' }
+      ]
+    };
+  }
+
+  function normalizeSchemaForOpenAIStrict(schema) {
+    if (Array.isArray(schema)) {
+      return schema.map((item) => normalizeSchemaForOpenAIStrict(item));
+    }
+
+    if (!schema || typeof schema !== 'object') {
+      return schema;
+    }
+
+    const normalized = {};
+    for (const [key, value] of Object.entries(schema)) {
+      if (key === 'properties' || key === 'required' || key === 'items' || key === 'anyOf' || key === 'oneOf' || key === 'allOf' || key === 'not') {
+        continue;
+      }
+      normalized[key] = normalizeSchemaForOpenAIStrict(value);
+    }
+
+    if (Array.isArray(schema.anyOf)) {
+      normalized.anyOf = schema.anyOf.map((item) => normalizeSchemaForOpenAIStrict(item));
+    }
+    if (Array.isArray(schema.oneOf)) {
+      normalized.oneOf = schema.oneOf.map((item) => normalizeSchemaForOpenAIStrict(item));
+    }
+    if (Array.isArray(schema.allOf)) {
+      normalized.allOf = schema.allOf.map((item) => normalizeSchemaForOpenAIStrict(item));
+    }
+    if (schema.not && typeof schema.not === 'object') {
+      normalized.not = normalizeSchemaForOpenAIStrict(schema.not);
+    }
+
+    if (schema.type === 'array' || schema.items !== undefined) {
+      normalized.items = normalizeSchemaForOpenAIStrict(schema.items);
+    }
+
+    if (schema.type === 'object' || schema.properties !== undefined) {
+      const properties = (schema.properties && typeof schema.properties === 'object') ? schema.properties : {};
+      const originalRequired = new Set(Array.isArray(schema.required) ? schema.required : []);
+      const propertyKeys = Object.keys(properties);
+      const normalizedProperties = {};
+
+      for (const key of propertyKeys) {
+        const propSchema = normalizeSchemaForOpenAIStrict(properties[key]);
+        normalizedProperties[key] = originalRequired.has(key)
+          ? propSchema
+          : makeSchemaNullable(propSchema);
+      }
+
+      normalized.properties = normalizedProperties;
+      normalized.required = propertyKeys;
+
+      if (schema.additionalProperties !== undefined) {
+        normalized.additionalProperties = schema.additionalProperties;
+      } else {
+        normalized.additionalProperties = false;
+      }
+    }
+
+    return normalized;
+  }
+
   // Our existing tool definitions are Chat Completions format:
   // { type:'function', function:{ name, description, parameters } }
   // Responses API expects:
@@ -236,7 +316,7 @@ function buildOpenAIResponsesToolsFromChatTools(chatToolDefinitions) {
       type: 'function',
       name: t.function.name,
       description: t.function.description || null,
-      parameters: t.function.parameters || null,
+      parameters: normalizeSchemaForOpenAIStrict(t.function.parameters || null),
       strict: true
     }));
 }
