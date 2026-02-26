@@ -3851,12 +3851,21 @@ const BRAIN_DIRS = BRAINS_ENABLED
 
 const BRAIN_DIR_LABELS = {};
 BRAIN_DIRS.forEach(d => {
-  // Create user-friendly labels based on path
-  const basename = path.basename(d);
-  if (d.includes('testing')) BRAIN_DIR_LABELS[d] = 'testing';
-  else if (basename) BRAIN_DIR_LABELS[d] = basename;
-  else BRAIN_DIR_LABELS[d] = 'brains';
+  if (d.includes('cosmo-home')) BRAIN_DIR_LABELS[d] = 'cosmo-home';
+  else if (d.includes('_allTesting')) BRAIN_DIR_LABELS[d] = 'bertha/testing';
+  else if (d.includes('Bertha')) BRAIN_DIR_LABELS[d] = 'bertha';
+  else BRAIN_DIR_LABELS[d] = 'main';
 });
+
+// Brain list cache: keyed by location+counts, 60s TTL
+const _brainListCache = {};
+const BRAIN_CACHE_TTL = 60000;
+
+function _getCachedBrains(key) {
+  const entry = _brainListCache[key];
+  if (entry && Date.now() - entry.ts < BRAIN_CACHE_TTL) return entry.data;
+  return null;
+}
 
 // Config endpoint for frontend (exposes safe config values)
 app.get('/api/config', (req, res) => {
@@ -3936,6 +3945,9 @@ app.get('/api/brains/locations', async (req, res) => {
   }
 });
 
+// GET /api/brains/list?location=cosmo-home&counts=1
+// - location: filter to one location label (fast when specified)
+// - counts: if "1", read state.json.gz for node counts (slow). Default: skip counts for speed.
 app.get('/api/brains/list', async (req, res) => {
   // Return empty list if brains feature is disabled
   if (!BRAINS_ENABLED || BRAIN_DIRS.length === 0) {
@@ -3943,8 +3955,18 @@ app.get('/api/brains/list', async (req, res) => {
   }
   
   try {
+    const locationFilter = req.query.location || null;
+    const withCounts = req.query.counts === '1';
+    const cacheKey = `${locationFilter || 'all'}:${withCounts ? 'c' : 'f'}`;
+    const cached = _getCachedBrains(cacheKey);
+    if (cached) return res.json({ success: true, brains: cached, cached: true });
+
+    const dirs = locationFilter
+      ? BRAIN_DIRS.filter(d => BRAIN_DIR_LABELS[d] === locationFilter)
+      : BRAIN_DIRS;
+
     const brains = [];
-    for (const dir of BRAIN_DIRS) {
+    for (const dir of dirs) {
       try {
         await fs.access(dir);
       } catch {
@@ -3957,16 +3979,24 @@ app.get('/api/brains/list', async (req, res) => {
         const statePath = path.join(brainPath, 'state.json.gz');
         try {
           await fs.access(statePath);
-          // Quick check: read state to get node count
           let nodeCount = null;
           let estimated = false;
-          try {
-            const compressed = await fs.readFile(statePath);
-            const decompressed = await gunzip(compressed);
-            const state = JSON.parse(decompressed.toString());
-            nodeCount = state.memory?.nodes?.length || 0;
-          } catch {
-            estimated = true;
+          if (withCounts) {
+            try {
+              const compressed = await fs.readFile(statePath);
+              const decompressed = await gunzip(compressed);
+              const state = JSON.parse(decompressed.toString());
+              nodeCount = state.memory?.nodes?.length || 0;
+            } catch {
+              estimated = true;
+            }
+          } else {
+            // Estimate from file size (fast)
+            try {
+              const stat = await fs.stat(statePath);
+              nodeCount = Math.round(stat.size / 400); // rough estimate
+              estimated = true;
+            } catch { estimated = true; }
           }
           brains.push({
             name: entry.name,
@@ -3982,6 +4012,7 @@ app.get('/api/brains/list', async (req, res) => {
     }
     // Sort by name descending (newest timestamps first typically)
     brains.sort((a, b) => b.name.localeCompare(a.name));
+    _brainListCache[cacheKey] = { ts: Date.now(), data: brains };
     res.json({ success: true, brains });
   } catch (error) {
     console.error('[BRAIN-PICKER] Error listing brains:', error);
