@@ -12607,6 +12607,7 @@ ${html}
       const listEl = document.getElementById('brainPickerList');
       try {
         const res = await fetch('/api/brains/locations');
+        if (!res.ok) throw new Error(`locations ${res.status}`);
         const data = await res.json();
         if (!data.success) throw new Error('Failed to load locations');
         _bpLocations = data.locations.filter(l => l.available && l.brainCount > 0);
@@ -12626,7 +12627,12 @@ ${html}
         if (defaultLoc) selectBrainLocation(defaultLoc.label);
         else listEl.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-secondary);">No brain locations found</div>';
       } catch (err) {
-        locEl.innerHTML = `<div style="color:#f87171; font-size:12px; padding:4px;">Error: ${err.message}</div>`;
+        // Fallback: locations endpoint not present — hide location row and use flat list
+        if (locEl) {
+          locEl.style.display = 'none';
+        }
+        _bpSelectedLocation = null;
+        await fetchBrainList(null);
       }
     }
 
