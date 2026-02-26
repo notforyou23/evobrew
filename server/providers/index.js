@@ -132,31 +132,15 @@ async function createRegistry(options = {}) {
     console.warn('[Providers] ⚠️ OPENAI_API_KEY not set, OpenAI provider unavailable');
   }
 
-  // Initialize OpenAI Codex (ChatGPT OAuth)
-  try {
-    const { getCredentials } = require('../../lib/oauth-codex.cjs');
-    const creds = await getCredentials();
-    if (creds) {
-      // Use standard OpenAI API with OAuth access token.
-      // The access token audience includes api.openai.com; routing through chatgpt.com/backend-api
-      // with the OpenAI SDK causes 404s because the SDK appends /v1/* paths.
-      registry.initializeProvider('openai-codex', {
-        apiKey: creds.accessToken,
-        baseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
-        defaultHeaders: {
-          'OpenAI-Beta': 'responses=experimental',
-          'User-Agent': `evobrew/${require('../../package.json').version}`
-        }
-      });
-      // Register Codex models explicitly
-      registry.registerModel('gpt-5.2', 'openai-codex');
-      registry.registerModel('gpt-5.3-codex', 'openai-codex');
-      registry.registerModel('gpt-5.3-codex-spark', 'openai-codex');
-      console.log('[Providers] ✅ OpenAI Codex registered (OAuth)');
-    }
-  } catch (e) {
-    console.warn('[Providers] ⚠️ OpenAI Codex OAuth unavailable:', e.message);
-  }
+  // OpenAI Codex (ChatGPT OAuth)
+  // NOTE: we intentionally DO NOT register a registry provider here.
+  // Codex OAuth is served via the legacy Codex client (chatgpt.com/backend-api/codex/responses)
+  // because ChatGPT OAuth tokens often lack OpenAI Platform scopes (api.responses.write).
+  // We still register the model IDs so the UI can select them.
+  registry.registerModel('gpt-5.2', 'openai-codex');
+  registry.registerModel('gpt-5.3-codex', 'openai-codex');
+  registry.registerModel('gpt-5.3-codex-spark', 'openai-codex');
+  console.log('[Providers] ℹ️ OpenAI Codex models available (OAuth via legacy backend client)');
 
   // Load evobrew config for provider + local LLM settings
   const evobrewConfig = await loadEvobrewConfig();
