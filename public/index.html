@@ -11935,26 +11935,37 @@ ${html}
                 }
               }
 
+              // If we already rendered this run via streaming, ignore the final replay.
+              if (isMainChat && !openclawActive && content && p.runId && p.runId === openclawRenderedRunId) {
+                return;
+              }
+
               if (isMainChat && openclawActive) {
                 stopOpenClawPolling();
+                openclawRenderedRunId = p.runId || openclawRenderedRunId;
+
                 if (openclawStreamEl) {
+                  // We already streamed the content; just finalize the existing element.
+                  // NOTE: finalizeOpenClawStream() also persists history.
                   openclawStreamAccum = content;
                   finalizeOpenClawStream();
                 } else {
                   removeThinkingIndicator();
                   addChatMessage('assistant', content);
+                  // Persist history for non-streaming path
+                  aiConversationHistory.push(
+                    { role: 'user', content: openclawLastUserMessage },
+                    { role: 'assistant', content: content }
+                  );
+                  if (aiConversationHistory.length > 24) {
+                    aiConversationHistory = aiConversationHistory.slice(-24);
+                  }
+                  chatHistory.saveMessage('user', openclawLastUserMessage);
+                  chatHistory.saveMessage('assistant', content);
+                  updateTokenCounter();
+                  openclawActive = false;
                 }
-                aiConversationHistory.push(
-                  { role: 'user', content: openclawLastUserMessage },
-                  { role: 'assistant', content: content }
-                );
-                if (aiConversationHistory.length > 24) {
-                  aiConversationHistory = aiConversationHistory.slice(-24);
-                }
-                chatHistory.saveMessage('user', openclawLastUserMessage);
-                chatHistory.saveMessage('assistant', content);
-                updateTokenCounter();
-                openclawActive = false;
+
                 document.getElementById('ai-send-btn').style.display = '';
                 document.getElementById('ai-stop-btn').style.display = 'none';
               } else if (isMainChat && !openclawActive && content && p.runId !== openclawRenderedRunId) {
