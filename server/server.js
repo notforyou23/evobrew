@@ -3203,6 +3203,7 @@ app.get('/api/providers/status', async (req, res) => {
           // Minimal request: grab the first SSE chunk.
           const gen = codex.responses.create({
             model: 'gpt-5.2',
+            instructions: 'You are a helpful assistant.',
             input: [{ role: 'user', content: [{ type: 'input_text', text: 'ping' }] }],
             text: { format: { type: 'text' } },
             stream: true,
