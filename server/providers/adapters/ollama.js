@@ -184,12 +184,21 @@ class OllamaAdapter extends ProviderAdapter {
   async testConnection() {
     const start = Date.now();
     try {
-      const result = await this.embed('test', { model: this.embeddingModel });
+      // Lightweight check: just hit /api/tags to confirm Ollama is responsive.
+      // Previous approach ran a full embedding which hangs when large models
+      // occupy VRAM and Ollama can't swap in the embedding model.
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      const response = await fetch(`${this.baseUrl}/api/tags`, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (!response.ok) throw new Error(`Ollama responded ${response.status}`);
+      const data = await response.json();
       return {
         success: true,
         latency: Date.now() - start,
-        dimensions: result.embedding.length,
-        model: result.model
+        dimensions: null,
+        model: this.embeddingModel,
+        modelCount: (data.models || []).length
       };
     } catch (error) {
       return {
