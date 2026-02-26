@@ -3141,16 +3141,7 @@ app.get('/api/providers/models', async (req, res) => {
       }
     }
 
-    // Add Codex OAuth models (even though Codex runs via legacy backend client, not the registry)
-    try {
-      const { getCredentials } = require('../lib/oauth-codex.cjs');
-      const creds = await getCredentials();
-      if (creds?.accessToken && creds?.accountId) {
-        models.push({ id: 'gpt-5.2', provider: 'openai-codex', label: 'GPT-5.2 (OpenAI Codex OAuth)' });
-        models.push({ id: 'gpt-5.3-codex', provider: 'openai-codex', label: 'GPT-5.3 Codex (OpenAI Codex OAuth)' });
-        models.push({ id: 'gpt-5.3-codex-spark', provider: 'openai-codex', label: 'GPT-5.3 Codex Spark (OpenAI Codex OAuth)' });
-      }
-    } catch {}
+    // Codex models now included via registerModel() in providers/index.js
 
     // Add OpenClaw (COZ) as a virtual provider option
     models.push({

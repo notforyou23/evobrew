@@ -137,6 +137,7 @@ async function createRegistry(options = {}) {
   // Codex OAuth is served via the legacy Codex client (chatgpt.com/backend-api/codex/responses)
   // because ChatGPT OAuth tokens often lack OpenAI Platform scopes (api.responses.write).
   // We still register the model IDs so the UI can select them.
+  // Codex model IDs registered for routing only; listing handled in /api/providers/models handler
   registry.registerModel('gpt-5.2', 'openai-codex');
   registry.registerModel('gpt-5.3-codex', 'openai-codex');
   registry.registerModel('gpt-5.3-codex-spark', 'openai-codex');
