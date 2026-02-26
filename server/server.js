@@ -3187,6 +3187,18 @@ app.get('/api/providers/status', async (req, res) => {
       if (hasCodex && typeof getCodex === 'function') {
         const start = Date.now();
         const codex = await getCodex();
+
+        // Default replacement entry (unhealthy until proven otherwise)
+        let codexHealth = {
+          provider: 'openai-codex',
+          name: 'OpenAI Codex (OAuth)',
+          healthy: false,
+          latency: Date.now() - start,
+          error: 'Codex client unavailable',
+          capabilities: capabilities['openai-codex'],
+          timestamp: Date.now()
+        };
+
         if (codex?.responses?.create) {
           // Minimal request: grab the first SSE chunk.
           const gen = codex.responses.create({
@@ -3200,19 +3212,17 @@ app.get('/api/providers/status', async (req, res) => {
           for await (const _chunk of gen) {
             break;
           }
-          const latency = Date.now() - start;
-          status = status.map(p => p.provider === 'openai-codex'
-            ? {
-                provider: 'openai-codex',
-                name: 'OpenAI Codex (OAuth)',
-                healthy: true,
-                latency,
-                capabilities: capabilities['openai-codex'] || p.capabilities,
-                timestamp: Date.now()
-              }
-            : p
-          );
+          codexHealth = {
+            provider: 'openai-codex',
+            name: 'OpenAI Codex (OAuth)',
+            healthy: true,
+            latency: Date.now() - start,
+            capabilities: capabilities['openai-codex'],
+            timestamp: Date.now()
+          };
         }
+
+        status = status.map(p => p.provider === 'openai-codex' ? codexHealth : p);
       }
     } catch (e) {
       status = status.map(p => p.provider === 'openai-codex'
