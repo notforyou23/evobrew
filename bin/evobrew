@@ -41,7 +41,7 @@ Commands:
   update [options]   Check for and apply updates
 
 Daemon Actions:
-  daemon install     Install and start as system service
+  daemon install     Install and start as background service
   daemon uninstall   Stop and remove service
   daemon start       Start service
   daemon stop        Stop service
@@ -63,7 +63,8 @@ Examples:
   evobrew setup --only anthropic,xai   Configure only anthropic and xAI
   evobrew setup --skip ollama          Skip Ollama configuration
   evobrew setup --status             Show provider status
-  evobrew daemon install       Run as background service
+  evobrew daemon install       Install as launchd/systemd (default)
+  evobrew daemon install --pm2  Install/run under PM2
   evobrew status               Check if running
   evobrew start                Run in foreground (dev mode)
 
@@ -231,23 +232,35 @@ async function handleDaemonCommand() {
       options.errorLog = true;
     } else if (args[i] === '--follow' || args[i] === '-f') {
       options.follow = true;
+    } else if (args[i] === '--pm2') {
+      options.pm2 = true;
     }
   }
   
   try {
     switch (action) {
       case 'install': {
-        console.log('🔧 Installing Evobrew daemon...\n');
-        
-        const platform = daemonManager.detectPlatform();
-        if (!platform.supported) {
-          console.error(`❌ ${platform.message}`);
-          process.exit(1);
+        console.log('🔧 Installing Evobrew service...\n');
+
+        const runner = options.pm2 ? 'pm2' : null;
+
+        if (!runner) {
+          const platform = daemonManager.detectPlatform();
+          if (!platform.supported) {
+            console.error(`❌ ${platform.message}`);
+            console.error('Tip: If you prefer PM2, install it and run: evobrew daemon install --pm2');
+            process.exit(1);
+          }
+          console.log(`Platform: ${platform.platform} (${platform.serviceManager})`);
+        } else {
+          if (!daemonManager.hasPm2()) {
+            console.error('❌ PM2 is not installed. Install with: npm install -g pm2');
+            process.exit(1);
+          }
+          console.log('Runner: pm2');
         }
-        
-        console.log(`Platform: ${platform.platform} (${platform.serviceManager})`);
-        
-        const result = await daemonManager.installDaemon();
+
+        const result = await daemonManager.installDaemon({ runner });
         
         console.log('\n✅ Daemon installed successfully!');
         if (result.plistPath) {
@@ -273,9 +286,10 @@ async function handleDaemonCommand() {
       }
       
       case 'uninstall': {
-        console.log('🗑️  Uninstalling Evobrew daemon...\n');
-        
-        await daemonManager.uninstallDaemon();
+        console.log('🗑️  Uninstalling Evobrew service...\n');
+
+        const runner = options.pm2 ? 'pm2' : null;
+        await daemonManager.uninstallDaemon({ runner });
         
         console.log('✅ Daemon uninstalled successfully!');
         console.log('   Service removed. Config and logs preserved in ~/.evobrew/');
@@ -283,9 +297,10 @@ async function handleDaemonCommand() {
       }
       
       case 'start': {
-        console.log('▶️  Starting Evobrew daemon...\n');
-        
-        const result = await daemonManager.startDaemon();
+        console.log('▶️  Starting Evobrew service...\n');
+
+        const runner = options.pm2 ? 'pm2' : null;
+        const result = await daemonManager.startDaemon({ runner });
         
         if (result.success) {
           const status = daemonManager.getDaemonStatus();
@@ -302,18 +317,20 @@ async function handleDaemonCommand() {
       }
       
       case 'stop': {
-        console.log('⏹️  Stopping Evobrew daemon...\n');
-        
-        await daemonManager.stopDaemon();
+        console.log('⏹️  Stopping Evobrew service...\n');
+
+        const runner = options.pm2 ? 'pm2' : null;
+        await daemonManager.stopDaemon({ runner });
         
         console.log('✅ Daemon stopped.');
         break;
       }
       
       case 'restart': {
-        console.log('🔄 Restarting Evobrew daemon...\n');
-        
-        await daemonManager.restartDaemon();
+        console.log('🔄 Restarting Evobrew service...\n');
+
+        const runner = options.pm2 ? 'pm2' : null;
+        await daemonManager.restartDaemon({ runner });
         
         // Wait and check status
         await new Promise(resolve => setTimeout(resolve, 2000));
@@ -341,7 +358,13 @@ async function handleDaemonCommand() {
       
       case 'logs': {
         const lines = options.lines || 50;
-        
+
+        // PM2 logs (if requested)
+        if (options.pm2) {
+          console.log(daemonManager.getPm2Logs(lines));
+          break;
+        }
+
         if (options.follow !== false) {
           // Default: tail -f mode
           console.log(`📜 Tailing ${options.errorLog ? 'error' : 'server'} logs (Ctrl+C to stop)...\n`);
