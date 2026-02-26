@@ -154,6 +154,8 @@ async function createRegistry(options = {}) {
     });
     // Register Grok models explicitly
     registry.registerModel('grok-code-fast-1', 'xai');
+    registry.registerModel('grok-4-1-fast-reasoning', 'xai');
+    registry.registerModel('grok-4-1-fast-non-reasoning', 'xai');
     registry.registerModel('grok-2', 'xai');
     registry.registerModel('grok-beta', 'xai');
     console.log('[Providers] ✅ xAI (Grok) registered');
