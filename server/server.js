@@ -3182,14 +3182,12 @@ app.get('/api/providers/status', async (req, res) => {
     // Special-case Codex OAuth health check.
     // The registry's openai-codex adapter uses the OpenAI SDK, but Codex OAuth is validated
     // against the ChatGPT Codex backend endpoint.
-    try {
-      const hasCodex = Array.isArray(status) && status.some(p => p.provider === 'openai-codex');
-      if (hasCodex && typeof getCodex === 'function') {
-        const start = Date.now();
+    if (typeof getCodex === 'function') {
+      let codexHealth = null;
+      const start = Date.now();
+      try {
         const codex = await getCodex();
-
-        // Default replacement entry (unhealthy until proven otherwise)
-        let codexHealth = {
+        codexHealth = {
           provider: 'openai-codex',
           name: 'OpenAI Codex (OAuth)',
           healthy: false,
@@ -3200,7 +3198,6 @@ app.get('/api/providers/status', async (req, res) => {
         };
 
         if (codex?.responses?.create) {
-          // Minimal request: grab the first SSE chunk.
           const gen = codex.responses.create({
             model: 'gpt-5.2',
             instructions: 'You are a helpful assistant.',
@@ -3210,9 +3207,8 @@ app.get('/api/providers/status', async (req, res) => {
             store: false
           });
           // eslint-disable-next-line no-unused-vars
-          for await (const _chunk of gen) {
-            break;
-          }
+          for await (const _chunk of gen) break;
+
           codexHealth = {
             provider: 'openai-codex',
             name: 'OpenAI Codex (OAuth)',
@@ -3222,18 +3218,22 @@ app.get('/api/providers/status', async (req, res) => {
             timestamp: Date.now()
           };
         }
-
-        status = status.map(p => p.provider === 'openai-codex' ? codexHealth : p);
+      } catch (e) {
+        codexHealth = {
+          provider: 'openai-codex',
+          name: 'OpenAI Codex (OAuth)',
+          healthy: false,
+          latency: Date.now() - start,
+          error: `Codex OAuth healthcheck failed: ${e.message}`,
+          capabilities: capabilities['openai-codex'],
+          timestamp: Date.now()
+        };
       }
-    } catch (e) {
-      status = status.map(p => p.provider === 'openai-codex'
-        ? {
-            ...p,
-            healthy: false,
-            error: `Codex OAuth healthcheck failed: ${e.message}`
-          }
-        : p
-      );
+
+      if (codexHealth) {
+        status = (status || []).filter(p => p.provider !== 'openai-codex');
+        status.push(codexHealth);
+      }
     }
 
     res.json({
