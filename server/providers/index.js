@@ -166,8 +166,9 @@ async function createRegistry(options = {}) {
   const platform = getPlatform();
   const ollamaBaseUrl = ollamaConfig.base_url || 'http://localhost:11434';
   const isRemoteOllama = !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\b/i.test(ollamaBaseUrl);
+  const forceEnableOllamaOnPi = platform.platform === 'pi' && (ollamaConfig.force_enable_on_pi === true);
 
-  if (platform.supportsLocalModels || isRemoteOllama) {
+  if (platform.supportsLocalModels || isRemoteOllama || forceEnableOllamaOnPi) {
     // Ollama
     if (ollamaConfig.enabled !== false) {
       const shouldAutoDetect = ollamaConfig.auto_detect !== false && detectOllamaEnabled;
