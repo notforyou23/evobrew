@@ -3176,10 +3176,57 @@ app.get('/api/providers/status', async (req, res) => {
   try {
     const { getDefaultRegistry } = require('./providers');
     const registry = await getDefaultRegistry();
-    const status = await registry.healthCheck();
+    let status = await registry.healthCheck();
     const capabilities = registry.getCapabilities();
-    res.json({ 
-      success: true, 
+
+    // Special-case Codex OAuth health check.
+    // The registry's openai-codex adapter uses the OpenAI SDK, but Codex OAuth is validated
+    // against the ChatGPT Codex backend endpoint.
+    try {
+      const hasCodex = Array.isArray(status) && status.some(p => p.provider === 'openai-codex');
+      if (hasCodex && typeof getCodex === 'function') {
+        const start = Date.now();
+        const codex = await getCodex();
+        if (codex?.responses?.create) {
+          // Minimal request: grab the first SSE chunk.
+          const gen = codex.responses.create({
+            model: 'gpt-5.2',
+            input: [{ role: 'user', content: [{ type: 'input_text', text: 'ping' }] }],
+            text: { format: { type: 'text' } },
+            stream: true,
+            store: false
+          });
+          // eslint-disable-next-line no-unused-vars
+          for await (const _chunk of gen) {
+            break;
+          }
+          const latency = Date.now() - start;
+          status = status.map(p => p.provider === 'openai-codex'
+            ? {
+                provider: 'openai-codex',
+                name: 'OpenAI Codex (OAuth)',
+                healthy: true,
+                latency,
+                capabilities: capabilities['openai-codex'] || p.capabilities,
+                timestamp: Date.now()
+              }
+            : p
+          );
+        }
+      }
+    } catch (e) {
+      status = status.map(p => p.provider === 'openai-codex'
+        ? {
+            ...p,
+            healthy: false,
+            error: `Codex OAuth healthcheck failed: ${e.message}`
+          }
+        : p
+      );
+    }
+
+    res.json({
+      success: true,
       providers: status,
       capabilities,
       providerIds: registry.getProviderIds()
