@@ -3876,6 +3876,66 @@ app.get('/api/config', (req, res) => {
   });
 });
 
+app.get('/api/brains/locations', async (req, res) => {
+  // Return empty list if brains feature is disabled
+  if (!BRAINS_ENABLED || BRAIN_DIRS.length === 0) {
+    return res.json({ success: true, locations: [], disabled: true });
+  }
+
+  try {
+    const locations = [];
+    for (const dir of BRAIN_DIRS) {
+      let available = true;
+      try {
+        await fs.access(dir);
+      } catch {
+        available = false;
+      }
+
+      // Count valid brains in this location
+      let brainCount = 0;
+      if (available) {
+        try {
+          const entries = await fs.readdir(dir, { withFileTypes: true });
+          for (const entry of entries) {
+            if (!entry.isDirectory()) continue;
+            const brainPath = path.join(dir, entry.name);
+            const statePath = path.join(brainPath, 'state.json.gz');
+            try {
+              await fs.access(statePath);
+              brainCount += 1;
+            } catch {
+              continue;
+            }
+          }
+        } catch {
+          // ignore count errors
+        }
+      }
+
+      const label = (() => {
+        const d = dir.toLowerCase();
+        if (d.includes('bertha') && d.includes('testing')) return 'bertha/testing';
+        if (d.includes('bertha')) return 'bertha';
+        if (d.includes('cosmo-home')) return 'cosmo-home';
+        return BRAIN_DIR_LABELS[dir] || path.basename(dir) || 'brains';
+      })();
+
+      locations.push({
+        label,
+        path: dir,
+        available,
+        brainCount
+      });
+    }
+
+    res.json({ success: true, locations });
+  } catch (error) {
+    console.error('[BRAIN-PICKER] Error listing brain locations:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.get('/api/brains/list', async (req, res) => {
   // Return empty list if brains feature is disabled
   if (!BRAINS_ENABLED || BRAIN_DIRS.length === 0) {
@@ -3899,16 +3959,20 @@ app.get('/api/brains/list', async (req, res) => {
           await fs.access(statePath);
           // Quick check: read state to get node count
           let nodeCount = null;
+          let estimated = false;
           try {
             const compressed = await fs.readFile(statePath);
             const decompressed = await gunzip(compressed);
             const state = JSON.parse(decompressed.toString());
             nodeCount = state.memory?.nodes?.length || 0;
-          } catch { /* skip count on error */ }
+          } catch {
+            estimated = true;
+          }
           brains.push({
             name: entry.name,
             path: brainPath,
             nodes: nodeCount,
+            estimated,
             location: BRAIN_DIR_LABELS[dir] || 'unknown'
           });
         } catch {
