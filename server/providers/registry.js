@@ -297,12 +297,26 @@ class ProviderRegistry {
    */
   listModels() {
     const models = [];
+    const seen = new Set();
     for (const [providerId, adapter] of this.providers.entries()) {
       for (const modelId of adapter.getAvailableModels()) {
         models.push({
           id: modelId,
           provider: providerId,
           label: this._formatModelLabel(modelId, adapter.name)
+        });
+        seen.add(modelId);
+      }
+    }
+    // Include models registered via registerModel() that weren't listed by their adapter
+    for (const [modelId, providerId] of this.modelMap.entries()) {
+      if (!seen.has(modelId)) {
+        const adapter = this.providers.get(providerId);
+        const providerName = adapter ? adapter.name : providerId;
+        models.push({
+          id: modelId,
+          provider: providerId,
+          label: this._formatModelLabel(modelId, providerName)
         });
       }
     }
