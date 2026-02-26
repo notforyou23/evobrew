@@ -137,14 +137,14 @@ async function createRegistry(options = {}) {
     const { getCredentials } = require('../../lib/oauth-codex.cjs');
     const creds = await getCredentials();
     if (creds) {
+      // Use standard OpenAI API with OAuth access token.
+      // The access token audience includes api.openai.com; routing through chatgpt.com/backend-api
+      // with the OpenAI SDK causes 404s because the SDK appends /v1/* paths.
       registry.initializeProvider('openai-codex', {
         apiKey: creds.accessToken,
-        baseUrl: 'https://chatgpt.com/backend-api',
+        baseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
         defaultHeaders: {
-          'chatgpt-account-id': creds.accountId,
           'OpenAI-Beta': 'responses=experimental',
-          'originator': 'evobrew',
-          'accept': 'text/event-stream',
           'User-Agent': `evobrew/${require('../../package.json').version}`
         }
       });
@@ -177,15 +177,17 @@ async function createRegistry(options = {}) {
   const ollamaConfig = evobrewConfig?.providers?.ollama || { enabled: true, auto_detect: true, base_url: 'http://localhost:11434' };
   const lmstudioConfig = evobrewConfig?.providers?.lmstudio || { enabled: false, base_url: 'http://localhost:1234/v1' };
   
-  // Detect and initialize Ollama (for local embeddings + chat)
-  // Skip on Raspberry Pi - no local model support
+  // Detect and initialize Ollama (for embeddings + chat)
+  // NOTE: On Raspberry Pi we still want to support *remote* Ollama (e.g. Mac mini inference).
   const platform = getPlatform();
-  if (platform.supportsLocalModels) {
+  const ollamaBaseUrl = ollamaConfig.base_url || 'http://localhost:11434';
+  const isRemoteOllama = !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\b/i.test(ollamaBaseUrl);
+
+  if (platform.supportsLocalModels || isRemoteOllama) {
     // Ollama
     if (ollamaConfig.enabled !== false) {
-      const ollamaBaseUrl = ollamaConfig.base_url || 'http://localhost:11434';
       const shouldAutoDetect = ollamaConfig.auto_detect !== false && detectOllamaEnabled;
-      
+
       if (shouldAutoDetect) {
         const ollamaAvailable = await detectOllama(ollamaBaseUrl);
         if (ollamaAvailable) {
@@ -193,12 +195,11 @@ async function createRegistry(options = {}) {
             baseUrl: ollamaBaseUrl,
             embeddingModel: 'nomic-embed-text'
           });
-          console.log(`[Providers] ✅ Ollama detected at ${ollamaBaseUrl} - local models available`);
+          console.log(`[Providers] ✅ Ollama detected at ${ollamaBaseUrl} - models available`);
         } else {
           console.log(`[Providers] ℹ️ Ollama not detected at ${ollamaBaseUrl}`);
         }
       } else if (!shouldAutoDetect && ollamaConfig.enabled) {
-        // Explicitly enabled without auto-detect - assume it's there
         registry.initializeProvider('ollama', {
           baseUrl: ollamaBaseUrl,
           embeddingModel: 'nomic-embed-text'
@@ -208,7 +209,7 @@ async function createRegistry(options = {}) {
     } else {
       console.log('[Providers] ℹ️ Ollama disabled in config');
     }
-    
+
     // LMStudio (uses OpenAI-compatible API)
     if (lmstudioConfig.enabled) {
       const lmstudioBaseUrl = lmstudioConfig.base_url || 'http://localhost:1234/v1';
@@ -218,7 +219,7 @@ async function createRegistry(options = {}) {
       console.log(`[Providers] ✅ LMStudio configured at ${lmstudioBaseUrl}`);
     }
   } else if (detectOllamaEnabled && !platform.supportsLocalModels) {
-    console.log(`[Providers] ℹ️ Skipping local models on ${platform.platform} (not supported)`);
+    console.log(`[Providers] ℹ️ Skipping local models on ${platform.platform} (not supported; set providers.ollama.base_url to a remote host to enable)`);
   }
 
   return registry;
