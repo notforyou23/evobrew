@@ -11936,8 +11936,10 @@ ${html}
               }
 
               // If we already rendered this run via streaming, ignore the final replay.
-              if (isMainChat && !openclawActive && content && p.runId && p.runId === openclawRenderedRunId) {
-                return;
+              // Some final events may omit runId; dedupe by content as a fallback.
+              if (isMainChat && !openclawActive && content) {
+                if (p.runId && p.runId === openclawRenderedRunId) return;
+                if (!p.runId && openclawLastAssistantContent && content.trim() === openclawLastAssistantContent.trim()) return;
               }
 
               if (isMainChat && openclawActive) {
@@ -12136,6 +12138,7 @@ ${html}
         let openclawStreamEl = null;
         let openclawStreamAccum = ''; // Accumulate raw text for streaming
         let openclawLastUserMessage = ''; // Store original user message for history
+        let openclawLastAssistantContent = ''; // Last assistant content already rendered (dedupe)
         // Track whether OpenClaw model is active for routing streaming events
         let openclawActive = false;
         let openclawRenderedRunId = null; // Track runId already rendered via streaming
@@ -12262,6 +12265,7 @@ ${html}
         function finalizeOpenClawStream() {
             if (openclawStreamEl) {
                 const finalContent = openclawStreamAccum;
+                openclawLastAssistantContent = finalContent;
                 // Update header and render final content
                 const header = openclawStreamEl.querySelector('.ai-message-header');
                 if (header) header.textContent = '🤖 AI Assistant';
