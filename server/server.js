@@ -3182,11 +3182,11 @@ app.get('/api/providers/status', async (req, res) => {
     // Special-case Codex OAuth health check.
     // The registry's openai-codex adapter uses the OpenAI SDK, but Codex OAuth is validated
     // against the ChatGPT Codex backend endpoint.
-    if (typeof getCodex === 'function') {
+    if (typeof getOpenAICodex === 'function') {
       let codexHealth = null;
       const start = Date.now();
       try {
-        const codex = await getCodex();
+        const codex = await getOpenAICodex();
         codexHealth = {
           provider: 'openai-codex',
           name: 'OpenAI Codex (OAuth)',
