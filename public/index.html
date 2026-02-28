@@ -11661,11 +11661,11 @@ ${html}
             // HTTPS → proxy through our server to avoid mixed-content block
             // HTTP  → connect directly to Gateway
             let wsUrl;
+            // Always proxy through server to support remote access (LAN/Tailscale)
             if (window.location.protocol === 'https:') {
               wsUrl = 'wss://' + window.location.host + '/api/gateway-ws';
             } else {
-              const gatewayHost = window.location.hostname || 'localhost';
-              wsUrl = 'ws://' + gatewayHost + ':18789';
+              wsUrl = 'ws://' + window.location.host + '/api/gateway-ws';
             }
             console.log('[OpenClaw] Connecting to:', wsUrl);
             openclawWebSocket = new WebSocket(wsUrl);

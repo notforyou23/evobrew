@@ -46,7 +46,7 @@ const { ProviderRegistry } = require('./registry.js');
  * @param {number} [timeoutMs=1000] - Timeout in milliseconds
  * @returns {Promise<boolean>}
  */
-async function detectOllama(baseUrl = 'http://localhost:11434', timeoutMs = 1000) {
+async function detectOllama(baseUrl = 'http://localhost:11434', timeoutMs = 5000) {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);

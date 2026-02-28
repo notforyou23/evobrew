@@ -425,7 +425,9 @@ function isAllowedLocalOrigin(origin) {
     /^http:\/\/127\.0\.0\.1:\d+$/,
     /^http:\/\/192\.168\.\d+\.\d+:\d+$/,
     /^http:\/\/10\.\d+\.\d+\.\d+:\d+$/,
-    /^http:\/\/172\.(1[6-9]|2\d|3[01])\.\d+\.\d+:\d+$/
+    /^http:\/\/172\.(1[6-9]|2\d|3[01])\.\d+\.\d+:\d+$/,
+    /^http:\/\/[a-zA-Z0-9-]+\.local:\d+$/,
+    /^https:\/\/[a-zA-Z0-9-]+\.local:\d+$/
   ];
 
   return allowed.some((pattern) =>
@@ -2903,6 +2905,36 @@ function attachTerminalWs(server) {
 
   server.on('upgrade', (req, socket, head) => {
     const upgradePath = String(req.url || '').split('?')[0];
+    // Gateway proxy: handle /api/gateway-ws inline to avoid dual upgrade-listener crash
+    if (upgradePath === '/api/gateway-ws') {
+      if (!shouldDisableGatewayProxy()) {
+        const GW_PORT = parseInt(process.env.OPENCLAW_GATEWAY_PORT || '18789', 10);
+        const GW_HOST = process.env.OPENCLAW_GATEWAY_HOST || 'localhost';
+        const GW_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN || '';
+        const GW_PASS = process.env.OPENCLAW_GATEWAY_PASSWORD || '';
+        const params = [];
+        if (GW_PASS) params.push(`password=${encodeURIComponent(GW_PASS)}`);
+        if (GW_TOKEN) params.push(`token=${encodeURIComponent(GW_TOKEN)}`);
+        const gwPath = params.length ? `/?${params.join('&')}` : '/';
+        const gatewaySocket = net.connect({ host: GW_HOST, port: GW_PORT }, () => {
+          let fwd = `GET ${gwPath} HTTP/1.1\r\n`;
+          fwd += `Host: ${GW_HOST}:${GW_PORT}\r\n`;
+          fwd += `Origin: http://${GW_HOST}:${GW_PORT}\r\n`;
+          for (const key of ['upgrade', 'connection', 'sec-websocket-key', 'sec-websocket-version', 'sec-websocket-extensions']) {
+            if (req.headers[key]) fwd += `${key}: ${req.headers[key]}\r\n`;
+          }
+          fwd += '\r\n';
+          gatewaySocket.write(fwd);
+          gatewaySocket.pipe(socket);
+          socket.pipe(gatewaySocket);
+        });
+        gatewaySocket.on('error', () => socket.end('HTTP/1.1 502 Bad Gateway\r\n\r\n'));
+        socket.on('error', () => gatewaySocket.destroy());
+        socket.on('close', () => gatewaySocket.destroy());
+        gatewaySocket.on('close', () => socket.destroy());
+      }
+      return;
+    }
     if (upgradePath !== TERMINAL_WS_PATH) return;
 
     if (!isTerminalEnabledForUpgrade()) {
@@ -2945,6 +2977,68 @@ function attachTerminalWs(server) {
   console.log(`✓ WS Terminal: ${TERMINAL_WS_PATH}`);
 }
 
+// WebSocket proxy: browser → wss://this-server/api/gateway-ws → ws://localhost:18789
+// Solves mixed-content block when IDE is served over HTTPS
+function attachGatewayWsProxy(server) {
+  const GATEWAY_PORT = parseInt(process.env.OPENCLAW_GATEWAY_PORT || '18789', 10);
+  const GATEWAY_HOST = process.env.OPENCLAW_GATEWAY_HOST || 'localhost';
+  const GATEWAY_PASSWORD = process.env.OPENCLAW_GATEWAY_PASSWORD || '';
+  const GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN || '';
+
+  server.on('upgrade', (req, clientSocket, head) => {
+    const upgradePath = String(req.url || '').split('?')[0];
+    if (upgradePath !== '/api/gateway-ws') return;
+
+    if (shouldDisableGatewayProxy()) {
+      clientSocket.end('HTTP/1.1 403 Forbidden\r\n\r\n');
+      return;
+    }
+
+    if (securityConfig.isInternetProfile) {
+      if (!hasValidProxySecret(req) || !getAuthenticatedProxyUser(req)) {
+        clientSocket.end('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        return;
+      }
+    }
+
+    const gatewaySocket = net.connect({ host: GATEWAY_HOST, port: GATEWAY_PORT }, () => {
+      // Reconstruct WebSocket upgrade request for the Gateway
+      // Proxy is the trust boundary: rewrite Origin, inject auth server-side
+      const params = [];
+      if (GATEWAY_PASSWORD) params.push(`password=${encodeURIComponent(GATEWAY_PASSWORD)}`);
+      if (GATEWAY_TOKEN) params.push(`token=${encodeURIComponent(GATEWAY_TOKEN)}`);
+      const gwPath = params.length ? `/?${params.join('&')}` : '/';
+      let fwd = `GET ${gwPath} HTTP/1.1\r\n`;
+      fwd += `Host: ${GATEWAY_HOST}:${GATEWAY_PORT}\r\n`;
+      fwd += `Origin: http://${GATEWAY_HOST}:${GATEWAY_PORT}\r\n`;
+      for (const key of ['upgrade', 'connection', 'sec-websocket-key', 'sec-websocket-version', 'sec-websocket-extensions', 'sec-websocket-protocol']) {
+        if (req.headers[key]) {
+          fwd += `${key}: ${req.headers[key]}\r\n`;
+        }
+      }
+      fwd += '\r\n';
+
+      gatewaySocket.write(fwd);
+      if (head.length > 0) gatewaySocket.write(head);
+
+      // Pipe everything bidirectionally (101 response + WebSocket frames)
+      gatewaySocket.pipe(clientSocket);
+      clientSocket.pipe(gatewaySocket);
+    });
+
+    gatewaySocket.on('error', (err) => {
+      console.error('[WS-PROXY] Gateway connection failed:', err.message);
+      clientSocket.end('HTTP/1.1 502 Bad Gateway\r\n\r\n');
+    });
+
+    clientSocket.on('error', () => gatewaySocket.destroy());
+    clientSocket.on('close', () => gatewaySocket.destroy());
+    gatewaySocket.on('close', () => clientSocket.destroy());
+  });
+
+  console.log(`✓ WS Proxy: /api/gateway-ws → ws://${GATEWAY_HOST}:${GATEWAY_PORT}`);
+}
+
 if (fsSync.existsSync(certPath) && fsSync.existsSync(keyPath)) {
   const httpsOptions = {
     key: fsSync.readFileSync(keyPath),
@@ -2971,73 +3065,12 @@ if (fsSync.existsSync(certPath) && fsSync.existsSync(keyPath)) {
     console.log('\n' + '='.repeat(60) + '\n');
   });
 
-  // WebSocket proxy: browser → wss://this-server/api/gateway-ws → ws://localhost:18789
-  // Solves mixed-content block when IDE is served over HTTPS
-  function attachGatewayWsProxy(server) {
-    const GATEWAY_PORT = parseInt(process.env.OPENCLAW_GATEWAY_PORT || '18789', 10);
-    const GATEWAY_HOST = process.env.OPENCLAW_GATEWAY_HOST || 'localhost';
-    const GATEWAY_PASSWORD = process.env.OPENCLAW_GATEWAY_PASSWORD || '';
-    const GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN || '';
-
-    server.on('upgrade', (req, clientSocket, head) => {
-      const upgradePath = String(req.url || '').split('?')[0];
-      if (upgradePath !== '/api/gateway-ws') return;
-
-      if (shouldDisableGatewayProxy()) {
-        clientSocket.end('HTTP/1.1 403 Forbidden\r\n\r\n');
-        return;
-      }
-
-      if (securityConfig.isInternetProfile) {
-        if (!hasValidProxySecret(req) || !getAuthenticatedProxyUser(req)) {
-          clientSocket.end('HTTP/1.1 401 Unauthorized\r\n\r\n');
-          return;
-        }
-      }
-
-      const gatewaySocket = net.connect({ host: GATEWAY_HOST, port: GATEWAY_PORT }, () => {
-        // Reconstruct WebSocket upgrade request for the Gateway
-        // Proxy is the trust boundary: rewrite Origin, inject auth server-side
-        const params = [];
-        if (GATEWAY_PASSWORD) params.push(`password=${encodeURIComponent(GATEWAY_PASSWORD)}`);
-        if (GATEWAY_TOKEN) params.push(`token=${encodeURIComponent(GATEWAY_TOKEN)}`);
-        const gwPath = params.length ? `/?${params.join('&')}` : '/';
-        let fwd = `GET ${gwPath} HTTP/1.1\r\n`;
-        fwd += `Host: ${GATEWAY_HOST}:${GATEWAY_PORT}\r\n`;
-        fwd += `Origin: http://${GATEWAY_HOST}:${GATEWAY_PORT}\r\n`;
-        for (const key of ['upgrade', 'connection', 'sec-websocket-key', 'sec-websocket-version', 'sec-websocket-extensions', 'sec-websocket-protocol']) {
-          if (req.headers[key]) {
-            fwd += `${key}: ${req.headers[key]}\r\n`;
-          }
-        }
-        fwd += '\r\n';
-
-        gatewaySocket.write(fwd);
-        if (head.length > 0) gatewaySocket.write(head);
-
-        // Pipe everything bidirectionally (101 response + WebSocket frames)
-        gatewaySocket.pipe(clientSocket);
-        clientSocket.pipe(gatewaySocket);
-      });
-
-      gatewaySocket.on('error', (err) => {
-        console.error('[WS-PROXY] Gateway connection failed:', err.message);
-        clientSocket.end('HTTP/1.1 502 Bad Gateway\r\n\r\n');
-      });
-
-      clientSocket.on('error', () => gatewaySocket.destroy());
-      clientSocket.on('close', () => gatewaySocket.destroy());
-      gatewaySocket.on('close', () => clientSocket.destroy());
-    });
-
-    console.log(`✓ WS Proxy: /api/gateway-ws → ws://${GATEWAY_HOST}:${GATEWAY_PORT}`);
-  }
-
   attachGatewayWsProxy(httpsServer);
   attachGatewayWsProxy(httpServer);
   attachTerminalWs(httpsServer);
   attachTerminalWs(httpServer);
 } else {
+  attachTerminalWs(httpServer);
   console.log('\n⚠️  HTTPS: Not configured (certificates not found)');
   console.log('\n🤖 AI Models:');
   console.log('   - GPT-5.2 ✅');
@@ -3047,7 +3080,6 @@ if (fsSync.existsSync(certPath) && fsSync.existsSync(keyPath)) {
   console.log('🔧 Function Calling: ENABLED');
   console.log(`🌍 Access Profile: ${securityConfig.securityProfile.toUpperCase()}`);
   console.log('\n' + '='.repeat(60) + '\n');
-  attachTerminalWs(httpServer);
 }
 
 let terminalShutdownHandled = false;
