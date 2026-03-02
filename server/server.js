@@ -3399,6 +3399,8 @@ app.post('/api/brain/query/stream', async (req, res) => {
   const {
     query,
     enablePGS = false,
+    conversationHistory = null,
+    brainEnabled = true,
     ...otherOptions
   } = req.body;
 
@@ -3411,9 +3413,27 @@ app.post('/api/brain/query/stream', async (req, res) => {
     res.write(': keepalive\n\n');
   }, 15000);
 
+  // Build priorContext from conversation history
+  let priorContext = null;
+  if (conversationHistory && Array.isArray(conversationHistory) && conversationHistory.length >= 2) {
+    for (let i = conversationHistory.length - 1; i >= 1; i--) {
+      if (conversationHistory[i].role === 'assistant' && conversationHistory[i - 1].role === 'user') {
+        priorContext = {
+          query: conversationHistory[i - 1].content,
+          answer: conversationHistory[i].content
+        };
+        break;
+      }
+    }
+    if (priorContext) {
+      console.log(`[BRAIN-STREAM] Including prior context from conversation (${conversationHistory.length} messages)`);
+    }
+  }
+
   try {
     const result = await queryEngine.executeEnhancedQuery(query, {
       ...otherOptions,
+      ...(priorContext ? { priorContext } : {}),
       enablePGS,
       onChunk: (chunk) => {
         try {
