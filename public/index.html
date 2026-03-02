@@ -12383,7 +12383,35 @@ ${html}
 
             // Check if brain is loaded and auto-open its output folder
             try {
-                const brainInfo = await fetch('/api/brain/info').then(r => r.json());
+                let brainInfo = await fetch('/api/brain/info').then(r => r.json());
+                
+                // Auto-reconnect: if server lost the brain (e.g. page refresh), reload from localStorage
+                if (!brainInfo.hasBrain) {
+                    try {
+                        const savedBrainPath = localStorage.getItem(BRAIN_PATH_STORAGE_KEY);
+                        if (savedBrainPath) {
+                            console.log('[Brain] Server has no brain, auto-reconnecting:', savedBrainPath);
+                            const reconnRes = await fetch('/api/brain/load', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ path: savedBrainPath })
+                            });
+                            const reconnData = await reconnRes.json();
+                            if (reconnData.success) {
+                                console.log('[Brain] Auto-reconnected:', reconnData.brain?.name);
+                                // Re-fetch brain info now that it's loaded
+                                brainInfo = await fetch('/api/brain/info').then(r => r.json());
+                            } else {
+                                console.warn('[Brain] Auto-reconnect failed:', reconnData.error);
+                                // Clear stale path so we don't keep retrying a bad path
+                                localStorage.removeItem(BRAIN_PATH_STORAGE_KEY);
+                            }
+                        }
+                    } catch (reconnErr) {
+                        console.warn('[Brain] Auto-reconnect error:', reconnErr.message);
+                    }
+                }
+
                 window.currentBrainInfo = brainInfo;
                 
                 if (brainInfo.hasBrain) {
@@ -12709,6 +12737,8 @@ ${html}
       }
     }
 
+    const BRAIN_PATH_STORAGE_KEY = 'evobrew.ui.lastBrainPath';
+
     async function pickBrain(brainPath) {
       const listEl = document.getElementById('brainPickerList');
       // Find and update the clicked item
@@ -12727,6 +12757,8 @@ ${html}
         });
         const data = await res.json();
         if (!data.success) throw new Error(data.error);
+        // Persist brain path so it survives page refresh
+        try { localStorage.setItem(BRAIN_PATH_STORAGE_KEY, brainPath); } catch (_) {}
         // Update header
         updateBrainLabel(data.brain.name, data.brain.nodes);
         // Update IDE title bar
@@ -12799,11 +12831,12 @@ ${html}
       }
     }
 
-    // On page load, check current brain status
-    fetch('/api/brain/info').then(r => r.json()).then(info => {
+    // On page load, check current brain status (label update — main reconnect is in DOMContentLoaded)
+    fetch('/api/brain/info').then(r => r.json()).then(async (info) => {
       if (info.hasBrain) {
         updateBrainLabel(info.brainName);
       } else {
+        // DOMContentLoaded handler will auto-reconnect; just set initial label
         updateBrainLabel(null);
       }
     }).catch(() => {
