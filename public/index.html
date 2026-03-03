@@ -4412,13 +4412,20 @@
                                         <input type="checkbox" id="query-pgs" onchange="togglePGSControls()">
                                         <span class="brain-toggle-label">Use PGS</span>
                                     </label>
-                                    <div id="pgs-controls" style="display:none; align-items:center; gap:6px;">
+                                    <div id="pgs-controls" style="display:none; align-items:center; gap:6px; flex-wrap:wrap;">
+                                        <div id="pgs-depth-chips" style="display:flex; gap:4px;">
+                                            <button type="button" class="pgs-depth-chip" data-depth="0.10" style="padding:2px 8px; border:1px solid var(--border-color); border-radius:12px; background:var(--bg-tertiary); color:var(--text-secondary); font-size:10px; font-weight:600; cursor:pointer;">Skim</button>
+                                            <button type="button" class="pgs-depth-chip pgs-depth-active" data-depth="0.25" style="padding:2px 8px; border:1px solid var(--accent-color, #d4a843); border-radius:12px; background:rgba(212,168,67,0.2); color:var(--accent-color, #d4a843); font-size:10px; font-weight:600; cursor:pointer;">Sample</button>
+                                            <button type="button" class="pgs-depth-chip" data-depth="0.50" style="padding:2px 8px; border:1px solid var(--border-color); border-radius:12px; background:var(--bg-tertiary); color:var(--text-secondary); font-size:10px; font-weight:600; cursor:pointer;">Deep</button>
+                                            <button type="button" class="pgs-depth-chip" data-depth="1.0" style="padding:2px 8px; border:1px solid var(--border-color); border-radius:12px; background:var(--bg-tertiary); color:var(--text-secondary); font-size:10px; font-weight:600; cursor:pointer;">Full</button>
+                                        </div>
+                                        <input type="hidden" id="query-pgs-depth" value="0.25" />
                                         <select id="query-pgs-mode" style="background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 2px 6px; font-size: 10px;">
-                                            <option value="full" selected>full</option>
+                                            <option value="full" selected>fresh</option>
                                             <option value="continue">continue</option>
                                             <option value="targeted">targeted</option>
                                         </select>
-                                        <input id="query-pgs-session" placeholder="session" value="default" style="width:90px; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 2px 6px; font-size: 10px;" />
+                                        <input id="query-pgs-session" placeholder="session" value="default" style="width:70px; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 2px 6px; font-size: 10px;" />
                                     </div>
                                     <button class="btn-icon" id="history-toggle-btn" data-action="toggleChatHistory()" title="History">H</button>
                                     <button class="btn-icon" data-action="startNewChat()" title="New Chat">+</button>
@@ -9030,6 +9037,23 @@ ${result.content}`;
             syncBrainContextControls();
         }
 
+        // PGS depth chip selection
+        document.addEventListener('click', (e) => {
+            const chip = e.target.closest('.pgs-depth-chip');
+            if (!chip) return;
+            document.querySelectorAll('.pgs-depth-chip').forEach(c => {
+                c.style.background = 'var(--bg-tertiary)';
+                c.style.color = 'var(--text-secondary)';
+                c.style.borderColor = 'var(--border-color)';
+                c.classList.remove('pgs-depth-active');
+            });
+            chip.style.background = 'rgba(212,168,67,0.2)';
+            chip.style.color = 'var(--accent-color, #d4a843)';
+            chip.style.borderColor = 'var(--accent-color, #d4a843)';
+            chip.classList.add('pgs-depth-active');
+            document.getElementById('query-pgs-depth').value = chip.dataset.depth;
+        });
+
         async function sendAIMessage() {
             const input = document.getElementById('ai-input');
             const message = input.value.trim();
@@ -9124,7 +9148,8 @@ ${result.content}`;
                     enablePGS: pgsEnabled,
                     pgsMode: document.getElementById('query-pgs-mode')?.value || 'full',
                     pgsSessionId: (document.getElementById('query-pgs-session')?.value || '').trim() || 'default',
-                    pgsFullSweep: (document.getElementById('query-pgs-mode')?.value || 'full') === 'full'
+                    pgsFullSweep: parseFloat(document.getElementById('query-pgs-depth')?.value || '0.25') >= 1.0,
+                    pgsConfig: { sweepFraction: parseFloat(document.getElementById('query-pgs-depth')?.value || '0.25') }
                 };
                 
                 // Handle streaming response with incremental file creation (look-ahead pattern)
