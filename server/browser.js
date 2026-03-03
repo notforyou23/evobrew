@@ -39,6 +39,14 @@ class BrainScanner {
       
     // Local runs folder within this repo (fallback staging area)
     this.localRunsDir = path.join(platformRoot, 'runs');
+
+    // Additional brain/run directories (comma-separated paths)
+    // Supports both packaged .brain dirs and raw run dirs
+    this.extraDirs = (process.env.COSMO_BRAIN_DIRS || '')
+      .split(',')
+      .map(p => p.trim())
+      .filter(Boolean)
+      .map(p => path.resolve(platformRoot, p));
   }
 
   async scanAll() {
@@ -49,8 +57,25 @@ class BrainScanner {
       const externalRuns = this.externalRunsDir ? await this.scanRunsFromDir(this.externalRunsDir) : [];
       const localRuns = await this.scanRunsFromDir(this.localRunsDir);
       
+      // Scan extra dirs (COSMO_BRAIN_DIRS) — auto-detect brains vs runs
+      const extraBrains = [];
+      const extraRuns = [];
+      for (const dir of this.extraDirs) {
+        if (!fsSync.existsSync(dir)) {
+          console.log(`[SCANNER] Extra dir not found (skipping): ${dir}`);
+          continue;
+        }
+        // Scan for .brain packages
+        const brains = await this.scanBrainsFromDir(dir);
+        extraBrains.push(...brains);
+        // Scan for runs (with one-level auto-recurse for container dirs)
+        const runs = await this.scanRunsFromDir(dir, { recurse: true });
+        extraRuns.push(...runs);
+      }
+      brainPackages.push(...extraBrains);
+
       // Combine and deduplicate runs by name
-      const allRuns = [...localRuns, ...externalRuns];
+      const allRuns = [...localRuns, ...externalRuns, ...extraRuns];
       const uniqueRuns = [];
       const seenRunNames = new Set();
       
@@ -71,6 +96,8 @@ class BrainScanner {
         }
       });
       
+      console.log(`[SCANNER] Found ${brainPackages.length} brain packages, ${uniqueRuns.length} runs (${this.extraDirs.length} extra dirs)`);
+
       return {
         brainPackages,
         runs: uniqueRuns,
@@ -111,7 +138,7 @@ class BrainScanner {
     return brains.sort((a, b) => new Date(b.created) - new Date(a.created));
   }
 
-  async scanRunsFromDir(dir) {
+  async scanRunsFromDir(dir, opts = {}) {
     const runs = [];
     if (!fsSync.existsSync(dir)) return runs;
     
@@ -131,6 +158,28 @@ class BrainScanner {
               relativePath: path.relative(this.platformRoot, runPath),
               ...metadata
             });
+          } else if (opts.recurse) {
+            // No state file here — check one level deeper (container dir like _allTesting/)
+            try {
+              const subEntries = await fs.readdir(runPath, { withFileTypes: true });
+              for (const sub of subEntries) {
+                if (sub.isDirectory() && !sub.name.startsWith('.')) {
+                  const subPath = path.join(runPath, sub.name);
+                  const subMeta = await this.loadRunMetadata(subPath);
+                  if (subMeta) {
+                    runs.push({
+                      type: 'run',
+                      name: sub.name,
+                      path: subPath,
+                      relativePath: path.relative(this.platformRoot, subPath),
+                      ...subMeta
+                    });
+                  }
+                }
+              }
+            } catch (e) {
+              // Skip unreadable subdirs
+            }
           }
         }
       }
