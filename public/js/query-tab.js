@@ -113,15 +113,25 @@ function initQueryTab() {
 
           <div id="qt-pgs-controls" class="qt-pgs-controls qt-hidden">
             <div class="qt-option-group">
-              <label>PGS Mode:</label>
+              <label>Sweep Depth:</label>
+              <div class="qt-pgs-depth-chips">
+                <button type="button" class="qt-depth-chip" data-depth="0.10">Skim (10%)</button>
+                <button type="button" class="qt-depth-chip qt-depth-active" data-depth="0.25">Sample (25%)</button>
+                <button type="button" class="qt-depth-chip" data-depth="0.50">Deep (50%)</button>
+                <button type="button" class="qt-depth-chip" data-depth="1.0">Full (100%)</button>
+              </div>
+              <input type="hidden" id="qt-pgs-depth" value="0.25" />
+            </div>
+            <div class="qt-option-group">
+              <label>Session Mode:</label>
               <select id="qt-pgs-mode" class="qt-select">
-                <option value="full" selected>full (max coverage)</option>
+                <option value="full" selected>fresh sweep</option>
                 <option value="continue">continue (remaining only)</option>
-                <option value="targeted">targeted (best remaining first)</option>
+                <option value="targeted">targeted (best remaining)</option>
               </select>
             </div>
             <div class="qt-option-group">
-              <label>PGS Session ID:</label>
+              <label>Session ID:</label>
               <input id="qt-pgs-session" class="qt-input-inline" type="text" placeholder="default" />
             </div>
           </div>
@@ -210,8 +220,9 @@ function bindQueryTabEvents() {
       const mode = modeSelect?.value || 'full';
       const model = modelSelect?.selectedOptions?.[0]?.textContent || modelSelect?.value || '...';
       const pgsOn = document.getElementById('qt-pgs')?.checked;
-      const pgsMode = document.getElementById('qt-pgs-mode')?.value || 'full';
-      const pgs = pgsOn ? ` · 🧬 PGS:${pgsMode}` : '';
+      const pgsDepthVal = parseFloat(document.getElementById('qt-pgs-depth')?.value || '0.25');
+      const depthName = {0.1: 'Skim', 0.25: 'Sample', 0.5: 'Deep', 1.0: 'Full'}[pgsDepthVal] || `${Math.round(pgsDepthVal * 100)}%`;
+      const pgs = pgsOn ? ` · 🧬 PGS ${depthName} (${Math.round(pgsDepthVal * 100)}%)` : '';
       summary.textContent = `${mode.charAt(0).toUpperCase() + mode.slice(1)} mode · ${model}${pgs}`;
     }
   };
@@ -224,6 +235,16 @@ function bindQueryTabEvents() {
     const controls = document.getElementById('qt-pgs-controls');
     if (controls) controls.classList.toggle('qt-hidden', !pgsToggle.checked);
     updateSummary();
+  });
+
+  // PGS depth chip selection
+  document.querySelectorAll('.qt-depth-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.qt-depth-chip').forEach(c => c.classList.remove('qt-depth-active'));
+      chip.classList.add('qt-depth-active');
+      document.getElementById('qt-pgs-depth').value = chip.dataset.depth;
+      updateSummary();
+    });
   });
 
   // Mode hints
@@ -342,6 +363,7 @@ async function executeQuery() {
   const enablePGS = document.getElementById('qt-pgs')?.checked || false;
   const pgsMode = document.getElementById('qt-pgs-mode')?.value || 'full';
   const pgsSessionId = (document.getElementById('qt-pgs-session')?.value || '').trim() || 'default';
+  const pgsDepth = parseFloat(document.getElementById('qt-pgs-depth')?.value || '0.25');
   const useStreaming = document.getElementById('qt-stream')?.checked ?? true;
 
   const submitBtn = document.getElementById('qt-submit');
@@ -352,10 +374,11 @@ async function executeQuery() {
   loadingDiv.classList.remove('qt-hidden');
 
   // Update loading hint for PGS
+  const depthLabel = {0.1: 'Skim', 0.25: 'Sample', 0.5: 'Deep', 1.0: 'Full'}[pgsDepth] || `${Math.round(pgsDepth * 100)}%`;
   const hintEl = document.getElementById('qt-loading-hint');
   if (hintEl) {
     hintEl.textContent = enablePGS
-      ? `PGS (${pgsMode}): full-graph synthesis path (3-6+ minutes)`
+      ? `PGS ${depthLabel} (${Math.round(pgsDepth * 100)}% coverage) — ${pgsDepth <= 0.25 ? '1-3 min' : pgsDepth <= 0.5 ? '3-6 min' : '5-10+ min'}`
       : 'This may take 10-30 seconds';
   }
 
@@ -369,7 +392,8 @@ async function executeQuery() {
     enablePGS,
     pgsMode,
     pgsSessionId,
-    pgsFullSweep: pgsMode === 'full'
+    pgsFullSweep: pgsDepth >= 1.0,
+    pgsConfig: { sweepFraction: pgsDepth }
   };
 
   try {
@@ -1288,6 +1312,31 @@ function getQueryTabStyles() {
     border: 1px solid var(--border-color);
     border-radius: 8px;
     background: var(--bg-primary);
+  }
+  .qt-pgs-depth-chips {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .qt-depth-chip {
+    padding: 5px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .qt-depth-chip:hover {
+    border-color: var(--accent-color, #d4a843);
+    color: var(--text-primary);
+  }
+  .qt-depth-chip.qt-depth-active {
+    background: rgba(212, 168, 67, 0.2);
+    border-color: var(--accent-color, #d4a843);
+    color: var(--accent-color, #d4a843);
   }
   .qt-input-inline {
     padding: 8px 12px;
