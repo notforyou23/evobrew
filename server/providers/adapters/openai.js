@@ -78,6 +78,7 @@ class OpenAIAdapter extends ProviderAdapter {
 
   getAvailableModels() {
     return [
+      'gpt-5.4',
       'gpt-5.2-codex',
       'gpt-5.2',
       'gpt-5.1',
@@ -120,7 +121,11 @@ class OpenAIAdapter extends ProviderAdapter {
       function: {
         name: tool.name,
         description: tool.description,
-        parameters: tool.input_schema
+        // Ensure parameters is always a valid object schema — null/undefined
+        // causes "None is not of type 'object'" on Ollama Cloud and similar APIs
+        parameters: tool.input_schema && typeof tool.input_schema === 'object'
+          ? tool.input_schema
+          : { type: 'object', properties: {} }
       }
     }));
   }

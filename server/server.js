@@ -57,6 +57,11 @@ const CodebaseIndexer = require('./codebase-indexer');
 const { handleFunctionCalling } = require('./ai-handler');
 const { getAnthropicApiKey } = require('./services/anthropic-oauth');
 const { loadSecurityProfile, isOnlyOfficeCallbackUrlAllowed } = require('../lib/security-profile');
+const {
+  getModelId,
+  isCodexModelSelection,
+  qualifyModelSelection
+} = require('../lib/model-selection');
 const { configureTerminalSessionManager, toBool, toInt } = require('./terminal/session-manager');
 const { createTerminalWsProtocol } = require('./terminal/ws-protocol');
 const zlib = require('zlib');
@@ -268,11 +273,7 @@ const getOpenAICodex = async () => {
 };
 
 function isCodexModel(modelId) {
-  const normalized = String(modelId || '').trim();
-  return normalized.startsWith('gpt-5.2') ||
-    normalized === 'gpt-5.3-codex' ||
-    normalized === 'gpt-5.3-codex-spark' ||
-    normalized.startsWith('gpt-5.3-codex');
+  return isCodexModelSelection(modelId);
 }
 // Anthropic uses OAuth service (Token Sink Pattern from Claude CLI)
 const getAnthropic = async () => {
@@ -3160,6 +3161,7 @@ app.get('/api/providers/models', async (req, res) => {
             models.push({
               id: modelId,
               provider: 'ollama',
+              value: qualifyModelSelection('ollama', modelId),
               label: `${modelId} (Ollama)`
             });
           });
@@ -3175,10 +3177,32 @@ app.get('/api/providers/models', async (req, res) => {
 
     // Codex models now included via registerModel() in providers/index.js
 
+    // For Ollama Cloud, fetch live model list so new models appear without code changes
+    const ollamaCloudProvider = registry.getProviderById('ollama-cloud');
+    if (ollamaCloudProvider && typeof ollamaCloudProvider.listModels === 'function') {
+      try {
+        const cloudModels = await ollamaCloudProvider.listModels();
+        // Replace seed list with live list
+        models = models.filter(m => m.provider !== 'ollama-cloud');
+        cloudModels.forEach(modelId => {
+          models.push({
+            id: modelId,
+            provider: 'ollama-cloud',
+            value: qualifyModelSelection('ollama-cloud', modelId),
+            label: `${modelId} (Ollama Cloud)`
+          });
+        });
+        console.log(`[PROVIDERS] Fetched ${cloudModels.length} Ollama Cloud models`);
+      } catch (cloudErr) {
+        console.warn('[PROVIDERS] Failed to fetch Ollama Cloud models, using seed list:', cloudErr.message);
+      }
+    }
+
     // Add OpenClaw (COZ) as a virtual provider option
     models.push({
       id: 'openclaw:coz',
       provider: 'openclaw',
+      value: qualifyModelSelection('openclaw', 'openclaw:coz'),
       label: 'COZ \u2014 Agent with Memory'
     });
 
@@ -3403,6 +3427,11 @@ app.post('/api/brain/query/stream', async (req, res) => {
     brainEnabled = true,
     ...otherOptions
   } = req.body;
+  const requestedModelSelection = String(otherOptions.model || '').trim();
+  const normalizedModel = getModelId(requestedModelSelection) || requestedModelSelection;
+  if (normalizedModel) {
+    otherOptions.model = normalizedModel;
+  }
 
   if (enablePGS) {
     req.setTimeout(600000);
@@ -3444,6 +3473,9 @@ app.post('/api/brain/query/stream', async (req, res) => {
         }
       }
     });
+    if (requestedModelSelection) {
+      result.metadata = { ...(result.metadata || {}), modelSelection: requestedModelSelection };
+    }
 
     // Server-side export if requested
     if (otherOptions.exportFormat && result.answer) {
@@ -3477,6 +3509,11 @@ app.post('/api/brain/query', async (req, res) => {
       enablePGS = false,  // Partitioned Graph Synthesis
       ...otherOptions
     } = req.body;
+    const requestedModelSelection = String(otherOptions.model || '').trim();
+    const normalizedModel = getModelId(requestedModelSelection) || requestedModelSelection;
+    if (normalizedModel) {
+      otherOptions.model = normalizedModel;
+    }
 
     // PGS queries take 3-6 minutes - extend timeout
     if (enablePGS) {
@@ -3487,6 +3524,9 @@ app.post('/api/brain/query', async (req, res) => {
       ...otherOptions,
       enablePGS
     });
+    if (requestedModelSelection) {
+      result.metadata = { ...(result.metadata || {}), modelSelection: requestedModelSelection };
+    }
 
     // Server-side export if requested
     if (otherOptions.exportFormat && result.answer) {
@@ -3966,6 +4006,7 @@ BRAIN_DIRS.forEach(d => {
   if (d.includes('cosmo-home')) BRAIN_DIR_LABELS[d] = 'cosmo-home';
   else if (d.includes('_allTesting')) BRAIN_DIR_LABELS[d] = 'bertha/testing';
   else if (d.includes('Bertha')) BRAIN_DIR_LABELS[d] = 'bertha';
+  else if (d.includes('cosmo_2.3')) BRAIN_DIR_LABELS[d] = 'cosmo_2.3';
   else BRAIN_DIR_LABELS[d] = 'main';
 });
 

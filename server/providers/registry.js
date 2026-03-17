@@ -10,6 +10,7 @@
 const { AnthropicAdapter } = require('./adapters/anthropic.js');
 const { OpenAIAdapter } = require('./adapters/openai.js');
 const { OllamaAdapter } = require('./adapters/ollama.js');
+const { qualifyModelSelection } = require('../../lib/model-selection.js');
 
 /**
  * @typedef {import('./adapters/base.js').ProviderAdapter} ProviderAdapter
@@ -63,6 +64,76 @@ class ProviderRegistry {
       Object.defineProperty(adapter, 'name', { value: 'OpenAI Codex (OAuth)', writable: false });
       // Override available models for Codex
       adapter.getAvailableModels = () => ['gpt-5.2', 'gpt-5.3-codex', 'gpt-5.3-codex-spark'];
+      return adapter;
+    });
+
+    // Ollama Cloud — OpenAI-compatible API at ollama.com/v1
+    // Uses dynamic model discovery so new models appear without code changes
+    this.adapterFactories.set('ollama-cloud', (config) => {
+      const adapter = new OpenAIAdapter({
+        ...config,
+        baseUrl: 'https://ollama.com/v1'
+      });
+      Object.defineProperty(adapter, 'id', { value: 'ollama-cloud', writable: false });
+      Object.defineProperty(adapter, 'name', { value: 'Ollama Cloud', writable: false });
+
+      // Seed list — used as fallback if live fetch fails
+      const seedModels = [
+        'nemotron-3-super',
+        'nemotron-3-nano:30b',
+        'qwen3.5:397b',
+        'qwen3-next:80b',
+        'deepseek-v3.1:671b',
+        'cogito-2.1:671b',
+        'kimi-k2:1t',
+        'kimi-k2-thinking',
+        'gemma3:12b',
+        'devstral-small-2:24b',
+        'gpt-oss:20b',
+        'minimax-m2.5',
+        'glm-5',
+      ];
+      const discoveryTtlMs = 5 * 60 * 1000;
+      let cachedModels = seedModels.slice();
+      let cacheExpiresAt = 0;
+      let inFlightListModels = null;
+      adapter.getAvailableModels = () => cachedModels.slice();
+
+      // Dynamic discovery: fetch live model list from ollama.com/v1/models
+      adapter.listModels = async () => {
+        const now = Date.now();
+        if (cacheExpiresAt > now && cachedModels.length > 0) {
+          return cachedModels.slice();
+        }
+        if (inFlightListModels) {
+          return inFlightListModels;
+        }
+
+        inFlightListModels = (async () => {
+          try {
+            const OpenAI = require('openai');
+            const client = new OpenAI({
+              apiKey: config.apiKey,
+              baseURL: 'https://ollama.com/v1'
+            });
+            const response = await client.models.list();
+            const ids = (response.data || []).map(m => m.id).filter(Boolean);
+            cachedModels = ids.length > 0 ? ids : seedModels.slice();
+            cacheExpiresAt = Date.now() + discoveryTtlMs;
+            return cachedModels.slice();
+          } catch (err) {
+            const fallbackModels = cachedModels.length > 0 ? cachedModels : seedModels;
+            cacheExpiresAt = Date.now() + discoveryTtlMs;
+            console.warn('[OllamaCloud] Dynamic model fetch failed, using cached/seed list:', err.message);
+            return fallbackModels.slice();
+          } finally {
+            inFlightListModels = null;
+          }
+        })();
+
+        return inFlightListModels;
+      };
+
       return adapter;
     });
 
@@ -169,6 +240,17 @@ class ProviderRegistry {
     if (modelId.startsWith('gemini')) {
       return 'google';
     }
+    // Ollama Cloud models — hosted at ollama.com (not local)
+    if (modelId.startsWith('nemotron') ||
+        modelId.startsWith('kimi-k2') ||
+        modelId.startsWith('cogito') ||
+        modelId.startsWith('minimax') ||
+        modelId.startsWith('devstral') ||
+        modelId.startsWith('gpt-oss') ||
+        modelId.startsWith('glm-')) {
+      return 'ollama-cloud';
+    }
+
     // Ollama models - both chat and embedding models
     if (modelId.startsWith('llama') ||
         modelId.startsWith('mistral') ||
@@ -293,29 +375,33 @@ class ProviderRegistry {
 
   /**
    * List all available models across all providers
-   * @returns {Object[]} Array of { id, provider, label }
+   * @returns {Object[]} Array of { id, provider, value, label }
    */
   listModels() {
     const models = [];
     const seen = new Set();
     for (const [providerId, adapter] of this.providers.entries()) {
       for (const modelId of adapter.getAvailableModels()) {
+        const selectionValue = qualifyModelSelection(providerId, modelId);
         models.push({
           id: modelId,
           provider: providerId,
+          value: selectionValue,
           label: this._formatModelLabel(modelId, adapter.name)
         });
-        seen.add(modelId);
+        seen.add(selectionValue);
       }
     }
     // Include models registered via registerModel() that weren't listed by their adapter
     for (const [modelId, providerId] of this.modelMap.entries()) {
-      if (!seen.has(modelId)) {
+      const selectionValue = qualifyModelSelection(providerId, modelId);
+      if (!seen.has(selectionValue)) {
         const adapter = this.providers.get(providerId);
         const providerName = adapter ? adapter.name : providerId;
         models.push({
           id: modelId,
           provider: providerId,
+          value: selectionValue,
           label: this._formatModelLabel(modelId, providerName)
         });
       }

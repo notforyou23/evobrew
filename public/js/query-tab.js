@@ -291,7 +291,7 @@ async function populateModels() {
   if (!select) return;
 
   // Default fallback
-  select.innerHTML = '<option value="gpt-5.1">GPT-5.1</option>';
+  select.innerHTML = '<option value="openai/gpt-5.1" data-provider="openai">GPT-5.1</option>';
 
   try {
     const res = await fetch('/api/providers/models');
@@ -310,9 +310,13 @@ async function populateModels() {
       group.label = provider.charAt(0).toUpperCase() + provider.slice(1);
       models.forEach(m => {
         const opt = document.createElement('option');
-        opt.value = m.id;
+        opt.value = m.value || m.id;
+        opt.dataset.provider = m.provider;
+        opt.dataset.modelId = m.id;
         opt.textContent = m.label || m.id;
-        if (m.id === 'gpt-5.1') opt.selected = true;
+        if ((m.value || '') === 'openai/gpt-5.1' || (m.provider === 'openai' && m.id === 'gpt-5.1')) {
+          opt.selected = true;
+        }
         group.appendChild(opt);
       });
       select.appendChild(group);
@@ -352,7 +356,7 @@ async function executeQuery() {
   const query = input?.value?.trim();
   if (!query) return;
 
-  const model = document.getElementById('qt-model')?.value || 'gpt-5.1';
+  const model = document.getElementById('qt-model')?.value || 'openai/gpt-5.1';
   const mode = document.getElementById('qt-mode')?.value || 'full';
   const includeEvidenceMetrics = document.getElementById('qt-evidence')?.checked || false;
   const enableSynthesis = document.getElementById('qt-synthesis')?.checked ?? true;

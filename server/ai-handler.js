@@ -8,6 +8,7 @@
 const { toolDefinitions, ToolExecutor } = require('./tools');
 const { getAnthropicApiKey, prepareSystemPrompt } = require('./services/anthropic-oauth');
 const { getDefaultRegistry } = require('./providers');
+const { getModelId } = require('../lib/model-selection');
 
 // ============================================================================
 // SMART TRUNCATION - Keep beginning + end for better context preservation
@@ -893,6 +894,8 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
     terminalPolicy = null,
     terminalManager = null
   } = params;
+  const requestedModelSelection = String(model || '').trim() || 'gpt-5.2';
+  const effectiveModel = getModelId(requestedModelSelection) || 'gpt-5.2';
   
   // ═══════════════════════════════════════════════════════════════════════════
   // PROVIDER DETECTION: Use registry for model-agnostic provider selection
@@ -911,12 +914,15 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
   let provider = null;
   let providerId = null;
   if (registry) {
-    provider = registry.getProvider(model);
+    provider = registry.getProvider(requestedModelSelection);
+    if (!provider && effectiveModel !== requestedModelSelection) {
+      provider = registry.getProvider(effectiveModel);
+    }
     providerId = provider?.id;
     if (provider) {
-      console.log(`[AI] Provider registry detected: ${provider.name} (${provider.id}) for model ${model}`);
+      console.log(`[AI] Provider registry detected: ${provider.name} (${provider.id}) for model ${requestedModelSelection}`);
     } else {
-      console.warn(`[AI] No provider found in registry for model: ${model}, using legacy detection`);
+      console.warn(`[AI] No provider found in registry for model: ${requestedModelSelection}, using legacy detection`);
     }
   }
 
@@ -1061,7 +1067,7 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
     fileName, language, currentFolder, selectedText,
     documentContent, fileTreeContext, message, runContext,
     providerName: providerNameForPrompt,
-    model
+    model: effectiveModel
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1209,21 +1215,22 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
   let xaiNextInputItems = null;
   
   // Provider detection: prefer registry, fall back to legacy heuristics
-  const isClaudeModel = providerId === 'anthropic' || (!providerId && model.startsWith('claude'));
-  const isGrokModel = providerId === 'xai' || (!providerId && model.startsWith('grok'));
-  const isOllamaModel = providerId === 'ollama' || (!providerId && (
-    model.startsWith('llama') ||
-    model.startsWith('mistral') ||
-    model.startsWith('mixtral') ||
-    model.startsWith('codellama') ||
-    model.startsWith('deepseek') ||
-    model.startsWith('qwen') ||
-    model.includes(':') // Ollama models typically use format like "llama3.3:70b"
+  const isClaudeModel = providerId === 'anthropic' || (!providerId && effectiveModel.startsWith('claude'));
+  const isGrokModel = providerId === 'xai' || (!providerId && effectiveModel.startsWith('grok'));
+  const isOllamaCloudModel = providerId === 'ollama-cloud';
+  const isOllamaModel = providerId === 'ollama' || (!providerId && !isOllamaCloudModel && (
+    effectiveModel.startsWith('llama') ||
+    effectiveModel.startsWith('mistral') ||
+    effectiveModel.startsWith('mixtral') ||
+    effectiveModel.startsWith('codellama') ||
+    effectiveModel.startsWith('deepseek') ||
+    effectiveModel.startsWith('qwen') ||
+    effectiveModel.includes(':') // Ollama models typically use format like "llama3.3:70b"
   ));
-  const isOpenAIModel = providerId === 'openai' || providerId === 'openai-codex' || (!providerId && !isClaudeModel && !isGrokModel && !isOllamaModel);
+  const isOpenAIModel = providerId === 'openai' || providerId === 'openai-codex' || (!providerId && !isClaudeModel && !isGrokModel && !isOllamaModel && !isOllamaCloudModel);
 
   const providerName = providerId || (isClaudeModel ? 'anthropic' : isGrokModel ? 'xai' : isOllamaModel ? 'ollama' : 'openai');
-  console.log(`[AI] Starting ${providerName}/${model} in ${currentFolder}`);
+  console.log(`[AI] Starting ${providerName}/${effectiveModel} in ${currentFolder}`);
   
   try {
     while (iterations < MAX_ITERATIONS) {
@@ -1348,11 +1355,9 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
         
         // Use the selected model as-is (supports switching mid-conversation).
         // If the model is provider-prefixed (e.g. "anthropic/claude-sonnet-4-5"), strip the prefix.
-        const claudeModel = (typeof model === 'string' && model.includes('/'))
-          ? model.split('/').slice(1).join('/')
-          : model;
+        const claudeModel = effectiveModel;
 
-        console.log(`[AI] Anthropic model selected="${model}" effective="${claudeModel}"`);
+        console.log(`[AI] Anthropic model selected="${requestedModelSelection}" effective="${claudeModel}"`);
         console.log(`[AI] Calling Anthropic API with ${claudeMessages.length} messages in iteration ${iterations}`);
 
         // DEBUG: Log message structure in iteration 2
@@ -1466,7 +1471,7 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
         // included as a message with role:"system" as the first item in the input array.
         // See: https://docs.x.ai/docs/guides/chat
         const trimmedMessages = trimMessages(messages, 200000);
-        const xaiModel = model;
+        const xaiModel = effectiveModel;
 
         const toolsForResponses = buildOpenAIResponsesToolsFromChatTools(availableTools);
 
@@ -1481,7 +1486,7 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
           inputItems = [{ role: 'system', content: systemMsg.content }, ...inputItems];
         }
 
-        console.log(`[AI] xAI model selected="${model}" effective="${xaiModel}" api="responses" (system in input, no instructions)`);
+        console.log(`[AI] xAI model selected="${requestedModelSelection}" effective="${xaiModel}" api="responses" (system in input, no instructions)`);
 
         const responseParams = {
           model: xaiModel,
@@ -1614,20 +1619,20 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
           throw new Error('Ollama provider not initialized. Make sure Ollama is running.');
         }
 
-        console.log(`[AI] Calling Ollama with model ${model}`);
+        console.log(`[AI] Calling Ollama with model ${effectiveModel}`);
 
         try {
           // Some local models (e.g., gemma) don't support tool calling reliably.
           // Keep tools enabled for models that can handle them (e.g., qwen), disable for gemma.
-          const disableToolsForModel = String(model).toLowerCase().startsWith('gemma');
+          const disableToolsForModel = String(effectiveModel).toLowerCase().startsWith('gemma');
           const ollamaTools = disableToolsForModel ? [] : availableTools;
           if (disableToolsForModel) {
-            console.log(`[AI] Disabling tools for Ollama model ${model} (tool-calling unsupported)`);
+            console.log(`[AI] Disabling tools for Ollama model ${effectiveModel} (tool-calling unsupported)`);
           }
 
           // Use the provider's streamMessage method with model-appropriate tools
           const stream = ollamaProvider.streamMessage({
-            model: model,
+            model: effectiveModel,
             messages: trimmedMessages,
             tools: ollamaTools,
             temperature: 0.7
@@ -1657,13 +1662,50 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
           throw new Error(`Ollama error: ${ollamaError.message}`);
         }
 
+      } else if (isOllamaCloudModel) {
+        // ============ OLLAMA CLOUD (OpenAI-compatible chat completions) ============
+        const trimmedMessages = trimMessages(messages, 128000);
+        const ollamaCloudProvider = provider || registry?.getProviderById('ollama-cloud');
+        if (!ollamaCloudProvider) {
+          throw new Error('Ollama Cloud provider not initialized. Check OLLAMA_CLOUD_API_KEY in config.');
+        }
+
+        console.log(`[AI] Calling Ollama Cloud with model ${effectiveModel}`);
+        try {
+          const stream = ollamaCloudProvider.streamMessage({
+            model: effectiveModel,
+            messages: trimmedMessages,
+            tools: availableTools,
+            temperature: 0.7
+          });
+
+          let textContent = '';
+          for await (const chunk of stream) {
+            if (chunk.type === 'content_delta' && chunk.delta?.text) {
+              textContent += chunk.delta.text;
+              eventEmitter?.({ type: 'response_chunk', chunk: chunk.delta.text });
+            }
+            if (chunk.type === 'tool_calls' && chunk.tool_calls) {
+              toolCalls = chunk.tool_calls;
+            }
+          }
+
+          assistantMessage = {
+            content: textContent,
+            tool_calls: toolCalls.length > 0 ? toolCalls : null
+          };
+        } catch (cloudError) {
+          console.error('[AI] Ollama Cloud error:', cloudError.message);
+          throw new Error(`Ollama Cloud error: ${cloudError.message}`);
+        }
+
       } else {
         // ============ OPENAI (Responses API) ============
         // GPT-5.2 best practice: use Responses API, keep state with previous_response_id,
         // and rely on truncation='auto' instead of failing hard on context overflow.
 
         const trimmedMessages = trimMessages(messages, 200000);
-        const openaiModel = model;
+        const openaiModel = effectiveModel;
 
         // Reference: /Users/jtr/_JTR23_/Cosmo_Unified_dev/engine/src/ide/ai-handler.js
         // uses toolDefinitions for Responses (Chat Completions tool schema → Responses tool schema).

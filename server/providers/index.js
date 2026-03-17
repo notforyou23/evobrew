@@ -161,6 +161,16 @@ async function createRegistry(options = {}) {
     registry.registerModel('grok-beta', 'xai');
     console.log('[Providers] ✅ xAI (Grok) registered');
   }
+  // Initialize Ollama Cloud
+  const ollamaCloudKey = process.env.OLLAMA_CLOUD_API_KEY
+    || evobrewConfig?.providers?.['ollama-cloud']?.api_key;
+  if (ollamaCloudKey) {
+    registry.initializeProvider('ollama-cloud', { apiKey: ollamaCloudKey });
+    console.log('[Providers] ✅ Ollama Cloud registered');
+  } else {
+    console.log('[Providers] ℹ️ Ollama Cloud not configured (run evobrew setup to add)');
+  }
+
   const ollamaConfig = evobrewConfig?.providers?.ollama || { enabled: true, auto_detect: true, base_url: 'http://localhost:11434' };
   const lmstudioConfig = evobrewConfig?.providers?.lmstudio || { enabled: false, base_url: 'http://localhost:1234/v1' };
   
