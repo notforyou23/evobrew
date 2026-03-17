@@ -97,6 +97,32 @@ temp/
 *.bak
 *.cache
 
+# WIP documentation and agent artifacts
+AGENT-NOTES.md
+CONVERSATION-MANAGEMENT.md
+DUAL_BRAIN_ARCHITECTURE.md
+EVOBREW_SETUP_REDESIGN.md
+HTTPS-SETUP.md
+IMAGE-SUPPORT.md
+LAUNCH_CHECKLIST.md
+OAUTH-TOKEN-SINK.md
+OPENCLAW-INTEGRATION.md
+PI-DEPLOYMENT.md
+PORTABILITY-AUDIT.md
+PORTABILITY-FIXES-APPLIED.md
+SNAPSHOT-SYSTEM.md
+SURGICAL-EDITS.md
+anthropic-oauth-flow.md
+docs/ANTHROPIC_OAUTH_SETUP.md
+docs/CODEX_OAUTH_SPEC.md
+docs/CONFIG_SYSTEM.md
+docs/DAEMON_MODE.md
+docs/PI-DEPLOYMENT.md
+docs/plans/
+docs/security/
+scripts/audit-release-gate.js
+*.oauth-fixed
+
 # Build outputs (if you add a build step later)
 dist/
 build/
