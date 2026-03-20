@@ -4358,6 +4358,21 @@
                 <div class="sidebar-path" id="sidebar-path" style="padding: 4px 12px; font-size: 10px; color: var(--text-secondary); border-bottom: 1px solid var(--border-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;" title="Click to navigate" data-action="showFolderBrowser()">
                     <!-- Current path shown here -->
                 </div>
+                <div id="workspace-bar" style="display: none; padding: 4px 12px; font-size: 10px; border-bottom: 1px solid var(--border-color); background: var(--bg-secondary); align-items: center; justify-content: space-between; gap: 6px;">
+                    <div style="display: flex; align-items: center; gap: 6px; overflow: hidden;">
+                        <span id="workspace-branch-indicator" style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 12px; background: rgba(74, 222, 128, 0.1); border: 1px solid rgba(74, 222, 128, 0.3); color: #4ade80; font-weight: 600; font-size: 10px; white-space: nowrap;">
+                            <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #4ade80;"></span>
+                            <span id="workspace-branch-name">main</span>
+                        </span>
+                        <span id="workspace-label" style="color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
+                    </div>
+                    <div style="display: flex; gap: 4px; flex-shrink: 0;">
+                        <button id="workspace-create-btn" onclick="workspaceCreate()" style="padding: 2px 8px; font-size: 10px; font-weight: 600; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-tertiary); color: var(--text-secondary); cursor: pointer;" title="Create isolated workspace (git worktree)">+ Workspace</button>
+                        <button id="workspace-diff-btn" onclick="workspaceDiff()" style="display: none; padding: 2px 8px; font-size: 10px; font-weight: 600; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-tertiary); color: var(--text-secondary); cursor: pointer;" title="View workspace changes">Diff</button>
+                        <button id="workspace-merge-btn" onclick="workspaceMerge()" style="display: none; padding: 2px 8px; font-size: 10px; font-weight: 600; border: 1px solid rgba(74, 222, 128, 0.3); border-radius: 4px; background: rgba(74, 222, 128, 0.1); color: #4ade80; cursor: pointer;" title="Merge workspace changes back to source branch">Merge</button>
+                        <button id="workspace-discard-btn" onclick="workspaceDiscard()" style="display: none; padding: 2px 8px; font-size: 10px; font-weight: 600; border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 4px; background: rgba(239, 68, 68, 0.1); color: #ef4444; cursor: pointer;" title="Discard workspace and all changes">Discard</button>
+                    </div>
+                </div>
                 <div class="file-tree" id="file-tree">
                     <!-- Populated by JavaScript -->
                 </div>
@@ -4427,6 +4442,10 @@
                                         </select>
                                         <input id="query-pgs-session" placeholder="session" value="default" style="width:70px; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 2px 6px; font-size: 10px;" />
                                     </div>
+                                    <label class="brain-toggle" id="planningModeToggleLabel" title="Planning mode: agent explores and proposes a plan before making changes. Write tools are disabled until you approve.">
+                                        <input type="checkbox" id="planningModeEnabled">
+                                        <span class="brain-toggle-label">Plan First</span>
+                                    </label>
                                     <button class="btn-icon" id="history-toggle-btn" data-action="toggleChatHistory()" title="History">H</button>
                                     <button class="btn-icon" data-action="startNewChat()" title="New Chat">+</button>
                                     <button class="btn-icon" data-action="toggleAI()" title="Close">x</button>
@@ -9054,6 +9073,175 @@ ${result.content}`;
             document.getElementById('query-pgs-depth').value = chip.dataset.depth;
         });
 
+        // ====================================================================
+        // WORKSPACE ISOLATION — UI for git worktree-based agent workspaces
+        // ====================================================================
+
+        window.activeWorkspaceId = null;
+        let workspaceRepoRoot = null;
+
+        async function checkWorkspaceAvailability(folderPath) {
+            if (!folderPath) return;
+            try {
+                const resp = await fetch(`/api/workspace/check/${encodeURIComponent(folderPath).replace(/%2F/g, '/')}`);
+                const data = await resp.json();
+                const bar = document.getElementById('workspace-bar');
+                if (data.available) {
+                    workspaceRepoRoot = data.repoRoot;
+                    bar.style.display = 'flex';
+                    document.getElementById('workspace-branch-name').textContent = data.currentBranch || 'main';
+                    document.getElementById('workspace-label').textContent = '';
+                    // Show create button, hide workspace-specific buttons
+                    document.getElementById('workspace-create-btn').style.display = '';
+                    document.getElementById('workspace-diff-btn').style.display = 'none';
+                    document.getElementById('workspace-merge-btn').style.display = 'none';
+                    document.getElementById('workspace-discard-btn').style.display = 'none';
+                    // If active workspaces exist, check if one matches
+                    if (data.activeWorkspaces > 0) {
+                        await refreshWorkspaceList();
+                    }
+                } else {
+                    bar.style.display = 'none';
+                    workspaceRepoRoot = null;
+                }
+            } catch {
+                document.getElementById('workspace-bar').style.display = 'none';
+            }
+        }
+
+        async function refreshWorkspaceList() {
+            if (!workspaceRepoRoot) return;
+            try {
+                const resp = await fetch(`/api/workspace/list?repoRoot=${encodeURIComponent(workspaceRepoRoot)}`);
+                const data = await resp.json();
+                if (data.workspaces && data.workspaces.length > 0) {
+                    // Use the most recent active workspace
+                    const ws = data.workspaces[data.workspaces.length - 1];
+                    activateWorkspaceUI(ws);
+                }
+            } catch { /* ignore */ }
+        }
+
+        function activateWorkspaceUI(ws) {
+            window.activeWorkspaceId = ws.id;
+            const branchIndicator = document.getElementById('workspace-branch-indicator');
+            branchIndicator.style.background = 'rgba(96, 165, 250, 0.1)';
+            branchIndicator.style.borderColor = 'rgba(96, 165, 250, 0.3)';
+            branchIndicator.style.color = '#60a5fa';
+            branchIndicator.querySelector('span').style.background = '#60a5fa';
+            document.getElementById('workspace-branch-name').textContent = ws.branch.replace('evobrew/', '');
+            document.getElementById('workspace-label').textContent = ws.description || 'isolated workspace';
+            document.getElementById('workspace-create-btn').style.display = 'none';
+            document.getElementById('workspace-diff-btn').style.display = '';
+            document.getElementById('workspace-merge-btn').style.display = '';
+            document.getElementById('workspace-discard-btn').style.display = '';
+        }
+
+        function resetWorkspaceUI() {
+            window.activeWorkspaceId = null;
+            const branchIndicator = document.getElementById('workspace-branch-indicator');
+            branchIndicator.style.background = 'rgba(74, 222, 128, 0.1)';
+            branchIndicator.style.borderColor = 'rgba(74, 222, 128, 0.3)';
+            branchIndicator.style.color = '#4ade80';
+            branchIndicator.querySelector('span').style.background = '#4ade80';
+            document.getElementById('workspace-branch-name').textContent = 'main';
+            document.getElementById('workspace-label').textContent = '';
+            document.getElementById('workspace-create-btn').style.display = '';
+            document.getElementById('workspace-diff-btn').style.display = 'none';
+            document.getElementById('workspace-merge-btn').style.display = 'none';
+            document.getElementById('workspace-discard-btn').style.display = 'none';
+        }
+
+        async function workspaceCreate() {
+            const folder = IDE_MODE === 'filesystem'
+                ? (typeof getActiveFolderPath === 'function' ? getActiveFolderPath() : null)
+                : (currentBrowsePath || '.');
+            if (!folder) { alert('No folder loaded'); return; }
+
+            const description = prompt('Workspace description (optional):');
+            try {
+                const resp = await fetch('/api/workspace/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sourceFolder: folder, description: description || '' })
+                });
+                const data = await resp.json();
+                if (data.success && data.workspace) {
+                    activateWorkspaceUI(data.workspace);
+                    addChatMessage('system', `Workspace created: ${data.workspace.branch} — agent now works in isolated copy.`);
+                } else {
+                    alert('Failed to create workspace: ' + (data.error || 'unknown error'));
+                }
+            } catch (err) {
+                alert('Error creating workspace: ' + err.message);
+            }
+        }
+
+        async function workspaceDiff() {
+            if (!window.activeWorkspaceId) return;
+            try {
+                const resp = await fetch(`/api/workspace/${window.activeWorkspaceId}`);
+                const data = await resp.json();
+                if (data.diff) {
+                    const files = data.diff.files || [];
+                    const uncommitted = data.diff.hasUncommittedChanges ? ' (+ uncommitted changes)' : '';
+                    let msg = `**Workspace diff** (${files.length} file${files.length !== 1 ? 's' : ''} changed${uncommitted}):\n\n`;
+                    for (const f of files) {
+                        const statusLabel = { A: 'added', M: 'modified', D: 'deleted' }[f.status] || f.status;
+                        msg += `- \`${f.file}\` — ${statusLabel}\n`;
+                    }
+                    if (data.diff.summary) msg += '\n```\n' + data.diff.summary + '\n```';
+                    addChatMessage('system', msg);
+                }
+            } catch (err) {
+                alert('Error getting diff: ' + err.message);
+            }
+        }
+
+        async function workspaceMerge() {
+            if (!window.activeWorkspaceId) return;
+            if (!confirm('Merge workspace changes back to the source branch?')) return;
+            try {
+                const resp = await fetch(`/api/workspace/${window.activeWorkspaceId}/merge`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cleanup: true })
+                });
+                const data = await resp.json();
+                if (data.merged) {
+                    addChatMessage('system', `Workspace merged successfully (commit ${data.commitHash?.slice(0, 7)}). Back on source branch.`);
+                    resetWorkspaceUI();
+                } else if (data.conflicts) {
+                    addChatMessage('error', `Merge conflicts detected: ${data.message}`);
+                } else {
+                    addChatMessage('system', data.message || 'Nothing to merge.');
+                    resetWorkspaceUI();
+                }
+            } catch (err) {
+                alert('Error merging workspace: ' + err.message);
+            }
+        }
+
+        async function workspaceDiscard() {
+            if (!window.activeWorkspaceId) return;
+            if (!confirm('Discard this workspace and ALL its changes? This cannot be undone.')) return;
+            try {
+                const resp = await fetch(`/api/workspace/${window.activeWorkspaceId}`, { method: 'DELETE' });
+                const data = await resp.json();
+                if (data.removed) {
+                    addChatMessage('system', 'Workspace discarded. Back on source branch.');
+                    resetWorkspaceUI();
+                }
+            } catch (err) {
+                alert('Error discarding workspace: ' + err.message);
+            }
+        }
+
+        // Check workspace availability when folder changes
+        window.addEventListener('cosmo:folderChanged', (e) => {
+            if (e.detail?.path) checkWorkspaceAvailability(e.detail.path);
+        });
+
         async function sendAIMessage() {
             const input = document.getElementById('ai-input');
             const message = input.value.trim();
@@ -9106,6 +9294,7 @@ ${result.content}`;
 
                 const brainContextEnabled = (document.getElementById('brainEnabled')?.checked ?? false) && !(document.getElementById('brainEnabled')?.disabled ?? false);
                 const pgsEnabled = brainContextEnabled && (document.getElementById('query-pgs')?.checked || false) && !(document.getElementById('query-pgs')?.disabled ?? false);
+                const planningModeEnabled = document.getElementById('planningModeEnabled')?.checked ?? false;
 
                 // Route to OpenClaw Gateway if OpenClaw model selected
                 if (selectedProvider === 'openclaw') {
@@ -9151,7 +9340,9 @@ ${result.content}`;
                     pgsMode: document.getElementById('query-pgs-mode')?.value || 'full',
                     pgsSessionId: (document.getElementById('query-pgs-session')?.value || '').trim() || 'default',
                     pgsFullSweep: parseFloat(document.getElementById('query-pgs-depth')?.value || '0.25') >= 1.0,
-                    pgsConfig: { sweepFraction: parseFloat(document.getElementById('query-pgs-depth')?.value || '0.25') }
+                    pgsConfig: { sweepFraction: parseFloat(document.getElementById('query-pgs-depth')?.value || '0.25') },
+                    planningMode: planningModeEnabled,
+                    workspaceId: window.activeWorkspaceId || null
                 };
                 
                 // Handle streaming response with incremental file creation (look-ahead pattern)
