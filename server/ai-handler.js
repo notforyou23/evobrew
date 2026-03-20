@@ -697,6 +697,10 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
     fileTreeContext, conversationHistory, conversationSummary,
     allowedRoot, brainEnabled = false,
     planningMode = false,
+    enablePGS = false,
+    pgsMode = 'full',
+    pgsSessionId = 'default',
+    pgsConfig = null,
     allowedToolNames = null,
     disableSpreadsheetParsing = false,
     terminalPolicy = null,
@@ -921,38 +925,86 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
 
     if (qe && loader) {
       try {
-        console.log('[AI] Brain context injection enabled - searching brain...');
-        eventEmitter?.({ type: 'brain_search', status: 'searching' });
+        // PGS path: use Partitioned Graph Synthesis for deep, full-coverage brain search
+        if (enablePGS && qe.queryEngine) {
+          console.log(`[AI] PGS brain context injection — mode: ${pgsMode}, session: ${pgsSessionId}`);
+          eventEmitter?.({ type: 'brain_search', status: 'searching', pgs: true });
+          eventEmitter?.({ type: 'status', message: 'PGS: Running partitioned graph synthesis (this takes longer)...' });
 
-        const state = await qe.queryEngine.loadBrainState();
-
-        // Search entire brain thoroughly, then filter by relevance score
-        const allRelevantNodes = await qe.queryEngine.queryMemory(state, message, {
-          limit: 10000,  // High limit - search entire brain thoroughly
-          includeConnected: true,
-          useSemanticSearch: true
-        });
-
-        // Filter by relevance score - include all nodes that "fire" above threshold
-        const scoreThreshold = 0.20;  // Low threshold = more neurons fire
-        const relevantNodes = allRelevantNodes.filter(n => (n.score || 0) >= scoreThreshold);
-
-        console.log(`[AI] Brain search: ${allRelevantNodes.length} candidates → ${relevantNodes.length} above threshold (${scoreThreshold})`);
-
-        if (relevantNodes.length > 0) {
-          const brainContext = buildBrainContextSection(relevantNodes, loader);
-          systemPrompt = systemPrompt + brainContext;
-          console.log(`[AI] Injected ${relevantNodes.length} brain nodes into context`);
-          eventEmitter?.({
-            type: 'brain_search',
-            status: 'injected',
-            totalSearched: allRelevantNodes.length,
-            nodesInjected: relevantNodes.length,
-            scoreThreshold
+          const sweepFraction = pgsConfig?.sweepFraction || 0.25;
+          const pgsResult = await qe.queryEngine.executeEnhancedQuery(message, {
+            enablePGS: true,
+            pgsMode: pgsMode || 'full',
+            pgsSessionId: pgsSessionId || 'default',
+            pgsFullSweep: sweepFraction >= 1.0,
+            pgsConfig: { sweepFraction },
+            model: effectiveModel,
+            onChunk: (chunk) => {
+              // Forward PGS progress events to the frontend
+              if (chunk.type === 'progress' || chunk.type === 'pgs_partition' || chunk.type === 'pgs_sweep') {
+                eventEmitter?.({ type: 'status', message: chunk.message || 'PGS processing...' });
+              }
+            }
           });
+
+          // Inject PGS synthesis result as brain context
+          if (pgsResult && pgsResult.answer) {
+            const pgsContext = `\n\n═══════════════════════════════════════════════════════════════════════════════
+## 🧠 BRAIN CONTEXT (PGS — Partitioned Graph Synthesis)
+
+The following is a deep synthesis of relevant knowledge from the brain's knowledge graph,
+produced by scanning ${pgsResult.metadata?.partitionsSwept || '?'} graph partitions:
+
+${pgsResult.answer.substring(0, 8000)}
+═══════════════════════════════════════════════════════════════════════════════`;
+            systemPrompt = systemPrompt + pgsContext;
+            console.log(`[AI] PGS context injected (${pgsResult.answer.length} chars)`);
+            eventEmitter?.({
+              type: 'brain_search',
+              status: 'injected',
+              pgs: true,
+              totalSearched: pgsResult.metadata?.totalNodes || 0,
+              nodesInjected: pgsResult.metadata?.partitionsSwept || 0,
+              message: `PGS: ${pgsResult.metadata?.partitionsSwept || '?'} partitions swept`
+            });
+          } else {
+            console.log('[AI] PGS returned no synthesis');
+            eventEmitter?.({ type: 'brain_search', status: 'no_results', pgs: true });
+          }
+
         } else {
-          console.log('[AI] No relevant brain nodes found for query');
-          eventEmitter?.({ type: 'brain_search', status: 'no_results', totalSearched: allRelevantNodes.length });
+          // Standard path: basic brain search with scoring
+          console.log('[AI] Brain context injection enabled - searching brain...');
+          eventEmitter?.({ type: 'brain_search', status: 'searching' });
+
+          const state = await qe.queryEngine.loadBrainState();
+
+          const allRelevantNodes = await qe.queryEngine.queryMemory(state, message, {
+            limit: 10000,
+            includeConnected: true,
+            useSemanticSearch: true
+          });
+
+          const scoreThreshold = 0.20;
+          const relevantNodes = allRelevantNodes.filter(n => (n.score || 0) >= scoreThreshold);
+
+          console.log(`[AI] Brain search: ${allRelevantNodes.length} candidates → ${relevantNodes.length} above threshold (${scoreThreshold})`);
+
+          if (relevantNodes.length > 0) {
+            const brainContext = buildBrainContextSection(relevantNodes, loader);
+            systemPrompt = systemPrompt + brainContext;
+            console.log(`[AI] Injected ${relevantNodes.length} brain nodes into context`);
+            eventEmitter?.({
+              type: 'brain_search',
+              status: 'injected',
+              totalSearched: allRelevantNodes.length,
+              nodesInjected: relevantNodes.length,
+              scoreThreshold
+            });
+          } else {
+            console.log('[AI] No relevant brain nodes found for query');
+            eventEmitter?.({ type: 'brain_search', status: 'no_results', totalSearched: allRelevantNodes.length });
+          }
         }
       } catch (err) {
         console.error('[AI] Brain context injection failed:', err.message);
