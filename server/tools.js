@@ -830,6 +830,73 @@ const toolDefinitions = [
         additionalProperties: false
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'plan_create',
+      description: 'Create a structured execution plan. Use this in planning mode to propose a plan with clear steps. The plan will be shown to the user for approval before execution.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Short title for the plan' },
+          steps: {
+            type: 'array',
+            description: 'Ordered list of steps to execute',
+            items: {
+              type: 'object',
+              properties: {
+                label: { type: 'string', description: 'Short step description' },
+                description: { type: 'string', description: 'Detailed explanation of what this step does' },
+                files: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'Files this step will read or modify'
+                }
+              },
+              required: ['label']
+            }
+          }
+        },
+        required: ['title', 'steps'],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'plan_update',
+      description: 'Update a step in the active plan. Use to modify a step label, description, or files before execution.',
+      parameters: {
+        type: 'object',
+        properties: {
+          step_id: { type: 'string', description: 'Step ID to update (e.g., "step-1")' },
+          label: { type: 'string', description: 'New step label' },
+          description: { type: 'string', description: 'New step description' },
+          files: { type: 'array', items: { type: 'string' }, description: 'Updated file list' }
+        },
+        required: ['step_id'],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'plan_status',
+      description: 'Report progress on a plan step during execution. Call with "running" when starting a step and "done" or "failed" when finished.',
+      parameters: {
+        type: 'object',
+        properties: {
+          step_id: { type: 'string', description: 'Step ID (e.g., "step-1")' },
+          status: { type: 'string', enum: ['running', 'done', 'failed', 'skipped'], description: 'New status for the step' },
+          message: { type: 'string', description: 'Optional status message or error detail' }
+        },
+        required: ['step_id', 'status'],
+        additionalProperties: false
+      }
+    }
   }
 ];
 
@@ -1056,6 +1123,15 @@ class ToolExecutor {
 
         case 'progress_update':
           return await this.progressUpdate(args.completed, args.state, args.next_steps);
+
+        case 'plan_create':
+          return this.planCreate(args.title, args.steps);
+
+        case 'plan_update':
+          return this.planUpdate(args.step_id, args);
+
+        case 'plan_status':
+          return this.planStatus(args.step_id, args.status, args.message);
 
         default:
           return { error: `Unknown tool: ${toolName}` };
@@ -1955,6 +2031,78 @@ class ToolExecutor {
 
     await fs.writeFile(progressPath, entry + existing, 'utf-8');
     return { success: true, path: progressPath, message: 'Progress updated' };
+  }
+
+  // ── Plan Management ──────────────────────────────────────────────────
+
+  planCreate(title, steps) {
+    const planId = 'plan-' + Date.now();
+    const structuredSteps = (steps || []).map((s, i) => ({
+      id: `step-${i + 1}`,
+      label: s.label,
+      description: s.description || '',
+      files: s.files || [],
+      status: 'pending'
+    }));
+
+    this.activePlan = {
+      id: planId,
+      title: title || 'Plan',
+      steps: structuredSteps,
+      state: 'draft',
+      createdAt: new Date().toISOString()
+    };
+
+    return {
+      action: 'plan_created',
+      planId,
+      title: this.activePlan.title,
+      stepCount: structuredSteps.length,
+      steps: structuredSteps
+    };
+  }
+
+  planUpdate(stepId, changes) {
+    if (!this.activePlan) return { error: 'No active plan' };
+    const step = this.activePlan.steps.find(s => s.id === stepId);
+    if (!step) return { error: `Step ${stepId} not found` };
+
+    if (changes.label) step.label = changes.label;
+    if (changes.description) step.description = changes.description;
+    if (changes.files) step.files = changes.files;
+
+    return {
+      action: 'plan_updated',
+      stepId,
+      step
+    };
+  }
+
+  planStatus(stepId, status, message) {
+    if (!this.activePlan) return { error: 'No active plan' };
+    const step = this.activePlan.steps.find(s => s.id === stepId);
+    if (!step) return { error: `Step ${stepId} not found` };
+
+    step.status = status;
+    if (message) step.message = message;
+
+    // Check if all steps are done
+    const allDone = this.activePlan.steps.every(s =>
+      s.status === 'done' || s.status === 'skipped' || s.status === 'failed'
+    );
+    if (allDone) this.activePlan.state = 'complete';
+
+    return {
+      action: 'plan_step_status',
+      stepId,
+      status,
+      message: message || null,
+      planState: this.activePlan.state
+    };
+  }
+
+  getPlanState() {
+    return this.activePlan || null;
   }
 
   async deleteFile(filePath) {

@@ -9848,15 +9848,18 @@ ${result.content}`;
                 document.getElementById('plan-elapsed').textContent = `${min}m ${sec.toString().padStart(2, '0')}s`;
             }, 1000);
 
-            // Send execution request — the enabled steps + their models
-            const enabledSteps = currentPlan.steps.filter(s => s.enabled !== false).map(s => ({
-                id: s.id, label: s.label, model: s.model
-            }));
+            // Store plan state globally so the request builder can include it
+            window._executingPlanState = {
+                id: currentPlan.id,
+                title: currentPlan.title,
+                steps: currentPlan.steps.filter(s => s.enabled !== false),
+                state: 'executing'
+            };
 
-            // Send as a new chat message that triggers plan execution
+            // Send execution request — the backend gets executePlan: true + full plan state
             const input = document.getElementById('ai-input');
-            input.value = `Execute the plan: ${currentPlan.title}\n\nSteps:\n${enabledSteps.map((s, i) => `${i + 1}. ${s.label}`).join('\n')}`;
-            // Turn off planning mode for execution
+            input.value = `Execute the plan: ${currentPlan.title}`;
+            // Turn off planning mode toggle (execution re-enables write tools on the backend)
             document.getElementById('planningModeEnabled').checked = false;
             sendAIMessage();
         }
@@ -9893,14 +9896,14 @@ ${result.content}`;
             if (!currentPlan) return;
             const modification = prompt('What would you like to change about the plan?');
             if (!modification) return;
-            // Send modification as a chat message in planning mode
+            // Send modification with plan context — agent uses plan_update tool
             const input = document.getElementById('ai-input');
-            input.value = `plan: Modify the plan "${currentPlan.title}" — ${modification}`;
+            input.value = modification;
             document.getElementById('planningModeEnabled').checked = true;
             sendAIMessage();
         }
 
-        // Parse a numbered plan from AI response text
+        // Legacy: parsePlanFromResponse kept for backward compatibility but no longer used by SSE handler
         function parsePlanFromResponse(text) {
             // Look for numbered steps pattern: "1. Step description" or "**Step 1:** Description"
             const lines = text.split('\n');
@@ -10453,8 +10456,12 @@ ${result.content}`;
                     pgsFullSweep: parseFloat(document.getElementById('query-pgs-depth')?.value || '0.25') >= 1.0,
                     pgsConfig: { sweepFraction: parseFloat(document.getElementById('query-pgs-depth')?.value || '0.25') },
                     planningMode: planningModeEnabled,
+                    executePlan: !!window._executingPlanState,
+                    planState: window._executingPlanState || null,
                     workspaceId: window.activeWorkspaceId || null
                 };
+                // Clear the executing plan state after building the request
+                window._executingPlanState = null;
                 
                 // Handle streaming response with incremental file creation (look-ahead pattern)
                 let fullResponse = '';
@@ -10514,6 +10521,29 @@ ${result.content}`;
                                 else if (event.type === 'status') {
                                     // Backend status update - show in thinking indicator
                                     updateThinkingStatus(event.message);
+                                }
+
+                                else if (event.type === 'plan') {
+                                    // Plan tool events — drive the plan dock
+                                    if (event.action === 'created' && event.plan) {
+                                        showPlanDock({
+                                            ...event.plan,
+                                            steps: event.plan.steps.map(s => ({ ...s, enabled: true })),
+                                            state: 'draft'
+                                        });
+                                        console.log(`[PLAN] Created: "${event.plan.title}" with ${event.plan.steps.length} steps`);
+                                    } else if (event.action === 'updated' && event.stepId) {
+                                        if (currentPlan) {
+                                            const step = currentPlan.steps.find(s => s.id === event.stepId);
+                                            if (step && event.step) {
+                                                Object.assign(step, event.step);
+                                                renderPlanSteps();
+                                            }
+                                        }
+                                    } else if (event.action === 'step_status' && event.stepId) {
+                                        updatePlanStepStatus(event.stepId, event.status);
+                                        if (event.planState === 'complete') completePlan();
+                                    }
                                 }
 
                                 else if (event.type === 'brain_search') {
@@ -10838,16 +10868,8 @@ ${result.content}`;
                                 else if (event.type === 'complete') {
                                         console.log('[FRONTEND] Complete event received, rendering markdown...');
 
-                                        // Detect plan in response when planning mode was active
-                                        const wasPlanningMode = document.getElementById('planningModeEnabled')?.checked;
-                                        const responseForPlan = event.fullResponse || fullResponse;
-                                        if (wasPlanningMode && responseForPlan) {
-                                            const plan = parsePlanFromResponse(responseForPlan);
-                                            if (plan && plan.steps.length > 0) {
-                                                showPlanDock(plan);
-                                                console.log(`[PLAN] Detected ${plan.steps.length}-step plan: "${plan.title}"`);
-                                            }
-                                        }
+                                        // Plan dock is now driven by SSE 'plan' events from plan_create tool
+                                        // (no more text parsing)
 
                                         // Mark tools container as completed but keep it open briefly
                                         const toolsContainer = document.getElementById(toolsContainerId);

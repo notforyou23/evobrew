@@ -697,6 +697,8 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
     fileTreeContext, conversationHistory, conversationSummary,
     allowedRoot, brainEnabled = false,
     planningMode = false,
+    executePlan = false,
+    planState = null,
     enablePGS = false,
     pgsMode = 'full',
     pgsSessionId = 'default',
@@ -802,16 +804,16 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
     console.log(`[AI] Terminal tools disabled by policy; ${availableTools.length} tools remain`);
   }
 
-  // Planning mode: restrict to read-only tools — enforce, don't just ask nicely
-  const isPlanningMode = planningMode || (message && message.toLowerCase().startsWith('plan:'));
+  // Planning mode: restrict to read-only + plan tools. Execute mode: all tools available.
+  const isPlanningMode = !executePlan && (planningMode || (message && message.toLowerCase().startsWith('plan:')));
   if (isPlanningMode) {
     const writeToolNames = new Set([
       'edit_file', 'edit_file_range', 'search_replace', 'insert_lines', 'delete_lines',
       'create_file', 'delete_file', 'create_docx', 'create_xlsx', 'create_image', 'edit_image',
-      'terminal_write' // can write to terminals; terminal_open/wait/list/close are ok for observation
+      'terminal_write'
     ]);
     availableTools = availableTools.filter((tool) => !writeToolNames.has(tool.function.name));
-    console.log(`[AI] Planning mode: restricted to ${availableTools.length} read-only tools`);
+    console.log(`[AI] Planning mode: restricted to ${availableTools.length} read-only + plan tools`);
   }
 
   const availableAnthropicTools = availableTools.map((t) => ({
@@ -1022,22 +1024,54 @@ ${pgsResult.answer.substring(0, 8000)}
   if (isPlanningMode) {
     systemPrompt += `\n\n## PLANNING MODE ACTIVE
 
-You are in planning mode. Edit and create tools have been removed — you can only use read-only tools.
-1. Analyze the request using file_read, list_directory, grep_search, codebase_search
-2. Produce a structured plan with numbered steps
-3. For each step: what to do, which files to modify, what to verify after
-4. Identify risks and dependencies between steps
-5. Wait for the user to approve before executing
+You are in planning mode. Edit and create tools have been removed — you can only use read-only tools plus plan management tools.
 
-Output your plan as a numbered list. The user will switch off planning mode when ready to execute.`;
+**Your workflow:**
+1. Analyze the request using read-only tools (file_read, list_directory, grep_search, codebase_search)
+2. When you have a clear understanding, call **plan_create** with a title and structured steps
+3. Each step should have a clear label, optional description, and the files it will touch
+4. After creating the plan, explain it to the user and wait for their feedback
+5. If the user wants changes, use **plan_update** to modify specific steps
+6. The user will click "Execute Plan" when ready — you do NOT execute until then
 
-    // Brain-informed planning: if brain context was injected above, tell the agent to use it
+**Important:** Do NOT just write a numbered list in chat. You MUST use the plan_create tool so the plan appears in the Plan Dock and can be tracked during execution.`;
+
     if (brainEnabled) {
-      systemPrompt += `\n\nBrain knowledge has been injected into your context above. Use this domain knowledge to inform your plan — consider what the brain knows when identifying risks, dependencies, and approach.`;
+      systemPrompt += `\n\nBrain knowledge has been injected into your context. Use it to inform your plan — consider what the brain knows when identifying risks, dependencies, and approach.`;
     }
 
-    console.log('[AI] Planning mode active — write tools restricted' + (brainEnabled ? ' (brain-informed)' : ''));
-    eventEmitter?.({ type: 'status', message: 'Planning mode — read-only tools, agent will propose before executing' });
+    console.log('[AI] Planning mode active — write tools restricted, plan tools available' + (brainEnabled ? ' (brain-informed)' : ''));
+    eventEmitter?.({ type: 'status', message: 'Planning mode — analyzing and building plan...' });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PLAN EXECUTION MODE: Execute a previously created plan step by step
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (executePlan && planState) {
+    // Restore plan state on the tool executor so plan_status works
+    toolExecutor.activePlan = planState;
+
+    const stepsDisplay = planState.steps.map(s =>
+      `Step ${s.id} [${s.status}]: ${s.label}${s.description ? ' — ' + s.description : ''}`
+    ).join('\n');
+
+    systemPrompt += `\n\n## EXECUTING PLAN: "${planState.title}"
+
+You are executing the plan below. All tools are available. Work through each step in order.
+
+**For each step:**
+1. Call plan_status(step_id, "running") BEFORE starting work
+2. Do the work using the appropriate tools
+3. Call plan_status(step_id, "done") when complete, or plan_status(step_id, "failed", "error message") if it fails
+4. Move to the next pending step
+
+**Current Plan State:**
+${stepsDisplay}
+
+Execute the pending steps now. Start with the first step that has status "pending".`;
+
+    console.log(`[AI] Plan execution mode — executing "${planState.title}" with ${planState.steps.length} steps`);
+    eventEmitter?.({ type: 'status', message: `Executing plan: ${planState.title}` });
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1853,10 +1887,20 @@ Output your plan as a numbered list. The user will switch off planning mode when
                 edit: result.code_edit,
                 isNew: result.action === 'queue_create'
               });
-              // Track so subsequent file_read returns proposed content, not stale disk
               if (result.file_path && result.code_edit) {
                 toolExecutor.trackPendingEdit(result.file_path, result.code_edit);
               }
+            }
+
+            // Plan tool events — emit to frontend for plan dock
+            if (result.action === 'plan_created') {
+              eventEmitter?.({ type: 'plan', action: 'created', plan: {
+                id: result.planId, title: result.title, steps: result.steps
+              }});
+            } else if (result.action === 'plan_updated') {
+              eventEmitter?.({ type: 'plan', action: 'updated', stepId: result.stepId, step: result.step });
+            } else if (result.action === 'plan_step_status') {
+              eventEmitter?.({ type: 'plan', action: 'step_status', stepId: result.stepId, status: result.status, message: result.message, planState: result.planState });
             }
             
             eventEmitter?.({ type: 'tool_complete', tool: toolName, result, index: idx });
