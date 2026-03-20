@@ -2119,6 +2119,19 @@ app.post('/api/chat', async (req, res) => {
       params.allowedToolNames = Array.from(allowed);
     }
 
+    // Workspace isolation: resolve workspaceId to worktree path
+    if (params.workspaceId) {
+      const { getWorkspaceManager } = require('./workspace-manager');
+      const wm = getWorkspaceManager();
+      const workspace = wm.get(params.workspaceId);
+      if (!workspace) return res.status(400).json({ error: `Workspace ${params.workspaceId} not found` });
+      if (workspace.status !== 'active') return res.status(400).json({ error: `Workspace ${params.workspaceId} is ${workspace.status}` });
+      params.currentFolder = workspace.path;
+      params.allowedRoot = workspace.path;
+      params.terminalPolicy.allowedRoot = workspace.path;
+      console.log(`[CHAT] Using workspace ${params.workspaceId} at ${workspace.path}`);
+    }
+
     // Log brain status for debugging
     const brainEnabled = params.brainEnabled || false;
     console.log(`[CHAT] "${message.substring(0, 60)}..." (brainEnabled: ${brainEnabled})`);
@@ -3083,11 +3096,26 @@ if (fsSync.existsSync(certPath) && fsSync.existsSync(keyPath)) {
   console.log('\n' + '='.repeat(60) + '\n');
 }
 
-let terminalShutdownHandled = false;
+let shutdownHandled = false;
 function shutdownTerminalSessions() {
-  if (terminalShutdownHandled) return;
-  terminalShutdownHandled = true;
+  if (shutdownHandled) return;
+  shutdownHandled = true;
   terminalSessionManager.shutdown();
+
+  // Log active workspaces (don't destroy — they may be long-running work)
+  try {
+    const { getWorkspaceManager } = require('./workspace-manager');
+    const wm = getWorkspaceManager();
+    const active = wm.list();
+    if (active.length > 0) {
+      console.log(`[SHUTDOWN] ${active.length} active workspace(s) preserved:`);
+      for (const ws of active) {
+        console.log(`  - ${ws.id} (${ws.branch}) at ${ws.path}`);
+      }
+    }
+  } catch {
+    // Non-critical
+  }
 }
 
 process.on('SIGINT', () => {
@@ -3264,11 +3292,114 @@ app.get('/api/harness/manifest', async (req, res) => {
         brains: !!(process.env.COSMO_BRAIN_DIRS || process.env.BRAIN_DIRS),
         functionCalling: true,
         planningMode: true,
-        progressTracking: true
+        progressTracking: true,
+        workspaceIsolation: true
       }
     });
   } catch (err) {
     console.error('[MANIFEST] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================================
+// WORKSPACE ISOLATION — Git worktree-based agent workspace management
+// ============================================================================
+
+app.post('/api/workspace/create', (req, res) => {
+  try {
+    const { getWorkspaceManager } = require('./workspace-manager');
+    const wm = getWorkspaceManager();
+    const { sourceFolder, description, baseBranch } = req.body;
+    if (!sourceFolder) return res.status(400).json({ error: 'sourceFolder is required' });
+    const workspace = wm.create(sourceFolder, { description, baseBranch });
+    res.json({ success: true, workspace });
+  } catch (err) {
+    console.error('[WORKSPACE] Create error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/workspace/list', (req, res) => {
+  try {
+    const { getWorkspaceManager } = require('./workspace-manager');
+    const wm = getWorkspaceManager();
+    const repoRoot = req.query.repoRoot || null;
+    if (repoRoot) wm.restoreForRepo(repoRoot);
+    res.json({ success: true, workspaces: wm.list(repoRoot) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/workspace/check/*', (req, res) => {
+  try {
+    const { getWorkspaceManager } = require('./workspace-manager');
+    const wm = getWorkspaceManager();
+    const folder = '/' + req.params[0];
+    const repoRoot = wm.getRepoRoot(folder);
+    if (repoRoot) {
+      wm.restoreForRepo(repoRoot);
+      res.json({
+        available: true, repoRoot,
+        currentBranch: wm.getCurrentBranch(repoRoot),
+        hasUncommittedChanges: wm.hasUncommittedChanges(repoRoot),
+        activeWorkspaces: wm.list(repoRoot).length
+      });
+    } else {
+      res.json({ available: false, reason: 'Not a git repository' });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/workspace/:id', (req, res) => {
+  try {
+    const { getWorkspaceManager } = require('./workspace-manager');
+    const wm = getWorkspaceManager();
+    const workspace = wm.get(req.params.id);
+    if (!workspace) return res.status(404).json({ error: `Workspace ${req.params.id} not found` });
+    let diffInfo = null;
+    try { diffInfo = wm.diff(req.params.id); } catch (err) { diffInfo = { error: err.message }; }
+    res.json({ success: true, workspace, diff: diffInfo });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/workspace/:id/commit', (req, res) => {
+  try {
+    const { getWorkspaceManager } = require('./workspace-manager');
+    const wm = getWorkspaceManager();
+    const result = wm.commit(req.params.id, req.body.message);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/workspace/:id/merge', (req, res) => {
+  try {
+    const { getWorkspaceManager } = require('./workspace-manager');
+    const wm = getWorkspaceManager();
+    const result = wm.merge(req.params.id, {
+      commitMessage: req.body.commitMessage,
+      cleanup: req.body.cleanup
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/workspace/:id', (req, res) => {
+  try {
+    const { getWorkspaceManager } = require('./workspace-manager');
+    const wm = getWorkspaceManager();
+    const result = wm.remove(req.params.id);
+    res.json({ success: true, ...result });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
