@@ -3227,6 +3227,53 @@ app.get('/api/providers/models', async (req, res) => {
 });
 
 /**
+ * GET /api/harness/manifest - Machine-readable harness self-description
+ * Allows agents to self-orient: what providers, tools, brains, features are available
+ */
+app.get('/api/harness/manifest', async (req, res) => {
+  try {
+    const { getDefaultRegistry } = require('./providers');
+    const { getBrainLoader } = require('./brain-loader-module');
+    const { toolDefinitions } = require('./tools');
+    const platform = require('./config/platform');
+
+    const registry = await getDefaultRegistry();
+    const providers = registry ? registry.getAllProviders().map(p => ({
+      id: p.id,
+      name: p.name,
+      models: typeof p.getAvailableModels === 'function' ? p.getAvailableModels() : []
+    })) : [];
+
+    const brainLoader = getBrainLoader();
+    const brain = brainLoader ? {
+      loaded: true,
+      path: brainLoader.brainPath || null,
+      nodeCount: brainLoader.nodes?.length || 0,
+      edgeCount: brainLoader.edges?.length || 0
+    } : { loaded: false };
+
+    res.json({
+      version: require('../package.json').version,
+      platform: platform.detect ? platform.detect() : { type: process.platform },
+      security: process.env.EVOBREW_SECURITY_PROFILE || 'local',
+      providers,
+      tools: toolDefinitions.map(t => t.function.name),
+      brain,
+      features: {
+        terminal: process.env.EVOBREW_TERMINAL_ENABLED !== 'false',
+        brains: !!(process.env.COSMO_BRAIN_DIRS || process.env.BRAIN_DIRS),
+        functionCalling: true,
+        planningMode: true,
+        progressTracking: true
+      }
+    });
+  } catch (err) {
+    console.error('[MANIFEST] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
  * GET /api/providers/status - Provider health check
  * Returns status of all registered providers
  */

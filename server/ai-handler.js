@@ -11,6 +11,12 @@ const { getDefaultRegistry } = require('./providers');
 const { getModelId } = require('../lib/model-selection');
 
 // ============================================================================
+// SESSION MUTEX - Prevent concurrent agent sessions on the same folder
+// ============================================================================
+
+const activeSessions = new Map(); // folder path -> { sessionId, startTime }
+
+// ============================================================================
 // SMART TRUNCATION - Keep beginning + end for better context preservation
 // ============================================================================
 
@@ -489,229 +495,30 @@ ${fileTreeContext || 'Use list_directory to explore'}
 
 ## Your Tools
 
-### file_read
-Read any file. Use before editing or analyzing.
-- **Office files (.docx, .xlsx, .msg)**: Extracts text, formulas, comments
-- Shows formula syntax: \`Value [=A1+B1]\` means cell shows Value but formula is =A1+B1
-- Comments and annotations noted when present
+Tool details are in their function definitions. Key tools:
+- **file_read** — Read files (text, .docx, .xlsx, .msg). Always read before editing.
+- **read_image** / **create_image** / **edit_image** — View, generate (GPT-Image-1.5), or edit images
+- **list_directory** — Explore project structure
+- **grep_search** — Exact text/pattern search (results capped at 50 — narrow query if truncated)
+- **codebase_search** — Semantic search by meaning (use for "how does X work?" style queries)
+- **edit_file_range** / **search_replace** — Surgical edits (PREFERRED for targeted changes)
+- **insert_lines** / **delete_lines** — Line-level operations
+- **edit_file** — Full file rewrite (ONLY for complete restructuring)
+- **create_file** — Create new files (auto-validates JS/JSON syntax)
+- **delete_file** — Delete files/directories
+- **create_docx** / **create_xlsx** — Create Office documents
+- **run_tests** — Verify changes: syntax-check a file or run test suite
+- **progress_update** — Document session progress for continuity across sessions
+- **terminal_open/write/wait/resize/close/list** — PTY terminal sessions
+- **run_terminal** — One-shot command execution
 
-### read_image
-Read and view image files (png, jpg, gif, webp). Use to analyze screenshots, diagrams, mockups, or any visual assets.
+## Key Patterns
 
-### create_image
-Generate high-quality images using GPT-Image-1.5. ALWAYS write detailed, specific prompts for best results.
-- Saves as PNG file
-- Default: 1536x1024 (landscape HD) at high quality
-- Sizes: 1536x1024 (landscape), 1024x1536 (portrait), 1024x1024 (square)
-- Quality: 'high' (default) or 'standard' (faster)
-
-PROMPT FORMULA - Always include:
-1. Subject & main focus
-2. Style (photorealistic, digital art, illustration, etc.)
-3. Composition/angle/perspective
-4. Lighting & atmosphere
-5. Colors & mood
-6. Quality terms (high detail, professional, 4K, cinematic)
-
-Example: "A cinematic photograph of a modern glass office building at sunset, low angle perspective, golden hour lighting reflecting off windows, dramatic clouds, urban skyline background, professional architectural photography, high detail, vibrant colors"
-
-### edit_image
-Edit existing images using GPT-Image-1.5. Perfect for iterative refinements, style changes, combining images, or targeted edits.
-- Takes one or more input images as reference
-- High input fidelity preserves faces, logos, details
-- Optional mask for precise editing (inpainting)
-- Can combine multiple images into one
-- Examples: "Add sunset sky", "Change car color to red", "Remove background", "Combine these products into a gift basket"
-
-### create_docx
-Create or edit Word documents (.docx). Build professional documents with:
-- Headings (heading1, heading2, heading3)
-- Paragraphs
-- Tables with headers and data rows
-- Formatted content
-
-Example: Read existing .docx, make changes, save as new file.
-
-### create_xlsx
-Create or edit Excel spreadsheets (.xlsx). Build spreadsheets with:
-- Multiple sheets
-- Data tables
-- Formulas (use format: "=A1+B1")
-- Headers and structured data
-
-Example: Read data from .xlsx, process it, create new .xlsx with results.
-
-### list_directory
-List directory contents. Understand project structure.
-
-### codebase_search
-**Semantic search by MEANING** (not exact text). Superpower!
-- "Where is authentication handled?"
-- "How does error handling work?"
-- "Find payment processing logic"
-
-Use when unfamiliar with code. Don't use for exact symbols (use grep_search).
-
-### grep_search
-Exact text/pattern search.
-- "where is X defined?"
-- "how is Y used?"
-- Find all occurrences
-
-## File Editing Tools
-
-**PREFER SURGICAL EDITS for targeted changes. Only use edit_file for complete file rewrites.**
-
-### edit_file_range ⭐ PREFERRED
-Edit specific line ranges without rewriting entire files.
-
-Usage:
-- Read file first to see line numbers
-- Specify exact start_line and end_line (1-based, inclusive)
-- Provide new_content for just that range
-- Brief instructions explaining the change
-
-Example: Change error handling in lines 45-52
-
-### search_replace ⭐ PREFERRED
-Find exact text and replace it precisely.
-
-Usage:
-- Include ENOUGH surrounding context to be unique
-- Old string must match EXACTLY (including whitespace)
-- If multiple matches, add more context
-- Brief instructions
-
-Example: Replace console.log with logger.info in handleRequest function
-
-### insert_lines
-Insert new lines at a specific position.
-
-Usage:
-- line_number: Where to insert (1 = start, file_length+1 = end)
-- content: What to insert
-- Brief instructions
-
-### delete_lines
-Delete specific line range.
-
-Usage:
-- start_line, end_line: Range to delete (inclusive)
-- Brief instructions
-
-### edit_file (Legacy - Use only for complete rewrites)
-**Only use when restructuring entire files.**
-
-For edit_file, provide:
-- instructions: Brief description of changes
-- code_edit: FULL file content with changes applied
-
-The user will review in a diff viewer before accepting.
-
-### create_file
-Create new files. Use RELATIVE paths from current folder.
-
-### terminal_open
-Open a real PTY terminal session.
-
-### terminal_write
-Send keystrokes/commands to a terminal session.
-
-### terminal_wait
-Wait for output marker/timeout/exit and collect terminal output.
-
-### terminal_resize
-Resize terminal viewport (cols/rows).
-
-### terminal_close
-Close a terminal session.
-
-### terminal_list
-List terminal sessions for the active terminal client.
-
-### run_terminal
-Compatibility wrapper around terminal tools for one-shot command execution.
-
-### delete_file
-Delete files/directories. Use carefully.
-
-## Parallel Tool Execution
-
-**Use multiple tools at once when they don't depend on each other.**
-
-✅ GOOD: Call file_read for 3 files simultaneously
-❌ BAD: Call them one at a time
-
-## Behavioral Rules
-
-### Rule 1: Explore Before Responding
-
-When asked about structure/dependencies/"how does X work":
-- DON'T: Guess based on training data
-- DO: Use tools to explore first
-
-Example:
-\`\`\`
-User: "How is this project structured?"
-
-Good:
-1. file_read(README.md)
-2. file_read(package.json)
-3. list_directory(.)
-4. list_directory(src/)
-
-Then explain what you FOUND.
-\`\`\`
-
-### Rule 2: Discover Project Type
-
-Check for:
-- package.json → Node.js/TypeScript
-- requirements.txt → Python
-- go.mod → Go
-- Cargo.toml → Rust
-
-### Rule 3: Search Before Creating
-
-Before creating utilities:
-1. list_directory(src/)
-2. list_directory(src/utils/)
-3. file_read(existing files to match patterns)
-
-Then create following conventions.
-
-### Rule 4: Use Surgical Edits
-
-For small, targeted changes:
-1. Use edit_file_range for line-specific changes
-2. Use search_replace for find/replace operations
-3. Read file first to understand context
-4. ONLY use edit_file for complete file rewrites
-
-Example (GOOD):
-\`\`\`
-User: "Add error handling to the fetch call"
-1. file_read(api.js) // See the fetch call
-2. search_replace(
-   old_string: "const response = await fetch(url);\\nreturn response.json();",
-   new_string: "const response = await fetch(url);\\nif (!response.ok) throw new Error('Fetch failed');\\nreturn response.json();"
-)
-\`\`\`
-
-Example (BAD):
-\`\`\`
-User: "Add error handling to the fetch call"
-1. file_read(api.js) // 300 lines
-2. edit_file(api.js, <entire 300 lines with small change>)
-\`\`\`
-
-### Rule 5: Show Your Work
-
-Always mention what you explored:
-"I explored the project:
-- README.md describes it as...
-- package.json shows: React 18.2.0
-- src/ contains: components/, hooks/, utils/"
+- **Explore before acting**: Read files, list directories, search — then respond with evidence
+- **Surgical edits preferred**: Use edit_file_range or search_replace, not full file rewrites
+- **Parallel tool calls**: Use multiple tools at once when independent
+- **Verify after editing**: Use run_tests to syntax-check modified files
+- **Read before editing**: Always file_read before modifying a file
 
 ## Operating Mode
 
@@ -889,11 +696,33 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
     documentContent, selectedText, fileName, language,
     fileTreeContext, conversationHistory, conversationSummary,
     allowedRoot, brainEnabled = false,
+    planningMode = false,
     allowedToolNames = null,
     disableSpreadsheetParsing = false,
     terminalPolicy = null,
     terminalManager = null
   } = params;
+  // Session mutex — prevent concurrent agent sessions on the same folder
+  if (currentFolder && activeSessions.has(currentFolder)) {
+    const existing = activeSessions.get(currentFolder);
+    const elapsed = Date.now() - existing.startTime;
+    // Allow if the previous session has been running for more than 10 minutes (likely stale)
+    if (elapsed < 600000) {
+      return {
+        success: false,
+        error: `Another agent session is already active on this folder. Wait for it to complete or try again in a moment.`,
+        response: '',
+        tokensUsed: 0,
+        iterations: 0,
+        pendingEdits: []
+      };
+    }
+    // Stale session — remove it
+    activeSessions.delete(currentFolder);
+  }
+  const sessionId = require('crypto').randomUUID();
+  if (currentFolder) activeSessions.set(currentFolder, { sessionId, startTime: Date.now() });
+
   const requestedModelSelection = String(model || '').trim() || 'gpt-5.2';
   const effectiveModel = getModelId(requestedModelSelection) || 'gpt-5.2';
   
@@ -967,6 +796,18 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
     ]);
     availableTools = availableTools.filter((tool) => !terminalToolNames.has(tool.function.name));
     console.log(`[AI] Terminal tools disabled by policy; ${availableTools.length} tools remain`);
+  }
+
+  // Planning mode: restrict to read-only tools — enforce, don't just ask nicely
+  const isPlanningMode = planningMode || (message && message.toLowerCase().startsWith('plan:'));
+  if (isPlanningMode) {
+    const writeToolNames = new Set([
+      'edit_file', 'edit_file_range', 'search_replace', 'insert_lines', 'delete_lines',
+      'create_file', 'delete_file', 'create_docx', 'create_xlsx', 'create_image', 'edit_image',
+      'terminal_write' // can write to terminals; terminal_open/wait/list/close are ok for observation
+    ]);
+    availableTools = availableTools.filter((tool) => !writeToolNames.has(tool.function.name));
+    console.log(`[AI] Planning mode: restricted to ${availableTools.length} read-only tools`);
   }
 
   const availableAnthropicTools = availableTools.map((t) => ({
@@ -1121,6 +962,44 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
       console.log('[AI] Brain not loaded - skipping context injection');
       eventEmitter?.({ type: 'brain_search', status: 'not_loaded' });
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PLANNING MODE: System prompt guidance (tools already restricted above)
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (isPlanningMode) {
+    systemPrompt += `\n\n## PLANNING MODE ACTIVE
+
+You are in planning mode. Edit and create tools have been removed — you can only use read-only tools.
+1. Analyze the request using file_read, list_directory, grep_search, codebase_search
+2. Produce a structured plan with numbered steps
+3. For each step: what to do, which files to modify, what to verify after
+4. Identify risks and dependencies between steps
+5. Wait for the user to approve before executing
+
+Output your plan as a numbered list. The user will switch off planning mode when ready to execute.`;
+
+    // Brain-informed planning: if brain context was injected above, tell the agent to use it
+    if (brainEnabled) {
+      systemPrompt += `\n\nBrain knowledge has been injected into your context above. Use this domain knowledge to inform your plan — consider what the brain knows when identifying risks, dependencies, and approach.`;
+    }
+
+    console.log('[AI] Planning mode active — write tools restricted' + (brainEnabled ? ' (brain-informed)' : ''));
+    eventEmitter?.({ type: 'status', message: 'Planning mode — read-only tools, agent will propose before executing' });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PROGRESS CONTEXT: Read cosmo-progress.md for session continuity
+  // ═══════════════════════════════════════════════════════════════════════════
+  try {
+    const progressPath = require('path').join(currentFolder, 'cosmo-progress.md');
+    const progressContent = await require('fs').promises.readFile(progressPath, 'utf-8');
+    if (progressContent && progressContent.trim()) {
+      const preview = progressContent.slice(0, 800);
+      systemPrompt += `\n\n## Recent Progress\n\n${preview}${progressContent.length > 800 ? '\n\n[... more in cosmo-progress.md]' : ''}`;
+    }
+  } catch {
+    // No progress file — that's fine
   }
 
   // IMPORTANT:
@@ -1921,6 +1800,10 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
                 instructions: result.instructions,
                 edit: result.code_edit
               });
+              // Track so subsequent file_read returns proposed content, not stale disk
+              if (result.file_path && result.code_edit) {
+                toolExecutor.trackPendingEdit(result.file_path, result.code_edit);
+              }
             }
             
             eventEmitter?.({ type: 'tool_complete', tool: toolName, result, index: idx });
@@ -2163,6 +2046,9 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
       iterations,
       pendingEdits
     };
+  } finally {
+    // Release session mutex
+    if (currentFolder) activeSessions.delete(currentFolder);
   }
 }
 

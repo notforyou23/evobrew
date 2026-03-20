@@ -783,6 +783,53 @@ const toolDefinitions = [
         additionalProperties: false
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'run_tests',
+      description: 'Run project tests or syntax-check a specific file. Use after creating or editing files to verify changes work correctly. Defaults to npm test if no arguments given.',
+      parameters: {
+        type: 'object',
+        properties: {
+          command: {
+            type: 'string',
+            description: 'Custom test command to run (default: npm test)'
+          },
+          file: {
+            type: 'string',
+            description: 'Specific file to syntax-check with node --check'
+          }
+        },
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'progress_update',
+      description: 'Update the project progress file to document what was accomplished. Call at the end of your work session so future sessions know the current state.',
+      parameters: {
+        type: 'object',
+        properties: {
+          completed: {
+            type: 'string',
+            description: 'What was completed this session'
+          },
+          state: {
+            type: 'string',
+            description: 'Current state of the project/task'
+          },
+          next_steps: {
+            type: 'string',
+            description: 'What should be done next'
+          }
+        },
+        required: ['completed', 'state'],
+        additionalProperties: false
+      }
+    }
   }
 ];
 
@@ -814,6 +861,32 @@ class ToolExecutor {
         ? options.terminalPolicy.defaultClientId.trim()
         : 'ai'
     };
+    // Track proposed edits so file_read returns agent's own pending changes, not stale disk state
+    this.pendingFileContents = new Map();
+  }
+
+  // Record a pending edit so subsequent file_read calls return the proposed content
+  trackPendingEdit(filePath, content) {
+    const resolved = path.resolve(filePath);
+    this.pendingFileContents.set(resolved, content);
+  }
+
+  // Read file content, preferring pending edits over disk state
+  async readFileContent(resolvedPath) {
+    if (this.pendingFileContents.has(resolvedPath)) {
+      return this.pendingFileContents.get(resolvedPath);
+    }
+    return await fs.readFile(resolvedPath, 'utf-8');
+  }
+
+  // Cap long output to prevent context flooding (keeps 60% start + 40% end)
+  static capOutput(text, maxLen = 20000) {
+    if (!text || text.length <= maxLen) return text;
+    const keepStart = Math.floor(maxLen * 0.6);
+    const keepEnd = maxLen - keepStart;
+    return text.slice(0, keepStart) +
+      `\n\n[... truncated ${text.length - maxLen} chars ...]\n\n` +
+      text.slice(-keepEnd);
   }
 
   /**
@@ -978,6 +1051,12 @@ class ToolExecutor {
         case 'brain_stats':
           return await this.brainStats();
 
+        case 'run_tests':
+          return await this.runTests(args.command, args.file);
+
+        case 'progress_update':
+          return await this.progressUpdate(args.completed, args.state, args.next_steps);
+
         default:
           return { error: `Unknown tool: ${toolName}` };
       }
@@ -989,8 +1068,19 @@ class ToolExecutor {
 
   async readFile(filePath) {
     const resolved = this.resolveAndValidatePath(filePath);
+
+    // Return pending edit content if agent has already proposed changes to this file
+    if (this.pendingFileContents.has(resolved)) {
+      return {
+        content: this.pendingFileContents.get(resolved),
+        path: resolved,
+        pending_edit: true,
+        note: 'This is your proposed edit, not yet saved to disk.'
+      };
+    }
+
     const ext = path.extname(resolved).toLowerCase();
-    
+
     // Handle Office file formats
     if (ext === '.docx') {
       return await this.readDocx(resolved);
@@ -1381,8 +1471,20 @@ class ToolExecutor {
         timeout: 10000
       });
       
-      const matchCount = (output.match(/\n/g) || []).length;
-      return { matches: output, count: matchCount };
+      const lines = output.split('\n').filter(Boolean);
+      const totalCount = lines.length;
+
+      // Cap results at 50 — force the agent to narrow its query (SWE-agent's #1 leverage point)
+      if (totalCount > 50) {
+        return {
+          matches: lines.slice(0, 50).join('\n'),
+          count: totalCount,
+          truncated: true,
+          message: `Found ${totalCount} matches (showing first 50). Narrow your search pattern for more specific results.`
+        };
+      }
+
+      return { matches: output, count: totalCount };
       
     } catch (err) {
       if (err.status === 1) {
@@ -1427,9 +1529,9 @@ class ToolExecutor {
 
   async queueEditRange(filePath, startLine, endLine, newContent, instructions) {
     const resolved = this.resolveAndValidatePath(filePath);
-    
-    // Read current file
-    const content = await fs.readFile(resolved, 'utf-8');
+
+    // Read current file (uses pending edits if agent already proposed changes)
+    const content = await this.readFileContent(resolved);
     const lines = content.split('\n');
     
     // Validate range
@@ -1463,9 +1565,9 @@ class ToolExecutor {
 
   async queueSearchReplace(filePath, oldString, newString, instructions) {
     const resolved = this.resolveAndValidatePath(filePath);
-    
-    // Read current file
-    const content = await fs.readFile(resolved, 'utf-8');
+
+    // Read current file (uses pending edits if agent already proposed changes)
+    const content = await this.readFileContent(resolved);
     
     // Normalize line endings
     const oldStringNormalized = oldString.replace(/\r\n/g, '\n');
@@ -1506,9 +1608,9 @@ class ToolExecutor {
 
   async queueInsertLines(filePath, lineNumber, content, instructions) {
     const resolved = this.resolveAndValidatePath(filePath);
-    
-    // Read current file
-    const fileContent = await fs.readFile(resolved, 'utf-8');
+
+    // Read current file (uses pending edits if agent already proposed changes)
+    const fileContent = await this.readFileContent(resolved);
     const lines = fileContent.split('\n');
     
     // Validate line number
@@ -1540,9 +1642,9 @@ class ToolExecutor {
 
   async queueDeleteLines(filePath, startLine, endLine, instructions) {
     const resolved = this.resolveAndValidatePath(filePath);
-    
-    // Read current file
-    const content = await fs.readFile(resolved, 'utf-8');
+
+    // Read current file (uses pending edits if agent already proposed changes)
+    const content = await this.readFileContent(resolved);
     const lines = content.split('\n');
     
     // Validate range
@@ -1575,14 +1677,34 @@ class ToolExecutor {
   async createFile(filePath, content) {
     const resolved = this.resolveAndValidatePath(filePath);
     const dir = path.dirname(resolved);
-    
+
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(resolved, content, 'utf-8');
-    
-    return { 
-      success: true, 
-      path: resolved, 
-      message: `Created ${path.basename(resolved)}` 
+
+    // Auto-validate JS/JSON files — agent sees syntax errors immediately
+    const ext = path.extname(resolved).toLowerCase();
+    let syntaxCheck = null;
+    if (['.js', '.mjs', '.cjs'].includes(ext)) {
+      try {
+        execSync(`node --check "${resolved}"`, { encoding: 'utf-8', timeout: 5000 });
+        syntaxCheck = { passed: true };
+      } catch (err) {
+        syntaxCheck = { passed: false, error: (err.stderr || err.message).trim() };
+      }
+    } else if (ext === '.json') {
+      try {
+        JSON.parse(content);
+        syntaxCheck = { passed: true };
+      } catch (err) {
+        syntaxCheck = { passed: false, error: err.message };
+      }
+    }
+
+    return {
+      success: true,
+      path: resolved,
+      message: `Created ${path.basename(resolved)}`,
+      ...(syntaxCheck && { syntaxCheck })
     };
   }
 
@@ -1716,38 +1838,45 @@ class ToolExecutor {
 
     if (this.isTerminalEnabled()) {
       try {
-        return await this.terminalManager.runCompatibilityCommand({
+        const result = await this.terminalManager.runCompatibilityCommand({
           clientId: this.getTerminalClientId(),
           cwd: this.cwd,
           command: commandText,
           timeoutMs: 30_000,
           allowedRoot: this.getTerminalAllowedRoot()
         });
+        if (result.output) result.output = ToolExecutor.capOutput(result.output);
+        return result;
       } catch (error) {
         console.warn('[TOOL] run_terminal PTY fallback to execSync:', error.message);
       }
     }
 
     try {
-      const output = execSync(commandText, {
+      let output = execSync(commandText, {
         cwd: this.cwd,
         encoding: 'utf-8',
         maxBuffer: 10 * 1024 * 1024,
         timeout: 30000,
         env: { ...process.env }
       });
-      
+
+      const wasTruncated = output.length > 20000;
+      output = ToolExecutor.capOutput(output);
+
       return {
         output,
         exitCode: 0,
         success: true,
         session_id: null,
-        truncated: false,
+        truncated: wasTruncated,
         timedOut: false
       };
     } catch (err) {
+      let errOutput = err.stdout || err.stderr || '';
+      errOutput = ToolExecutor.capOutput(errOutput);
       return {
-        output: err.stdout || err.stderr || '',
+        output: errOutput,
         exitCode: err.status || 1,
         success: false,
         error: err.message,
@@ -1756,6 +1885,40 @@ class ToolExecutor {
         timedOut: false
       };
     }
+  }
+
+  async runTests(command, file) {
+    if (file) {
+      // Syntax-check a specific file
+      const resolved = this.resolveAndValidatePath(file);
+      try {
+        execSync(`node --check "${resolved}"`, { encoding: 'utf-8', timeout: 10000 });
+        return { success: true, file: resolved, message: 'Syntax check passed' };
+      } catch (err) {
+        return { success: false, file: resolved, error: (err.stderr || err.message).trim() };
+      }
+    }
+
+    // Run test command (default: npm test)
+    const testCmd = command || 'npm test';
+    return await this.runCommand(testCmd);
+  }
+
+  async progressUpdate(completed, state, nextSteps) {
+    const progressPath = this.resolveAndValidatePath('cosmo-progress.md');
+    const timestamp = new Date().toISOString().replace('T', ' ').split('.')[0];
+
+    const entry = `## ${timestamp}\n\n**Completed:** ${completed}\n**State:** ${state}${nextSteps ? `\n**Next steps:** ${nextSteps}` : ''}\n\n---\n\n`;
+
+    let existing = '';
+    try {
+      existing = await fs.readFile(progressPath, 'utf-8');
+    } catch {
+      // File doesn't exist yet — that's fine
+    }
+
+    await fs.writeFile(progressPath, entry + existing, 'utf-8');
+    return { success: true, path: progressPath, message: 'Progress updated' };
   }
 
   async deleteFile(filePath) {
