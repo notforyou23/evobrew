@@ -4851,17 +4851,17 @@
                                     <span>AI Assistant</span>
                                 </div>
                                 <div style="display: flex; gap: 8px; align-items: center;">
-                                    <!-- Hidden checkbox for brainEnabled (still read by request builder) -->
+                                    <!-- Hidden checkbox for brainEnabled (read by request builder) -->
                                     <input type="checkbox" id="brainEnabled" checked style="display:none;">
-                                    <!-- Brain Indicator: 3-state (none / passive / active) -->
-                                    <div class="brain-indicator" id="brain-indicator" onclick="toggleBrainDrawer()" title="Click to view brain context">
-                                        <span class="brain-dot brain-dot--none" id="brain-dot"></span>
-                                        <span class="brain-name" id="brain-name">No brain</span>
-                                        <span class="brain-meta" id="brain-meta"></span>
+                                    <!-- Brain Indicator: click dot to toggle on/off, click name to open drawer -->
+                                    <div class="brain-indicator" id="brain-indicator" title="Brain context">
+                                        <span class="brain-dot brain-dot--none" id="brain-dot" onclick="toggleBrainEnabled()" title="Toggle brain context on/off" style="cursor:pointer;"></span>
+                                        <span class="brain-name" id="brain-name" onclick="toggleBrainDrawer()" style="cursor:pointer;" title="View brain context">No brain</span>
+                                        <span class="brain-meta" id="brain-meta" onclick="toggleBrainDrawer()" style="cursor:pointer;"></span>
                                     </div>
-                                    <label class="brain-toggle" id="pgsToggleLabel" title="Use PGS retrieval strategy for this chat when Brain context is enabled (slower, deeper).">
+                                    <label class="brain-toggle" id="pgsToggleLabel" title="Use PGS (deeper brain search — slower but more thorough). Brain must be enabled.">
                                         <input type="checkbox" id="query-pgs" onchange="togglePGSControls()">
-                                        <span class="brain-toggle-label">Use PGS</span>
+                                        <span class="brain-toggle-label">PGS</span>
                                     </label>
                                     <div id="pgs-controls" style="display:none; align-items:center; gap:6px; flex-wrap:wrap;">
                                         <div id="pgs-depth-chips" style="display:flex; gap:4px;">
@@ -9620,6 +9620,28 @@ ${result.content}`;
                     meta.textContent = options.neuronCount ? `· ${options.neuronCount} neurons` : meta.textContent;
                     break;
             }
+        }
+
+        function toggleBrainEnabled() {
+            // If no brain loaded, open picker
+            if (brainState === 'none') {
+                if (typeof toggleBrainPicker === 'function') toggleBrainPicker();
+                return;
+            }
+            // Toggle the hidden checkbox
+            const cb = document.getElementById('brainEnabled');
+            cb.checked = !cb.checked;
+            // Update visual — dim the indicator when brain disabled
+            const indicator = document.getElementById('brain-indicator');
+            if (cb.checked) {
+                indicator.style.opacity = '1';
+                updateBrainIndicator('passive', { brainName: document.getElementById('brain-name').textContent });
+            } else {
+                indicator.style.opacity = '0.4';
+                document.getElementById('brain-dot').className = 'brain-dot brain-dot--none';
+            }
+            // Sync PGS controls
+            if (typeof syncBrainContextControls === 'function') syncBrainContextControls();
         }
 
         function toggleBrainDrawer() {
