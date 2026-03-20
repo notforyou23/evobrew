@@ -122,6 +122,8 @@
     if (!els.dock) return;
     els.dock.classList.remove('hidden');
     writeStorage(STORAGE.dockOpen, 'true');
+    // Switch to terminal tab when opening via terminal module
+    if (typeof window.switchDockTab === 'function') window.switchDockTab('terminal');
     fitActiveTerminal();
     if (focus) focusActiveTerminal();
   }
@@ -817,11 +819,12 @@
       return;
     }
 
-    els.dock = document.getElementById('terminal-dock');
+    // Bottom dock wraps terminal + edit panels; terminal content is inside dock-panel-terminal
+    els.dock = document.getElementById('bottom-dock') || document.getElementById('terminal-dock');
     els.body = document.getElementById('terminal-body');
     els.tabs = document.getElementById('terminal-tabs');
     els.empty = document.getElementById('terminal-empty');
-    els.resizeHandle = document.getElementById('terminal-resize-handle');
+    els.resizeHandle = document.getElementById('dock-resize-handle') || document.getElementById('terminal-resize-handle');
     els.newBtn = document.getElementById('terminal-new-btn');
     els.killBtn = document.getElementById('terminal-kill-btn');
     els.toggleBtn = document.getElementById('terminal-toggle-btn');

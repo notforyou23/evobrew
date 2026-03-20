@@ -766,6 +766,209 @@
         }
 
         /* Terminal Dock */
+        /* ── Bottom Dock (Terminal + Edit Review) ───────────────── */
+        .bottom-dock {
+            height: 280px;
+            min-height: 140px;
+            max-height: 70vh;
+            background: #0b0f17;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+            flex: 0 0 auto;
+        }
+        .bottom-dock.hidden { display: none; }
+
+        .dock-resize-handle {
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 8px;
+            cursor: row-resize;
+            z-index: 10;
+            background: transparent;
+        }
+        .dock-resize-handle::after {
+            content: '';
+            position: absolute;
+            left: 50%; top: 2px;
+            transform: translateX(-50%);
+            width: 40px; height: 2px;
+            border-radius: 2px;
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .dock-tab-bar {
+            display: flex;
+            align-items: center;
+            height: 28px;
+            padding: 0 8px;
+            border-bottom: 1px solid var(--border-color);
+            background: var(--bg-secondary);
+            flex-shrink: 0;
+            gap: 2px;
+        }
+        .dock-tab {
+            padding: 4px 12px;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            background: none;
+            border: none;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+            transition: color 0.15s, border-color 0.15s;
+        }
+        .dock-tab:hover { color: var(--text-primary); }
+        .dock-tab.dock-tab--active {
+            color: var(--text-primary);
+            border-bottom-color: var(--accent-color, #d4a843);
+        }
+        .dock-tab-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 16px; height: 16px;
+            border-radius: 8px;
+            background: #eab308;
+            color: #000;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 0 4px;
+            margin-left: 4px;
+        }
+        .dock-tab-badge.hidden { display: none; }
+        .dock-tab-action {
+            padding: 2px 8px;
+            font-size: 14px;
+            color: var(--text-secondary);
+            background: none;
+            border: none;
+            cursor: pointer;
+        }
+        .dock-tab-action:hover { color: var(--text-primary); }
+
+        .dock-panel {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .dock-panel.hidden { display: none; }
+
+        /* ── Edit Dock ────────────────────────────────────────── */
+        .edit-dock {
+            display: flex;
+            flex: 1;
+            min-height: 0;
+        }
+        .edit-dock-list {
+            width: 240px;
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+        .edit-dock-list-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 10px;
+            border-bottom: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+        .edit-dock-files {
+            flex: 1;
+            overflow-y: auto;
+        }
+        .edit-dock-empty {
+            padding: 16px;
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 11px;
+        }
+        .edit-file-card {
+            padding: 8px 10px;
+            cursor: pointer;
+            border-left: 3px solid transparent;
+            transition: background 0.12s;
+        }
+        .edit-file-card:hover { background: var(--bg-hover, rgba(255,255,255,0.04)); }
+        .edit-file-card.selected { background: var(--bg-selected, rgba(255,255,255,0.08)); }
+        .edit-file-card[data-status="pending"] { border-left-color: #eab308; }
+        .edit-file-card[data-status="accepted"] { border-left-color: #4ade80; opacity: 0.5; }
+        .edit-file-card[data-status="rejected"] { border-left-color: #ef4444; opacity: 0.35; text-decoration: line-through; }
+        .edit-file-card[data-type="create"] .edit-file-badge { display: inline; }
+        .edit-file-name {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        .edit-file-meta {
+            font-size: 10px;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+        .edit-file-badge {
+            display: none;
+            font-size: 9px;
+            font-weight: 700;
+            padding: 1px 5px;
+            border-radius: 3px;
+            background: rgba(74, 222, 128, 0.15);
+            color: #4ade80;
+            margin-left: 6px;
+            text-transform: uppercase;
+        }
+        .edit-dock-btn {
+            padding: 3px 8px;
+            font-size: 10px;
+            font-weight: 600;
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.12s;
+        }
+        .edit-dock-btn:hover { color: var(--text-primary); background: var(--bg-hover, rgba(255,255,255,0.08)); }
+        .edit-dock-btn--accept { border-color: rgba(74,222,128,0.3); color: #4ade80; }
+        .edit-dock-btn--accept:hover { background: rgba(74,222,128,0.15); }
+        .edit-dock-btn--reject { border-color: rgba(239,68,68,0.3); color: #ef4444; }
+        .edit-dock-btn--reject:hover { background: rgba(239,68,68,0.15); }
+
+        .edit-dock-diff {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+        .edit-dock-diff-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 4px 10px;
+            border-bottom: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+        .edit-dock-diff-filename {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        .edit-dock-diff-stats {
+            font-size: 10px;
+            color: var(--text-secondary);
+        }
+        .edit-dock-monaco {
+            flex: 1;
+            min-height: 0;
+        }
+
+        /* ── Legacy terminal-dock (now a dock panel child) ──── */
         .terminal-dock {
             height: 280px;
             min-height: 140px;
@@ -4521,19 +4724,58 @@
             </div>
         </div>
 
-        <div class="terminal-dock hidden" id="terminal-dock">
-            <div class="terminal-resize-handle" id="terminal-resize-handle"></div>
-            <div class="terminal-header">
-                <div class="terminal-tabs" id="terminal-tabs"></div>
-                <div class="terminal-actions">
-                    <button id="terminal-new-btn" title="New Terminal">+</button>
-                    <button id="terminal-kill-btn" title="Kill Active Terminal">Kill</button>
-                    <button id="terminal-toggle-btn" title="Hide Terminal">Hide</button>
+        <!-- Bottom Dock: Terminal + Edit Review (tabbed) -->
+        <div class="bottom-dock hidden" id="bottom-dock">
+            <div class="dock-resize-handle" id="dock-resize-handle"></div>
+            <div class="dock-tab-bar">
+                <button class="dock-tab dock-tab--active" data-panel="terminal" onclick="switchDockTab('terminal')">Terminal</button>
+                <button class="dock-tab" data-panel="edits" onclick="switchDockTab('edits')">Edits <span class="dock-tab-badge hidden" id="edit-dock-badge">0</span></button>
+                <div style="flex:1"></div>
+                <button class="dock-tab-action" onclick="closeDock()" title="Close dock">×</button>
+            </div>
+            <!-- Terminal Panel -->
+            <div class="dock-panel" id="dock-panel-terminal">
+                <div class="terminal-header">
+                    <div class="terminal-tabs" id="terminal-tabs"></div>
+                    <div class="terminal-actions">
+                        <button id="terminal-new-btn" title="New Terminal">+</button>
+                        <button id="terminal-kill-btn" title="Kill Active Terminal">Kill</button>
+                    </div>
+                </div>
+                <div class="terminal-body" id="terminal-body">
+                    <div class="terminal-empty" id="terminal-empty">
+                        No terminal session. Create one with + or Cmd+Shift+`
+                    </div>
                 </div>
             </div>
-            <div class="terminal-body" id="terminal-body">
-                <div class="terminal-empty" id="terminal-empty">
-                    No terminal session. Create one with + or Cmd+Shift+`
+            <!-- Edit Review Panel -->
+            <div class="dock-panel hidden" id="dock-panel-edits">
+                <div class="edit-dock">
+                    <div class="edit-dock-list" id="edit-dock-list">
+                        <div class="edit-dock-list-header">
+                            <span style="font-size: 11px; font-weight: 600; color: var(--text-secondary);">Pending Edits</span>
+                            <div style="display: flex; gap: 4px;">
+                                <button class="edit-dock-btn edit-dock-btn--accept" onclick="editDockAcceptAll()" title="Accept all edits">Accept All</button>
+                                <button class="edit-dock-btn edit-dock-btn--reject" onclick="editDockRejectAll()" title="Reject all edits">Reject All</button>
+                            </div>
+                        </div>
+                        <div class="edit-dock-files" id="edit-dock-files">
+                            <div class="edit-dock-empty">No pending edits</div>
+                        </div>
+                    </div>
+                    <div class="edit-dock-diff" id="edit-dock-diff">
+                        <div class="edit-dock-diff-header" id="edit-dock-diff-header" style="display: none;">
+                            <span class="edit-dock-diff-filename" id="edit-dock-diff-filename"></span>
+                            <div style="display: flex; gap: 6px; align-items: center;">
+                                <span class="edit-dock-diff-stats" id="edit-dock-diff-stats"></span>
+                                <button class="edit-dock-btn edit-dock-btn--accept" onclick="editDockAcceptCurrent()">Accept</button>
+                                <button class="edit-dock-btn edit-dock-btn--reject" onclick="editDockRejectCurrent()">Reject</button>
+                            </div>
+                        </div>
+                        <div class="edit-dock-monaco" id="edit-dock-monaco">
+                            <div class="edit-dock-empty" style="padding: 40px; text-align: center;">Select a file from the list to review changes</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -5235,27 +5477,24 @@
          * Add surgical edit to queue (from function calling)
          * Applies surgical edit markers to get full content, then queues for review
          */
-        async function addToEditQueue(filePath, instructions, surgicalEditContent) {
+        async function addToEditQueue(filePath, instructions, surgicalEditContent, isNew = false) {
             try {
-                // Read current file content
-                const result = await FileAPI.readFile(filePath);
-                if (!result.success) {
-                    console.error(`Cannot queue edit for ${filePath}: file not found`);
-                    showToast(`Cannot edit ${filePath}: file not found`, 'error');
-                    return;
+                let originalContent = '';
+                if (!isNew) {
+                    // Read current file content for existing files
+                    const result = await FileAPI.readFile(filePath);
+                    if (!result.success) {
+                        // File doesn't exist — treat as new file creation
+                        isNew = true;
+                    } else {
+                        originalContent = result.content;
+                    }
                 }
-                
-                const originalContent = result.content;
-                
-                // Apply surgical edit to get full modified content
-                // Direct replacement (no surgical parsing - simpler, more reliable)
+
                 const modifiedContent = surgicalEditContent;
-                
-                // Add to queue
                 const editId = editQueue.addEdit(filePath, originalContent, modifiedContent);
-                
-                console.log(`[EDIT QUEUE] Added edit for ${filePath}: ${instructions}`);
-                
+                console.log(`[EDIT QUEUE] Added ${isNew ? 'new file' : 'edit'} for ${filePath}: ${instructions}`);
+
             } catch (error) {
                 console.error(`Error adding edit to queue:`, error);
                 showToast(`Error queuing edit: ${error.message}`, 'error');
@@ -9074,6 +9313,251 @@ ${result.content}`;
         });
 
         // ====================================================================
+        // BOTTOM DOCK — Tab switching between Terminal and Edit Review
+        // ====================================================================
+
+        function switchDockTab(panel) {
+            // Update tab active state
+            document.querySelectorAll('.dock-tab').forEach(tab => {
+                tab.classList.toggle('dock-tab--active', tab.dataset.panel === panel);
+            });
+            // Show/hide panels
+            document.querySelectorAll('.dock-panel').forEach(p => {
+                p.classList.toggle('hidden', p.id !== `dock-panel-${panel}`);
+            });
+            // Ensure dock is visible
+            const dock = document.getElementById('bottom-dock');
+            if (dock) dock.classList.remove('hidden');
+            // Resize Monaco editors when switching tabs
+            if (panel === 'edits' && editDockDiffEditor) {
+                setTimeout(() => editDockDiffEditor.layout(), 50);
+            }
+            if (panel === 'terminal' && window.CosmoTerminal?.fitActiveTerminal) {
+                setTimeout(() => window.CosmoTerminal.fitActiveTerminal(), 50);
+            }
+        }
+        window.switchDockTab = switchDockTab;
+
+        function closeDock() {
+            const dock = document.getElementById('bottom-dock');
+            if (dock) dock.classList.add('hidden');
+        }
+        window.closeDock = closeDock;
+
+        function openDockToEdits() {
+            switchDockTab('edits');
+        }
+
+        // ====================================================================
+        // EDIT DOCK — Monaco diff editor for reviewing AI-proposed changes
+        // ====================================================================
+
+        let editDockDiffEditor = null;
+        let editDockSelectedId = null;
+
+        function initEditDockDiffEditor() {
+            if (editDockDiffEditor) return;
+            const container = document.getElementById('edit-dock-monaco');
+            if (!container || typeof monaco === 'undefined') return;
+            // Clear placeholder
+            container.innerHTML = '';
+            editDockDiffEditor = monaco.editor.createDiffEditor(container, {
+                enableSplitViewResizing: true,
+                renderSideBySide: true,
+                readOnly: true,
+                originalEditable: false,
+                automaticLayout: true,
+                theme: (window.settings || {}).theme || 'vs-dark',
+                fontSize: (window.settings || {}).fontSize || 13,
+                minimap: { enabled: false },
+                scrollBeyondLastLine: false
+            });
+        }
+
+        function renderEditDockList() {
+            const filesEl = document.getElementById('edit-dock-files');
+            const queue = editQueue.getAll();
+            const pending = editQueue.getPending();
+
+            // Update badge
+            const badge = document.getElementById('edit-dock-badge');
+            if (badge) {
+                badge.textContent = pending.length;
+                badge.classList.toggle('hidden', pending.length === 0);
+            }
+
+            if (queue.length === 0) {
+                filesEl.innerHTML = '<div class="edit-dock-empty">No pending edits</div>';
+                return;
+            }
+
+            filesEl.innerHTML = queue.map(edit => {
+                const isNew = edit.originalContent === '' || edit.originalContent == null;
+                const diffStats = computeDiffStats(edit.originalContent || '', edit.modifiedContent || '');
+                return `<div class="edit-file-card ${edit.id === editDockSelectedId ? 'selected' : ''}"
+                             data-edit-id="${edit.id}" data-status="${edit.status}"
+                             ${isNew ? 'data-type="create"' : ''}
+                             onclick="editDockSelectFile('${edit.id}')">
+                    <div style="display:flex; align-items:center; justify-content:space-between;">
+                        <span class="edit-file-name">${edit.fileName}${isNew ? '<span class="edit-file-badge">NEW</span>' : ''}</span>
+                    </div>
+                    <div class="edit-file-meta">
+                        <span style="color:#4ade80;">+${diffStats.added}</span>
+                        <span style="color:#ef4444;">−${diffStats.removed}</span>
+                        ${edit.summary ? ' · ' + escapeHtml(edit.summary.substring(0, 40)) : ''}
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function computeDiffStats(original, modified) {
+            const origLines = original.split('\n');
+            const modLines = modified.split('\n');
+            // Simple line count diff (not a real diff algorithm, but useful for display)
+            const added = Math.max(0, modLines.length - origLines.length);
+            const removed = Math.max(0, origLines.length - modLines.length);
+            // Count changed lines (very rough)
+            let changed = 0;
+            const minLen = Math.min(origLines.length, modLines.length);
+            for (let i = 0; i < minLen; i++) {
+                if (origLines[i] !== modLines[i]) changed++;
+            }
+            return { added: added + changed, removed: removed + changed };
+        }
+
+        function editDockSelectFile(editId) {
+            editDockSelectedId = editId;
+            const edit = editQueue.getAll().find(e => e.id === editId);
+            if (!edit) return;
+
+            // Initialize diff editor if needed
+            initEditDockDiffEditor();
+            if (!editDockDiffEditor) return;
+
+            // Show diff header
+            const header = document.getElementById('edit-dock-diff-header');
+            if (header) header.style.display = '';
+            document.getElementById('edit-dock-diff-filename').textContent = edit.fileName;
+            const stats = computeDiffStats(edit.originalContent || '', edit.modifiedContent || '');
+            document.getElementById('edit-dock-diff-stats').textContent = `+${stats.added} −${stats.removed}`;
+
+            // Set diff models
+            const lang = detectLanguageFromFilename(edit.fileName);
+            const originalModel = monaco.editor.createModel(edit.originalContent || '', lang);
+            const modifiedModel = monaco.editor.createModel(edit.modifiedContent || '', lang);
+            editDockDiffEditor.setModel({ original: originalModel, modified: modifiedModel });
+
+            // Update file list selection
+            renderEditDockList();
+        }
+
+        function detectLanguageFromFilename(filename) {
+            const ext = (filename || '').split('.').pop().toLowerCase();
+            const map = {
+                js: 'javascript', mjs: 'javascript', cjs: 'javascript',
+                ts: 'typescript', tsx: 'typescript', jsx: 'javascript',
+                json: 'json', html: 'html', css: 'css', md: 'markdown',
+                py: 'python', rb: 'ruby', go: 'go', rs: 'rust',
+                sh: 'shell', bash: 'shell', yml: 'yaml', yaml: 'yaml',
+                sql: 'sql', xml: 'xml', txt: 'plaintext'
+            };
+            return map[ext] || 'plaintext';
+        }
+
+        function editDockAcceptCurrent() {
+            if (!editDockSelectedId) return;
+            editQueue.acceptEdit(editDockSelectedId);
+            advanceToNextPending();
+        }
+
+        function editDockRejectCurrent() {
+            if (!editDockSelectedId) return;
+            editQueue.rejectEdit(editDockSelectedId);
+            advanceToNextPending();
+        }
+
+        function editDockAcceptAll() {
+            editQueue.acceptAll();
+            editDockSelectedId = null;
+            renderEditDockList();
+            if (editDockDiffEditor) {
+                document.getElementById('edit-dock-diff-header').style.display = 'none';
+                document.getElementById('edit-dock-monaco').innerHTML = '<div class="edit-dock-empty" style="padding:40px;text-align:center;">All edits accepted</div>';
+                editDockDiffEditor = null;
+            }
+        }
+
+        function editDockRejectAll() {
+            editQueue.rejectAll();
+            editDockSelectedId = null;
+            renderEditDockList();
+            if (editDockDiffEditor) {
+                document.getElementById('edit-dock-diff-header').style.display = 'none';
+                document.getElementById('edit-dock-monaco').innerHTML = '<div class="edit-dock-empty" style="padding:40px;text-align:center;">All edits rejected</div>';
+                editDockDiffEditor = null;
+            }
+        }
+
+        function advanceToNextPending() {
+            const pending = editQueue.getPending();
+            renderEditDockList();
+            if (pending.length > 0) {
+                editDockSelectFile(pending[0].id);
+            } else {
+                editDockSelectedId = null;
+                if (editDockDiffEditor) {
+                    document.getElementById('edit-dock-diff-header').style.display = 'none';
+                    document.getElementById('edit-dock-monaco').innerHTML = '<div class="edit-dock-empty" style="padding:40px;text-align:center;">All edits reviewed</div>';
+                    editDockDiffEditor = null;
+                }
+            }
+        }
+
+        // Hook into EditQueueManager to auto-update dock when edits arrive
+        const _origEditQueueNotify = editQueue.notify.bind(editQueue);
+        editQueue.notify = function() {
+            _origEditQueueNotify();
+            renderEditDockList();
+            // Auto-switch to edits tab when new pending edits arrive
+            const pending = editQueue.getPending();
+            if (pending.length > 0) {
+                openDockToEdits();
+                // Auto-select first pending if nothing selected
+                if (!editDockSelectedId || !pending.find(e => e.id === editDockSelectedId)) {
+                    editDockSelectFile(pending[0].id);
+                }
+            }
+        };
+
+        // Keyboard shortcuts for edit dock
+        document.addEventListener('keydown', (e) => {
+            const editsPanel = document.getElementById('dock-panel-edits');
+            if (!editsPanel || editsPanel.classList.contains('hidden')) return;
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+            const pending = editQueue.getPending();
+            if (pending.length === 0) return;
+
+            const currentIdx = pending.findIndex(p => p.id === editDockSelectedId);
+
+            if (e.key === 'ArrowDown' || e.key === 'j') {
+                e.preventDefault();
+                const nextIdx = Math.min(currentIdx + 1, pending.length - 1);
+                editDockSelectFile(pending[nextIdx].id);
+            } else if (e.key === 'ArrowUp' || e.key === 'k') {
+                e.preventDefault();
+                const prevIdx = Math.max(currentIdx - 1, 0);
+                editDockSelectFile(pending[prevIdx].id);
+            } else if (e.key === 'a' || e.key === 'A') {
+                e.preventDefault();
+                editDockAcceptCurrent();
+            } else if (e.key === 'r' || e.key === 'R') {
+                e.preventDefault();
+                editDockRejectCurrent();
+            }
+        });
+
+        // ====================================================================
         // WORKSPACE ISOLATION — UI for git worktree-based agent workspaces
         // ====================================================================
 
@@ -9789,8 +10273,7 @@ ${result.content}`;
                                         if (event.pendingEdits && event.pendingEdits.length > 0) {
                                             console.log(`[AI] ${event.pendingEdits.length} edit(s) pending review`);
                                             for (const edit of event.pendingEdits) {
-                                                // Add to edit queue for user review
-                                                addToEditQueue(edit.file, edit.instructions, edit.edit);
+                                                addToEditQueue(edit.file, edit.instructions, edit.edit, edit.isNew || false);
                                             }
                                             
                                             // Show notification

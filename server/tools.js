@@ -1676,20 +1676,23 @@ class ToolExecutor {
 
   async createFile(filePath, content) {
     const resolved = this.resolveAndValidatePath(filePath);
-    const dir = path.dirname(resolved);
 
-    await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(resolved, content, 'utf-8');
-
-    // Auto-validate JS/JSON files — agent sees syntax errors immediately
+    // Auto-validate JS/JSON files before queueing — agent sees syntax errors immediately
     const ext = path.extname(resolved).toLowerCase();
     let syntaxCheck = null;
     if (['.js', '.mjs', '.cjs'].includes(ext)) {
+      // Write to a temp location for syntax check, then remove
+      const tmpPath = resolved + '.evobrew-check';
       try {
-        execSync(`node --check "${resolved}"`, { encoding: 'utf-8', timeout: 5000 });
+        const dir = path.dirname(resolved);
+        await fs.mkdir(dir, { recursive: true });
+        await fs.writeFile(tmpPath, content, 'utf-8');
+        execSync(`node --check "${tmpPath}"`, { encoding: 'utf-8', timeout: 5000 });
         syntaxCheck = { passed: true };
       } catch (err) {
-        syntaxCheck = { passed: false, error: (err.stderr || err.message).trim() };
+        syntaxCheck = { passed: false, error: (err.stderr || err.message).trim().replace(tmpPath, resolved) };
+      } finally {
+        try { await fs.unlink(tmpPath); } catch { /* ignore */ }
       }
     } else if (ext === '.json') {
       try {
@@ -1700,10 +1703,12 @@ class ToolExecutor {
       }
     }
 
+    // Route through approval queue — user reviews in Edit Dock before write
     return {
-      success: true,
-      path: resolved,
-      message: `Created ${path.basename(resolved)}`,
+      action: 'queue_create',
+      file_path: resolved,
+      code_edit: content,
+      message: `New file ${path.basename(resolved)} queued for review`,
       ...(syntaxCheck && { syntaxCheck })
     };
   }

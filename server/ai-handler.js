@@ -1794,11 +1794,12 @@ Output your plan as a numbered list. The user will switch off planning mode when
 
               const result = await toolExecutor.execute(toolName, args);
             
-            if (result.action === 'queue_edit') {
+            if (result.action === 'queue_edit' || result.action === 'queue_create') {
               pendingEdits.push({
                 file: result.file_path,
-                instructions: result.instructions,
-                edit: result.code_edit
+                instructions: result.instructions || result.message,
+                edit: result.code_edit,
+                isNew: result.action === 'queue_create'
               });
               // Track so subsequent file_read returns proposed content, not stale disk
               if (result.file_path && result.code_edit) {
@@ -1812,8 +1813,8 @@ Output your plan as a numbered list. The user will switch off planning mode when
             let summary;
             if (result.error) {
               summary = `Error: ${result.error}`;
-            } else if (result.action === 'queue_edit') {
-              summary = `Edit queued: ${result.file_path || 'file'}`;
+            } else if (result.action === 'queue_edit' || result.action === 'queue_create') {
+              summary = `${result.action === 'queue_create' ? 'New file' : 'Edit'} queued: ${result.file_path || 'file'}`;
             } else if (toolName === 'file_read' || toolName === 'read_image') {
               const size = result.content ? `${(result.content.length / 1024).toFixed(1)}KB` : '';
               summary = `${args?.file_path || 'file'} ${size ? `(${size})` : ''}`;
