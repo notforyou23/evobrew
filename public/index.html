@@ -968,6 +968,235 @@
             min-height: 0;
         }
 
+        /* ── Plan Dock (pinned above chat in AI panel) ─────── */
+        .plan-dock {
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--bg-secondary);
+            margin: 8px 12px;
+            overflow: hidden;
+            flex-shrink: 0;
+            transition: border-color 0.2s, opacity 0.3s;
+        }
+        .plan-dock.hidden { display: none; }
+        .plan-dock[data-state="executing"] { border-color: #3b82f6; box-shadow: 0 0 0 1px rgba(59,130,246,0.1); }
+        .plan-dock[data-state="complete"] { border-color: #4ade80; opacity: 0.8; }
+        .plan-dock[data-state="cancelled"] { opacity: 0.4; pointer-events: none; }
+
+        .plan-header {
+            padding: 10px 14px 8px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .plan-title-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+        .plan-icon { color: #eab308; font-size: 12px; }
+        .plan-title { font-size: 13px; font-weight: 700; color: var(--text-primary); }
+        .plan-badge {
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            padding: 2px 6px;
+            border-radius: 3px;
+            background: rgba(234,179,8,0.15);
+            color: #eab308;
+        }
+        .plan-badge[data-state="executing"] { background: rgba(59,130,246,0.15); color: #3b82f6; }
+        .plan-badge[data-state="complete"] { background: rgba(74,222,128,0.15); color: #4ade80; }
+        .plan-meta { font-size: 10px; color: var(--text-secondary); margin-bottom: 6px; }
+        .plan-actions { display: flex; gap: 6px; }
+        .plan-btn {
+            padding: 4px 12px;
+            font-size: 11px;
+            font-weight: 600;
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+            cursor: pointer;
+            transition: all 0.12s;
+        }
+        .plan-btn--primary { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+        .plan-btn--primary:hover { background: #2563eb; }
+        .plan-btn--secondary { background: var(--bg-tertiary); color: var(--text-secondary); }
+        .plan-btn--secondary:hover { color: var(--text-primary); }
+        .plan-btn--ghost { background: none; border: none; color: var(--text-secondary); font-size: 16px; padding: 2px 6px; }
+        .plan-btn--ghost:hover { color: var(--text-primary); }
+
+        .plan-steps { max-height: 240px; overflow-y: auto; }
+        .plan-step {
+            display: flex;
+            gap: 10px;
+            padding: 8px 14px;
+            border-left: 3px solid transparent;
+            transition: border-color 0.2s, background 0.12s;
+            align-items: flex-start;
+        }
+        .plan-step[data-status="pending"] { border-left-color: var(--border-color); }
+        .plan-step[data-status="running"] { border-left-color: #3b82f6; background: rgba(59,130,246,0.05); }
+        .plan-step[data-status="done"] { border-left-color: #4ade80; }
+        .plan-step[data-status="failed"] { border-left-color: #ef4444; }
+        .plan-step[data-status="skipped"] { border-left-color: transparent; opacity: 0.35; }
+        .plan-step-check { margin-top: 2px; accent-color: #3b82f6; }
+        .plan-step-content { flex: 1; min-width: 0; }
+        .plan-step-label {
+            font-size: 12px;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .plan-step-status-icon {
+            display: inline-flex;
+            width: 14px;
+            font-size: 11px;
+        }
+        .plan-step-detail {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+            line-height: 1.4;
+        }
+        .plan-step-model-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            padding: 1px 6px;
+            border-radius: 10px;
+            font-size: 10px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            margin-left: 6px;
+        }
+        .model-dot { width: 5px; height: 5px; border-radius: 50%; display: inline-block; }
+        .model-dot--anthropic { background: #d97706; }
+        .model-dot--openai { background: #10b981; }
+        .model-dot--xai { background: #6366f1; }
+        .model-dot--ollama { background: #8b5cf6; }
+
+        .plan-footer { padding: 6px 14px; border-top: 1px solid var(--border-color); }
+        .plan-progress { height: 2px; background: var(--bg-tertiary); border-radius: 1px; overflow: hidden; }
+        .plan-progress-bar { height: 100%; width: 0%; background: #3b82f6; transition: width 0.3s ease-out; }
+        .plan-footer-meta {
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        @keyframes plan-step-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        .plan-step[data-status="running"] .plan-step-status-icon {
+            animation: plan-step-pulse 1.5s ease-in-out infinite;
+        }
+
+        /* ── Brain Indicator + Context Drawer ────────────────── */
+        .brain-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 10px;
+            font-weight: 600;
+            transition: background 0.12s;
+        }
+        .brain-indicator:hover { background: var(--bg-tertiary); }
+        .brain-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            transition: background 0.2s, box-shadow 0.2s;
+        }
+        .brain-dot--none { background: var(--text-secondary); opacity: 0.4; }
+        .brain-dot--passive { background: #3b82f6; }
+        .brain-dot--active { background: #3b82f6; animation: brain-pulse 1.5s ease-in-out infinite; }
+        .brain-name { color: var(--text-secondary); }
+        .brain-meta { color: var(--text-secondary); opacity: 0.7; }
+
+        @keyframes brain-pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(59,130,246,0.4); }
+            50% { box-shadow: 0 0 0 6px rgba(59,130,246,0); }
+        }
+
+        .brain-drawer {
+            position: absolute;
+            right: 0; top: 44px; bottom: 60px;
+            width: 260px;
+            background: var(--bg-secondary);
+            border-left: 1px solid var(--border-color);
+            transform: translateX(100%);
+            transition: transform 0.2s ease-out;
+            overflow-y: auto;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+        }
+        .brain-drawer[data-open="true"] { transform: translateX(0); }
+        .brain-drawer-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+        .brain-drawer-nodes {
+            flex: 1;
+            overflow-y: auto;
+            min-height: 0;
+        }
+        .brain-drawer-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 12px;
+            border-top: 1px solid var(--border-color);
+            font-size: 10px;
+            color: var(--text-secondary);
+            flex-shrink: 0;
+        }
+        .brain-node {
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .brain-node-header {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 3px;
+        }
+        .brain-node-score-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .brain-node-score { font-size: 10px; font-weight: 700; color: var(--text-secondary); }
+        .brain-node-tag {
+            font-size: 9px;
+            padding: 1px 5px;
+            border-radius: 3px;
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+        }
+        .brain-node-excerpt {
+            font-size: 11px;
+            color: var(--text-secondary);
+            line-height: 1.4;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        /* Show top 3 by default */
+        .brain-node:nth-child(n+4) { display: none; }
+        .brain-drawer-nodes.expanded .brain-node:nth-child(n+4) { display: block; }
+
         /* ── Legacy terminal-dock (now a dock panel child) ──── */
         .terminal-dock {
             height: 280px;
@@ -4622,10 +4851,14 @@
                                     <span>AI Assistant</span>
                                 </div>
                                 <div style="display: flex; gap: 8px; align-items: center;">
-                                    <label class="brain-toggle" id="brainContextToggleLabel" title="Use loaded brain context in this AI chat. This does not load or switch brains.">
-                                        <input type="checkbox" id="brainEnabled" checked>
-                                        <span class="brain-toggle-label">Use Brain</span>
-                                    </label>
+                                    <!-- Hidden checkbox for brainEnabled (still read by request builder) -->
+                                    <input type="checkbox" id="brainEnabled" checked style="display:none;">
+                                    <!-- Brain Indicator: 3-state (none / passive / active) -->
+                                    <div class="brain-indicator" id="brain-indicator" onclick="toggleBrainDrawer()" title="Click to view brain context">
+                                        <span class="brain-dot brain-dot--none" id="brain-dot"></span>
+                                        <span class="brain-name" id="brain-name">No brain</span>
+                                        <span class="brain-meta" id="brain-meta"></span>
+                                    </div>
                                     <label class="brain-toggle" id="pgsToggleLabel" title="Use PGS retrieval strategy for this chat when Brain context is enabled (slower, deeper).">
                                         <input type="checkbox" id="query-pgs" onchange="togglePGSControls()">
                                         <span class="brain-toggle-label">Use PGS</span>
@@ -4655,7 +4888,23 @@
                                 </div>
                             </div>
                             <div id="ai-context-hint" style="padding: 6px 12px; border-bottom: 1px solid var(--border-color); background: var(--bg-secondary); font-size: 10px; color: var(--text-secondary);">
-                                Load/Switch brain from the top <strong>Load Brain</strong> button. Toggles here only affect this chat request.
+                                Load/Switch brain from the top <strong>Load Brain</strong> button. Click the brain indicator to see retrieved context.
+                            </div>
+                            <!-- Brain Context Drawer — slides from right over chat -->
+                            <div class="brain-drawer" id="brain-drawer" data-open="false">
+                                <div class="brain-drawer-header">
+                                    <span style="font-size: 11px; font-weight: 700; color: var(--text-primary);">Brain Context</span>
+                                    <button onclick="closeBrainDrawer()" style="background:none; border:none; color:var(--text-secondary); cursor:pointer; font-size:16px;">×</button>
+                                </div>
+                                <div class="brain-drawer-nodes" id="brain-drawer-nodes">
+                                    <div style="padding: 20px; text-align: center; color: var(--text-secondary); font-size: 11px;">
+                                        Send a message to see which brain nodes fire.
+                                    </div>
+                                </div>
+                                <div class="brain-drawer-footer" id="brain-drawer-footer" style="display:none;">
+                                    <span class="brain-drawer-count" id="brain-drawer-count"></span>
+                                    <button onclick="toggleBrainDrawerExpand()" style="background:none; border:none; color:#3b82f6; cursor:pointer; font-size:10px; font-weight:600;">Show all</button>
+                                </div>
                             </div>
                             
                             <!-- Model Selector (Inline Style) -->
@@ -4686,6 +4935,31 @@
                                 </div>
                             </div>
                             
+                            <!-- Plan Dock — pinned above chat, not inside scroll -->
+                            <div class="plan-dock hidden" id="plan-dock" data-state="draft">
+                                <div class="plan-header">
+                                    <div class="plan-title-row">
+                                        <span class="plan-icon">◆</span>
+                                        <span class="plan-title" id="plan-title">Plan</span>
+                                        <span class="plan-badge" id="plan-badge">Draft</span>
+                                    </div>
+                                    <div class="plan-meta" id="plan-meta"></div>
+                                    <div class="plan-actions" id="plan-actions">
+                                        <button class="plan-btn plan-btn--primary" id="plan-execute-btn" onclick="executePlan()">Execute Plan</button>
+                                        <button class="plan-btn plan-btn--secondary" onclick="modifyPlan()">Modify</button>
+                                        <button class="plan-btn plan-btn--ghost" onclick="cancelPlan()">×</button>
+                                    </div>
+                                </div>
+                                <div class="plan-steps" id="plan-steps"></div>
+                                <div class="plan-footer">
+                                    <div class="plan-progress"><div class="plan-progress-bar" id="plan-progress-bar"></div></div>
+                                    <div class="plan-footer-meta">
+                                        <span class="plan-elapsed" id="plan-elapsed"></span>
+                                        <span class="plan-step-counter" id="plan-step-counter"></span>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div class="ai-chat-messages" id="ai-chat-messages">
                                 <div style="padding: 40px 20px; text-align: center; color: var(--text-secondary); font-size: 13px; opacity: 0.6;">
                                     <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom: 16px; opacity: 0.5;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -9313,6 +9587,337 @@ ${result.content}`;
         });
 
         // ====================================================================
+        // BRAIN INDICATOR + CONTEXT DRAWER
+        // ====================================================================
+
+        let brainState = 'none'; // 'none' | 'passive' | 'active'
+        let brainActiveTimeout = null;
+        let brainDrawerNodes = [];
+
+        function updateBrainIndicator(state, options = {}) {
+            brainState = state;
+            const dot = document.getElementById('brain-dot');
+            const name = document.getElementById('brain-name');
+            const meta = document.getElementById('brain-meta');
+
+            dot.className = 'brain-dot';
+            switch (state) {
+                case 'none':
+                    dot.classList.add('brain-dot--none');
+                    name.textContent = 'No brain';
+                    meta.textContent = '';
+                    document.getElementById('brainEnabled').checked = false;
+                    break;
+                case 'passive':
+                    dot.classList.add('brain-dot--passive');
+                    name.textContent = options.brainName || 'Brain';
+                    meta.textContent = options.nodeCount ? `· ${(options.nodeCount / 1000).toFixed(1)}K` : '';
+                    document.getElementById('brainEnabled').checked = true;
+                    break;
+                case 'active':
+                    dot.classList.add('brain-dot--active');
+                    name.textContent = options.brainName || name.textContent;
+                    meta.textContent = options.neuronCount ? `· ${options.neuronCount} neurons` : meta.textContent;
+                    break;
+            }
+        }
+
+        function toggleBrainDrawer() {
+            // If no brain loaded, open the brain picker instead
+            if (brainState === 'none') {
+                if (typeof toggleBrainPicker === 'function') toggleBrainPicker();
+                return;
+            }
+            const drawer = document.getElementById('brain-drawer');
+            const isOpen = drawer.dataset.open === 'true';
+            drawer.dataset.open = isOpen ? 'false' : 'true';
+        }
+
+        function closeBrainDrawer() {
+            document.getElementById('brain-drawer').dataset.open = 'false';
+        }
+
+        function toggleBrainDrawerExpand() {
+            const nodes = document.getElementById('brain-drawer-nodes');
+            nodes.classList.toggle('expanded');
+        }
+
+        function populateBrainDrawer(nodes) {
+            brainDrawerNodes = nodes;
+            const container = document.getElementById('brain-drawer-nodes');
+            const footer = document.getElementById('brain-drawer-footer');
+
+            if (!nodes || nodes.length === 0) {
+                container.innerHTML = '<div style="padding:20px; text-align:center; color:var(--text-secondary); font-size:11px;">No relevant brain nodes found.</div>';
+                footer.style.display = 'none';
+                return;
+            }
+
+            container.classList.remove('expanded');
+            container.innerHTML = nodes.map(node => {
+                const score = node.score || 0;
+                // Hue: green (120) for high scores, yellow (60) for mid, red (0) for low
+                const hue = Math.round(score * 120);
+                return `<div class="brain-node">
+                    <div class="brain-node-header">
+                        <span class="brain-node-score-dot" style="background: hsl(${hue}, 70%, 50%)"></span>
+                        <span class="brain-node-score">${score.toFixed(2)}</span>
+                        <span class="brain-node-tag">${escapeHtml(node.tag || 'concept')}</span>
+                    </div>
+                    <p class="brain-node-excerpt">${escapeHtml((node.concept || '').substring(0, 200))}</p>
+                </div>`;
+            }).join('');
+
+            footer.style.display = nodes.length > 3 ? '' : 'none';
+            document.getElementById('brain-drawer-count').textContent = `${nodes.length} neurons · top 3 shown`;
+        }
+
+        // Listen for brain load/unload events
+        window.addEventListener('cosmo:brainLoaded', (e) => {
+            const info = e.detail || {};
+            updateBrainIndicator('passive', {
+                brainName: info.name || info.brainPath?.split('/').pop() || 'Brain',
+                nodeCount: info.nodeCount || 0
+            });
+        });
+
+        window.addEventListener('cosmo:brainUnloaded', () => {
+            updateBrainIndicator('none');
+            populateBrainDrawer([]);
+        });
+
+        // Check initial brain state
+        if (window.currentBrainInfo) {
+            updateBrainIndicator('passive', {
+                brainName: window.currentBrainInfo.name || window.currentBrainInfo.brainPath?.split('/').pop() || 'Brain',
+                nodeCount: window.currentBrainInfo.nodeCount || 0
+            });
+        }
+
+        // ====================================================================
+        // PLAN DOCK — Pinned plan artifact above chat
+        // ====================================================================
+
+        let currentPlan = null; // { title, steps: [{ id, label, detail, model, status, enabled }], state }
+        let planElapsedTimer = null;
+        let planStartTime = null;
+
+        function showPlanDock(plan) {
+            currentPlan = plan;
+            const dock = document.getElementById('plan-dock');
+            dock.classList.remove('hidden');
+            dock.dataset.state = 'draft';
+
+            document.getElementById('plan-title').textContent = plan.title || 'Plan';
+            document.getElementById('plan-badge').textContent = 'Draft';
+            document.getElementById('plan-badge').removeAttribute('data-state');
+            document.getElementById('plan-meta').textContent =
+                `${plan.steps.length} step${plan.steps.length !== 1 ? 's' : ''} · ${plan.steps[0]?.model || 'default model'}`;
+
+            document.getElementById('plan-execute-btn').textContent = 'Execute Plan';
+            document.getElementById('plan-execute-btn').onclick = executePlan;
+
+            renderPlanSteps();
+            updatePlanProgress();
+        }
+
+        function renderPlanSteps() {
+            if (!currentPlan) return;
+            const container = document.getElementById('plan-steps');
+            const steps = currentPlan.steps;
+
+            // Progressive disclosure: >4 steps = collapsed by default
+            const showAll = steps.length <= 4;
+
+            container.innerHTML = steps.map((step, i) => {
+                const hidden = !showAll && i >= 3 ? ' style="display:none;" data-collapsed="true"' : '';
+                const statusIcon = {
+                    pending: '<span class="plan-step-status-icon">○</span>',
+                    running: '<span class="plan-step-status-icon">◉</span>',
+                    done: '<span class="plan-step-status-icon" style="color:#4ade80;">✓</span>',
+                    failed: '<span class="plan-step-status-icon" style="color:#ef4444;">✗</span>',
+                    skipped: '<span class="plan-step-status-icon" style="color:var(--text-secondary);">−</span>'
+                }[step.status || 'pending'];
+
+                const providerClass = (step.model || '').includes('claude') ? 'anthropic' :
+                    (step.model || '').includes('gpt') ? 'openai' :
+                    (step.model || '').includes('grok') ? 'xai' : 'ollama';
+
+                const modelChip = step.model
+                    ? `<span class="plan-step-model-chip"><span class="model-dot model-dot--${providerClass}"></span>${step.model.split('/').pop().split('-').slice(0,2).join('-')}</span>`
+                    : '';
+
+                return `<div class="plan-step" data-step-id="${step.id}" data-status="${step.status || 'pending'}"${hidden}>
+                    <input type="checkbox" class="plan-step-check" ${step.enabled !== false ? 'checked' : ''} onchange="togglePlanStep('${step.id}', this.checked)">
+                    <div class="plan-step-content">
+                        <div class="plan-step-label">
+                            ${statusIcon}
+                            <span>${escapeHtml(step.label)}</span>
+                            ${modelChip}
+                        </div>
+                        ${step.detail ? `<div class="plan-step-detail">${escapeHtml(step.detail)}</div>` : ''}
+                    </div>
+                </div>`;
+            }).join('');
+
+            // Add "N more steps" link if collapsed
+            if (!showAll && steps.length > 3) {
+                container.innerHTML += `<div class="plan-step" style="cursor:pointer; color:var(--text-secondary); font-size:11px; padding:6px 14px;"
+                    onclick="expandPlanSteps()">${steps.length - 3} more steps...</div>`;
+            }
+        }
+
+        function expandPlanSteps() {
+            document.querySelectorAll('.plan-step[data-collapsed]').forEach(el => {
+                el.style.display = '';
+                el.removeAttribute('data-collapsed');
+            });
+            // Remove the "more steps" link
+            const container = document.getElementById('plan-steps');
+            const moreLink = container.querySelector('.plan-step:last-child');
+            if (moreLink && moreLink.textContent.includes('more steps')) moreLink.remove();
+        }
+
+        function togglePlanStep(stepId, enabled) {
+            if (!currentPlan) return;
+            const step = currentPlan.steps.find(s => s.id === stepId);
+            if (step) step.enabled = enabled;
+        }
+
+        function updatePlanProgress() {
+            if (!currentPlan) return;
+            const steps = currentPlan.steps.filter(s => s.enabled !== false);
+            const done = steps.filter(s => s.status === 'done' || s.status === 'skipped').length;
+            const total = steps.length;
+            const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+
+            document.getElementById('plan-progress-bar').style.width = pct + '%';
+            document.getElementById('plan-step-counter').textContent = `${done}/${total}`;
+        }
+
+        function updatePlanStepStatus(stepId, status) {
+            if (!currentPlan) return;
+            const step = currentPlan.steps.find(s => s.id === stepId);
+            if (step) step.status = status;
+            renderPlanSteps();
+            updatePlanProgress();
+
+            // Update dock state
+            const allDone = currentPlan.steps.filter(s => s.enabled !== false).every(s => s.status === 'done' || s.status === 'skipped');
+            if (allDone) completePlan();
+        }
+
+        function executePlan() {
+            if (!currentPlan) return;
+            const dock = document.getElementById('plan-dock');
+            dock.dataset.state = 'executing';
+            currentPlan.state = 'executing';
+
+            document.getElementById('plan-badge').textContent = 'Executing';
+            document.getElementById('plan-badge').dataset.state = 'executing';
+            document.getElementById('plan-execute-btn').textContent = 'Pause';
+            document.getElementById('plan-execute-btn').onclick = pausePlan;
+
+            planStartTime = Date.now();
+            planElapsedTimer = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - planStartTime) / 1000);
+                const min = Math.floor(elapsed / 60);
+                const sec = elapsed % 60;
+                document.getElementById('plan-elapsed').textContent = `${min}m ${sec.toString().padStart(2, '0')}s`;
+            }, 1000);
+
+            // Send execution request — the enabled steps + their models
+            const enabledSteps = currentPlan.steps.filter(s => s.enabled !== false).map(s => ({
+                id: s.id, label: s.label, model: s.model
+            }));
+
+            // Send as a new chat message that triggers plan execution
+            const input = document.getElementById('ai-input');
+            input.value = `Execute the plan: ${currentPlan.title}\n\nSteps:\n${enabledSteps.map((s, i) => `${i + 1}. ${s.label}`).join('\n')}`;
+            // Turn off planning mode for execution
+            document.getElementById('planningModeEnabled').checked = false;
+            sendAIMessage();
+        }
+
+        function pausePlan() {
+            if (!currentPlan) return;
+            // Pausing means we stop after the current step completes
+            // This is handled by the backend — we just update the UI
+            document.getElementById('plan-execute-btn').textContent = 'Resume';
+            document.getElementById('plan-execute-btn').onclick = executePlan;
+            if (planElapsedTimer) clearInterval(planElapsedTimer);
+        }
+
+        function completePlan() {
+            if (!currentPlan) return;
+            const dock = document.getElementById('plan-dock');
+            dock.dataset.state = 'complete';
+            currentPlan.state = 'complete';
+
+            document.getElementById('plan-badge').textContent = 'Complete';
+            document.getElementById('plan-badge').dataset.state = 'complete';
+            document.getElementById('plan-execute-btn').textContent = 'New Plan';
+            document.getElementById('plan-execute-btn').onclick = cancelPlan;
+            if (planElapsedTimer) clearInterval(planElapsedTimer);
+        }
+
+        function cancelPlan() {
+            currentPlan = null;
+            document.getElementById('plan-dock').classList.add('hidden');
+            if (planElapsedTimer) clearInterval(planElapsedTimer);
+        }
+
+        function modifyPlan() {
+            if (!currentPlan) return;
+            const modification = prompt('What would you like to change about the plan?');
+            if (!modification) return;
+            // Send modification as a chat message in planning mode
+            const input = document.getElementById('ai-input');
+            input.value = `plan: Modify the plan "${currentPlan.title}" — ${modification}`;
+            document.getElementById('planningModeEnabled').checked = true;
+            sendAIMessage();
+        }
+
+        // Parse a numbered plan from AI response text
+        function parsePlanFromResponse(text) {
+            // Look for numbered steps pattern: "1. Step description" or "**Step 1:** Description"
+            const lines = text.split('\n');
+            const steps = [];
+            let title = 'Plan';
+            let inPlan = false;
+
+            for (const line of lines) {
+                const trimmed = line.trim();
+                // Detect title (first heading or bold text before numbered steps)
+                if (!inPlan && (trimmed.startsWith('# ') || trimmed.startsWith('## '))) {
+                    title = trimmed.replace(/^#+\s*/, '').replace(/\*\*/g, '');
+                }
+                // Match numbered steps
+                const stepMatch = trimmed.match(/^(\d+)\.\s+\*?\*?(.+?)(?:\*?\*?\s*$)/);
+                if (stepMatch) {
+                    inPlan = true;
+                    steps.push({
+                        id: `step-${stepMatch[1]}`,
+                        label: stepMatch[2].replace(/\*\*/g, '').trim(),
+                        detail: '',
+                        model: null,
+                        status: 'pending',
+                        enabled: true
+                    });
+                } else if (inPlan && steps.length > 0 && trimmed && !trimmed.match(/^\d+\./)) {
+                    // Continuation line — add as detail to last step
+                    const last = steps[steps.length - 1];
+                    if (trimmed.startsWith('-') || trimmed.startsWith('*')) {
+                        last.detail += (last.detail ? '\n' : '') + trimmed;
+                    }
+                }
+            }
+
+            if (steps.length === 0) return null;
+            return { title, steps, state: 'draft' };
+        }
+
+        // ====================================================================
         // BOTTOM DOCK — Tab switching between Terminal and Edit Review
         // ====================================================================
 
@@ -9890,6 +10495,10 @@ ${result.content}`;
                                 }
 
                                 else if (event.type === 'brain_search') {
+                                    // Update brain indicator
+                                    if (event.status === 'searching') {
+                                        updateBrainIndicator('active');
+                                    }
                                     // Show brain search status in UI
                                     if (event.status === 'searching') {
                                         console.log('[BRAIN] Searching brain...');
@@ -9918,6 +10527,20 @@ ${result.content}`;
 
                                     if (event.status === 'injected' && event.nodes) {
                                         console.log(`[BRAIN] ✅ ${event.nodesInjected} neurons fired (${event.candidatesFound} candidates from ${event.totalSearched} nodes)`);
+
+                                        // Update brain indicator with neuron count
+                                        updateBrainIndicator('active', { neuronCount: event.nodesInjected });
+                                        // Populate brain drawer with node data
+                                        populateBrainDrawer(event.nodes.map(n => ({
+                                            score: n.score, tag: n.tag, concept: n.preview || ''
+                                        })));
+                                        // Fade back to passive after 5s
+                                        if (brainActiveTimeout) clearTimeout(brainActiveTimeout);
+                                        brainActiveTimeout = setTimeout(() => {
+                                            if (brainState === 'active') updateBrainIndicator('passive', {
+                                                brainName: document.getElementById('brain-name').textContent
+                                            });
+                                        }, 5000);
 
                                         // Create brain context UI section
                                         const brainContainer = document.createElement('div');
@@ -10192,6 +10815,17 @@ ${result.content}`;
                                 
                                 else if (event.type === 'complete') {
                                         console.log('[FRONTEND] Complete event received, rendering markdown...');
+
+                                        // Detect plan in response when planning mode was active
+                                        const wasPlanningMode = document.getElementById('planningModeEnabled')?.checked;
+                                        const responseForPlan = event.fullResponse || fullResponse;
+                                        if (wasPlanningMode && responseForPlan) {
+                                            const plan = parsePlanFromResponse(responseForPlan);
+                                            if (plan && plan.steps.length > 0) {
+                                                showPlanDock(plan);
+                                                console.log(`[PLAN] Detected ${plan.steps.length}-step plan: "${plan.title}"`);
+                                            }
+                                        }
 
                                         // Mark tools container as completed but keep it open briefly
                                         const toolsContainer = document.getElementById(toolsContainerId);
@@ -13322,8 +13956,30 @@ ${html}
       if (brainPickerOpen) {
         const searchInput = document.getElementById('brainPickerSearch');
         if (searchInput) { searchInput.value = ''; }
+        showRecentBrains();
         fetchBrainLocations();
       }
+    }
+
+    function showRecentBrains() {
+      try {
+        const recent = JSON.parse(localStorage.getItem('evobrew.brain.recent') || '[]');
+        if (recent.length === 0) return;
+        const listEl = document.getElementById('brainPickerList');
+        const recentHtml = `
+          <div style="padding: 4px 8px 2px; font-size: 10px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">Recent</div>
+          <div style="display: flex; gap: 6px; padding: 4px 8px 8px; flex-wrap: wrap;">
+            ${recent.map(r => `
+              <button onclick="pickBrain('${r.path.replace(/'/g, "\\'")}')" style="padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(59,130,246,0.3); background: rgba(59,130,246,0.08); color: #60a5fa; cursor: pointer; font-size: 11px; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                <span>${r.name}</span>
+                <span style="opacity: 0.6; font-weight: 400; font-size: 10px;">${r.nodes ? (r.nodes / 1000).toFixed(1) + 'K' : ''}</span>
+              </button>
+            `).join('')}
+          </div>
+          <div style="border-bottom: 1px solid var(--border-color); margin: 0 8px;"></div>
+        `;
+        listEl.innerHTML = recentHtml + '<div style="text-align:center; padding:12px; color:var(--text-secondary); font-size:11px;">Choose a location above to browse all brains</div>';
+      } catch (_) {}
     }
 
     // Close on backdrop click
@@ -13462,6 +14118,21 @@ ${html}
         if (!data.success) throw new Error(data.error);
         // Persist brain path so it survives page refresh
         try { localStorage.setItem(BRAIN_PATH_STORAGE_KEY, brainPath); } catch (_) {}
+        // Track recent brains (last 3)
+        try {
+          const RECENT_KEY = 'evobrew.brain.recent';
+          let recent = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+          recent = recent.filter(r => r.path !== brainPath);
+          recent.unshift({ path: brainPath, name: data.brain.name, nodes: data.brain.nodes });
+          if (recent.length > 3) recent = recent.slice(0, 3);
+          localStorage.setItem(RECENT_KEY, JSON.stringify(recent));
+        } catch (_) {}
+        // Update brain indicator to passive state
+        updateBrainIndicator('passive', { brainName: data.brain.name, nodeCount: data.brain.nodes });
+        // Dispatch brain loaded event
+        window.dispatchEvent(new CustomEvent('cosmo:brainLoaded', {
+          detail: { name: data.brain.name, nodeCount: data.brain.nodes, brainPath }
+        }));
         // Update header
         updateBrainLabel(data.brain.name, data.brain.nodes);
         // Update IDE title bar
