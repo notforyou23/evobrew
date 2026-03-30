@@ -33,6 +33,18 @@
 }
 
 @media (max-width: 900px) {
+  body.ui-refresh-enabled .runtime-context-shell {
+    padding: 8px 12px;
+  }
+
+  body.ui-refresh-enabled .runtime-context-pills {
+    gap: 6px;
+  }
+
+  body.ui-refresh-enabled .runtime-context-pill__value {
+    max-width: 140px;
+  }
+
   body.ui-refresh-enabled .ide-title {
     gap: 8px;
   }
@@ -91,6 +103,14 @@
 }
 
 @media (max-width: 768px) {
+  body.ui-refresh-enabled .runtime-context-summary {
+    display: flex;
+  }
+
+  body.ui-refresh-enabled .runtime-context-pills {
+    display: none;
+  }
+
   body.ui-refresh-enabled #brainPickerLabel,
   body.ui-refresh-enabled #modeDescription {
     display: none;
@@ -125,6 +145,19 @@
 }
 
 @media (max-width: 480px) {
+  body.ui-refresh-enabled .runtime-context-shell {
+    padding: 8px 10px;
+  }
+
+  body.ui-refresh-enabled .runtime-context-summary {
+    padding: 10px;
+  }
+
+  body.ui-refresh-enabled .runtime-context-sheet__panel {
+    padding: 14px;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  }
+
   body.ui-refresh-enabled .ide-header {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:

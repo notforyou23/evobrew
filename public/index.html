@@ -4725,6 +4725,79 @@
             </div>
         </div>
 
+        <div class="runtime-context-shell hidden" id="runtime-context-shell" aria-label="Current runtime context">
+            <button class="runtime-context-summary" id="runtime-context-summary" data-action="toggleRuntimeContextSheet()" aria-expanded="false" aria-controls="runtime-context-sheet" type="button">
+                <span class="runtime-context-summary__eyebrow">Runtime</span>
+                <span class="runtime-context-summary__text" id="runtime-context-summary-text">Choose a folder to start.</span>
+            </button>
+
+            <div class="runtime-context-pills" id="runtime-context-pills" role="list">
+                <button class="runtime-context-pill runtime-context-pill--folder" id="runtime-folder-chip" data-action="showFolderBrowser()" type="button">
+                    <span class="runtime-context-pill__label">Folder</span>
+                    <span class="runtime-context-pill__value" id="runtime-folder-chip-value">Choose Folder</span>
+                </button>
+                <button class="runtime-context-pill runtime-context-pill--workspace" id="runtime-workspace-chip" type="button">
+                    <span class="runtime-context-pill__label">Workspace</span>
+                    <span class="runtime-context-pill__value" id="runtime-workspace-chip-value">No workspace</span>
+                </button>
+                <button class="runtime-context-pill runtime-context-pill--brain" id="runtime-brain-chip" data-action="toggleBrainPicker()" type="button">
+                    <span class="runtime-context-pill__label">Brain</span>
+                    <span class="runtime-context-pill__value" id="runtime-brain-chip-value">No Brain</span>
+                </button>
+                <button class="runtime-context-pill runtime-context-pill--model" id="runtime-model-chip" type="button">
+                    <span class="runtime-context-pill__label">Model</span>
+                    <span class="runtime-context-pill__value" id="runtime-model-chip-value">Loading…</span>
+                </button>
+                <button class="runtime-context-pill runtime-context-pill--edits hidden" id="runtime-edits-chip" data-action="toggleEditQueue()" type="button">
+                    <span class="runtime-context-pill__label">Review</span>
+                    <span class="runtime-context-pill__value" id="runtime-edits-chip-value">0 edits pending</span>
+                </button>
+                <button class="runtime-context-pill runtime-context-pill--terminal" id="runtime-terminal-chip" data-action="toggleTerminalDock()" type="button">
+                    <span class="runtime-context-pill__label">Terminal</span>
+                    <span class="runtime-context-pill__value" id="runtime-terminal-chip-value">Closed</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="runtime-context-sheet hidden" id="runtime-context-sheet" aria-hidden="true">
+            <button class="runtime-context-sheet__backdrop" data-action="closeRuntimeContextSheet()" type="button" aria-label="Close runtime context"></button>
+            <div class="runtime-context-sheet__panel" role="dialog" aria-modal="true" aria-labelledby="runtime-context-sheet-title">
+                <div class="runtime-context-sheet__header">
+                    <div>
+                        <div class="runtime-context-sheet__eyebrow">Runtime</div>
+                        <h2 class="runtime-context-sheet__title" id="runtime-context-sheet-title">Current Context</h2>
+                    </div>
+                    <button class="runtime-context-sheet__close" data-action="closeRuntimeContextSheet()" type="button" aria-label="Close runtime context">✕</button>
+                </div>
+                <div class="runtime-context-sheet__rows">
+                    <button class="runtime-context-row" id="runtime-sheet-folder" data-action="showFolderBrowser()" type="button">
+                        <span class="runtime-context-row__label">Folder</span>
+                        <span class="runtime-context-row__value" id="runtime-sheet-folder-value">Choose Folder</span>
+                    </button>
+                    <button class="runtime-context-row" id="runtime-sheet-workspace" type="button">
+                        <span class="runtime-context-row__label">Workspace</span>
+                        <span class="runtime-context-row__value" id="runtime-sheet-workspace-value">No workspace</span>
+                    </button>
+                    <button class="runtime-context-row" id="runtime-sheet-brain" data-action="toggleBrainPicker()" type="button">
+                        <span class="runtime-context-row__label">Brain</span>
+                        <span class="runtime-context-row__value" id="runtime-sheet-brain-value">No Brain</span>
+                    </button>
+                    <button class="runtime-context-row" id="runtime-sheet-model" type="button">
+                        <span class="runtime-context-row__label">Model</span>
+                        <span class="runtime-context-row__value" id="runtime-sheet-model-value">Loading…</span>
+                    </button>
+                    <button class="runtime-context-row hidden" id="runtime-sheet-edits" data-action="toggleEditQueue()" type="button">
+                        <span class="runtime-context-row__label">Review</span>
+                        <span class="runtime-context-row__value" id="runtime-sheet-edits-value">0 edits pending</span>
+                    </button>
+                    <button class="runtime-context-row" id="runtime-sheet-terminal" data-action="toggleTerminalDock()" type="button">
+                        <span class="runtime-context-row__label">Terminal</span>
+                        <span class="runtime-context-row__value" id="runtime-sheet-terminal-value">Closed</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <!-- Tab Panels Container -->
         <div class="brain-studio-tabs">
           <!-- Documentation Panel (README) -->
@@ -6170,16 +6243,19 @@
         function toggleEditQueue() {
             const panel = document.getElementById('edit-queue-panel');
             panel.classList.toggle('hidden');
+            notifyRuntimeContextRefresh();
         }
         
         function showEditQueue() {
             const panel = document.getElementById('edit-queue-panel');
             panel.classList.remove('hidden');
+            notifyRuntimeContextRefresh();
         }
         
         function hideEditQueue() {
             const panel = document.getElementById('edit-queue-panel');
             panel.classList.add('hidden');
+            notifyRuntimeContextRefresh();
         }
         
         function updateEditQueueUI() {
@@ -6198,6 +6274,7 @@
                         No pending edits
                     </div>
                 `;
+                notifyRuntimeContextRefresh();
                 return;
             }
             
@@ -6233,6 +6310,8 @@
                     statusEdits.textContent = '';
                 }
             }
+
+            notifyRuntimeContextRefresh();
         }
         
         async function viewEditDiff(editId) {
@@ -10200,6 +10279,22 @@ ${result.content}`;
                 const resp = await fetch(`/api/workspace/check/${encodeURIComponent(folderPath).replace(/%2F/g, '/')}`);
                 const data = await resp.json();
                 const bar = document.getElementById('workspace-bar');
+                const brainPath = typeof getConnectedBrainFolderPath === 'function' ? getConnectedBrainFolderPath() : null;
+                const viewingBrainFolder = Boolean(brainPath && pathsEqual(folderPath, brainPath));
+
+                if (viewingBrainFolder && !window.activeWorkspaceId) {
+                    bar.style.display = 'none';
+                    workspaceRepoRoot = null;
+                    notifyRuntimeContextRefresh();
+                    return;
+                }
+
+                if (window.activeWorkspaceId) {
+                    bar.style.display = 'flex';
+                    notifyRuntimeContextRefresh();
+                    return;
+                }
+
                 if (data.available) {
                     workspaceRepoRoot = data.repoRoot;
                     bar.style.display = 'flex';
@@ -10218,8 +10313,10 @@ ${result.content}`;
                     bar.style.display = 'none';
                     workspaceRepoRoot = null;
                 }
+                notifyRuntimeContextRefresh();
             } catch {
                 document.getElementById('workspace-bar').style.display = 'none';
+                notifyRuntimeContextRefresh();
             }
         }
 
@@ -10249,6 +10346,7 @@ ${result.content}`;
             document.getElementById('workspace-diff-btn').style.display = '';
             document.getElementById('workspace-merge-btn').style.display = '';
             document.getElementById('workspace-discard-btn').style.display = '';
+            notifyRuntimeContextRefresh();
         }
 
         function resetWorkspaceUI() {
@@ -10264,11 +10362,12 @@ ${result.content}`;
             document.getElementById('workspace-diff-btn').style.display = 'none';
             document.getElementById('workspace-merge-btn').style.display = 'none';
             document.getElementById('workspace-discard-btn').style.display = 'none';
+            notifyRuntimeContextRefresh();
         }
 
         async function workspaceCreate() {
             const folder = IDE_MODE === 'filesystem'
-                ? (typeof getActiveFolderPath === 'function' ? getActiveFolderPath() : null)
+                ? getActiveFolderPath()
                 : (currentBrowsePath || '.');
             if (!folder) { alert('No folder loaded'); return; }
 
@@ -12548,6 +12647,34 @@ ${html}
             }
         }
 
+        function getActiveFolderPath() {
+            const brainPath = getConnectedBrainFolderPath();
+
+            if (workingDirectory && !(brainPath && pathsEqual(workingDirectory, brainPath))) {
+                return workingDirectory;
+            }
+
+            if (folderPath) {
+                return folderPath;
+            }
+
+            if (currentBrowsePath && currentBrowsePath !== '/') {
+                return currentBrowsePath;
+            }
+
+            return null;
+        }
+
+        function notifyRuntimeContextRefresh() {
+            try {
+                window.dispatchEvent(new CustomEvent('evobrew:runtime-context-refresh'));
+            } catch (_error) {
+                if (typeof window.refreshRuntimeContext === 'function') {
+                    window.refreshRuntimeContext();
+                }
+            }
+        }
+
         function refreshFolderContextButtons() {
             const brainPath = getConnectedBrainFolderPath();
             const inBrainFolder = Boolean(brainPath && folderPath && pathsEqual(folderPath, brainPath));
@@ -12689,6 +12816,13 @@ ${html}
 
             await loadFileTree();
             refreshFolderContextButtons();
+
+            if (typeof checkWorkspaceAvailability === 'function') {
+                await checkWorkspaceAvailability(path);
+            }
+
+            window.dispatchEvent(new CustomEvent('cosmo:folderChanged', { detail: { path } }));
+            notifyRuntimeContextRefresh();
 
             if (options.toast !== false) {
                 showToast(`Loaded: ${path.split('/').pop() || path}`, 'success');
@@ -14177,6 +14311,7 @@ ${html}
         window.dispatchEvent(new CustomEvent('cosmo:brainLoaded', {
           detail: { name: data.brain.name, nodeCount: data.brain.nodes, brainPath }
         }));
+        notifyRuntimeContextRefresh();
         // Update header
         updateBrainLabel(data.brain.name, data.brain.nodes);
         // Update IDE title bar
@@ -14207,6 +14342,7 @@ ${html}
           window.brainOutputsPath = null;
         }
         refreshFolderContextButtons();
+        notifyRuntimeContextRefresh();
         // Reset stale state: refresh explore tab if loaded
         if (typeof initExploreGraph === 'function') { try { initExploreGraph(); } catch(e) {} }
         // Reload query history for new brain

@@ -2,6 +2,9 @@
   let baseInitialized = false;
   let initialized = false;
   let headerMetricsObserver = null;
+  let runtimeContextObserver = null;
+  let runtimeContextScheduled = false;
+  let runtimeContextElements = null;
 
   const terminalFallbackActions = {
     toggleTerminalDock: () => {
@@ -67,6 +70,10 @@
 
       event.preventDefault();
       runActionExpression(expr);
+
+      if (target.closest('#runtime-context-sheet') && target.id !== 'runtime-context-summary') {
+        requestAnimationFrame(() => closeRuntimeContextSheet());
+      }
     });
   }
 
@@ -172,6 +179,271 @@
     headerMetricsObserver.observe(header);
   }
 
+  function getRuntimeContextElements() {
+    if (runtimeContextElements) return runtimeContextElements;
+    runtimeContextElements = {
+      summaryButton: document.getElementById('runtime-context-summary'),
+      summaryText: document.getElementById('runtime-context-summary-text'),
+      sheet: document.getElementById('runtime-context-sheet'),
+      folderChip: document.getElementById('runtime-folder-chip'),
+      folderValue: document.getElementById('runtime-folder-chip-value'),
+      workspaceChip: document.getElementById('runtime-workspace-chip'),
+      workspaceValue: document.getElementById('runtime-workspace-chip-value'),
+      brainChip: document.getElementById('runtime-brain-chip'),
+      brainValue: document.getElementById('runtime-brain-chip-value'),
+      modelChip: document.getElementById('runtime-model-chip'),
+      modelValue: document.getElementById('runtime-model-chip-value'),
+      editsChip: document.getElementById('runtime-edits-chip'),
+      editsValue: document.getElementById('runtime-edits-chip-value'),
+      terminalChip: document.getElementById('runtime-terminal-chip'),
+      terminalValue: document.getElementById('runtime-terminal-chip-value'),
+      sheetFolder: document.getElementById('runtime-sheet-folder'),
+      sheetFolderValue: document.getElementById('runtime-sheet-folder-value'),
+      sheetWorkspace: document.getElementById('runtime-sheet-workspace'),
+      sheetWorkspaceValue: document.getElementById('runtime-sheet-workspace-value'),
+      sheetBrain: document.getElementById('runtime-sheet-brain'),
+      sheetBrainValue: document.getElementById('runtime-sheet-brain-value'),
+      sheetModel: document.getElementById('runtime-sheet-model'),
+      sheetModelValue: document.getElementById('runtime-sheet-model-value'),
+      sheetEdits: document.getElementById('runtime-sheet-edits'),
+      sheetEditsValue: document.getElementById('runtime-sheet-edits-value'),
+      sheetTerminal: document.getElementById('runtime-sheet-terminal'),
+      sheetTerminalValue: document.getElementById('runtime-sheet-terminal-value')
+    };
+    return runtimeContextElements;
+  }
+
+  function compactPath(value, fallback) {
+    const raw = String(value || '').trim();
+    if (!raw) return fallback;
+    const normalized = raw.replace(/[\\/]+/g, '/');
+    const parts = normalized.split('/').filter(Boolean);
+    if (parts.length === 0) return raw;
+    if (normalized.startsWith('/') && parts.length === 1) return `/${parts[0]}`;
+    if (parts.length === 1) return parts[0];
+    if (parts.length === 2) return `${parts[0]}/${parts[1]}`;
+    return `…/${parts.slice(-2).join('/')}`;
+  }
+
+  function parsePendingEditsCount() {
+    const edits = document.getElementById('status-edits');
+    if (!edits || edits.classList.contains('hidden')) return 0;
+    const text = String(edits.textContent || '').trim();
+    const match = text.match(/(\d+)/);
+    return match ? Number.parseInt(match[1], 10) || 0 : 0;
+  }
+
+  function isElementVisible(element) {
+    if (!element) return false;
+    return !element.classList.contains('hidden') && getComputedStyle(element).display !== 'none';
+  }
+
+  function readRuntimeContextState() {
+    const sidebarPath = document.getElementById('sidebar-path');
+    const workspaceBar = document.getElementById('workspace-bar');
+    const branchName = document.getElementById('workspace-branch-name');
+    const workspaceLabel = document.getElementById('workspace-label');
+    const brainLabel = document.getElementById('brainPickerLabel');
+    const modelSelect = document.getElementById('ai-model-select');
+    const bottomDock = document.getElementById('bottom-dock');
+
+    const folderPath = String(sidebarPath?.textContent || '').trim();
+    const workspaceVisible = isElementVisible(workspaceBar);
+    const workspaceActive = Boolean(window.activeWorkspaceId);
+    const branch = String(branchName?.textContent || '').trim() || 'main';
+    const workspaceText = workspaceActive
+      ? `${branch}${workspaceLabel?.textContent ? ` · ${String(workspaceLabel.textContent).trim()}` : ''}`
+      : workspaceVisible
+        ? `Repo · ${branch}`
+        : 'No workspace';
+
+    const brainName = String(brainLabel?.textContent || '').trim() || 'No Brain';
+    const selectedOption = modelSelect?.selectedOptions?.[0] || null;
+    const modelLabel = String(selectedOption?.textContent || modelSelect?.value || 'Model').trim();
+    const editsCount = parsePendingEditsCount();
+    const terminalOpen = bottomDock ? !bottomDock.classList.contains('hidden') : false;
+    const terminalAvailable = typeof window.toggleTerminalDock === 'function';
+
+    return {
+      folderPath,
+      folderLabel: compactPath(folderPath, 'Choose Folder'),
+      workspaceActive,
+      workspaceVisible,
+      workspaceLabel: workspaceText,
+      brainActive: brainName !== 'No Brain',
+      brainLabel: brainName,
+      modelLabel,
+      editsCount,
+      terminalAvailable,
+      terminalOpen,
+      terminalLabel: terminalAvailable ? (terminalOpen ? 'Open' : 'Closed') : 'Unavailable'
+    };
+  }
+
+  function setChipState(element, state) {
+    if (!element) return;
+    if (!state) {
+      element.removeAttribute('data-state');
+      return;
+    }
+    element.setAttribute('data-state', state);
+  }
+
+  function applyRuntimeContextState(state) {
+    const els = getRuntimeContextElements();
+    if (!els.summaryText) return;
+
+    const summaryParts = [state.folderLabel, state.workspaceVisible ? state.workspaceLabel : null, state.brainActive ? state.brainLabel : null]
+      .filter(Boolean)
+      .slice(0, 3);
+    summaryParts.push(state.modelLabel);
+    if (state.editsCount > 0) {
+      summaryParts.push(`${state.editsCount} edit${state.editsCount === 1 ? '' : 's'}`);
+    }
+
+    const summary = summaryParts.filter(Boolean).join(' · ') || 'Choose a folder to start.';
+    els.summaryText.textContent = summary;
+
+    const valueMap = [
+      [els.folderValue, state.folderLabel],
+      [els.workspaceValue, state.workspaceLabel],
+      [els.brainValue, state.brainLabel],
+      [els.modelValue, state.modelLabel],
+      [els.editsValue, `${state.editsCount} edit${state.editsCount === 1 ? '' : 's'} pending`],
+      [els.terminalValue, state.terminalLabel],
+      [els.sheetFolderValue, state.folderLabel],
+      [els.sheetWorkspaceValue, state.workspaceLabel],
+      [els.sheetBrainValue, state.brainLabel],
+      [els.sheetModelValue, state.modelLabel],
+      [els.sheetEditsValue, `${state.editsCount} edit${state.editsCount === 1 ? '' : 's'} pending`],
+      [els.sheetTerminalValue, state.terminalLabel]
+    ];
+
+    valueMap.forEach(([element, value]) => {
+      if (element) element.textContent = value;
+    });
+
+    const workspaceAction = state.workspaceActive
+      ? 'workspaceDiff()'
+      : state.workspaceVisible
+        ? 'workspaceCreate()'
+        : '';
+    [els.workspaceChip, els.sheetWorkspace].forEach((element) => {
+      if (!element) return;
+      if (workspaceAction) element.setAttribute('data-action', workspaceAction);
+      else element.removeAttribute('data-action');
+      element.disabled = !workspaceAction;
+    });
+
+    [els.modelChip, els.sheetModel].forEach((element) => {
+      if (!element) return;
+      element.setAttribute('data-action', 'focusRuntimeModelPicker()');
+    });
+
+    [els.editsChip, els.sheetEdits].forEach((element) => {
+      if (!element) return;
+      element.classList.toggle('hidden', state.editsCount === 0);
+    });
+
+    setChipState(els.folderChip, state.folderPath ? 'active' : null);
+    setChipState(els.workspaceChip, state.workspaceActive ? 'attention' : state.workspaceVisible ? 'active' : null);
+    setChipState(els.brainChip, state.brainActive ? 'active' : null);
+    setChipState(els.modelChip, 'active');
+    setChipState(els.editsChip, state.editsCount > 0 ? 'attention' : null);
+    setChipState(els.terminalChip, state.terminalOpen ? 'success' : state.terminalAvailable ? 'active' : 'warning');
+  }
+
+  function syncRuntimeContext() {
+    runtimeContextScheduled = false;
+    applyRuntimeContextState(readRuntimeContextState());
+  }
+
+  function scheduleRuntimeContextSync() {
+    if (runtimeContextScheduled) return;
+    runtimeContextScheduled = true;
+    requestAnimationFrame(syncRuntimeContext);
+  }
+
+  function bindRuntimeContext() {
+    const els = getRuntimeContextElements();
+    if (!els.summaryText) return;
+    const shell = document.getElementById('runtime-context-shell');
+    if (shell) shell.classList.remove('hidden');
+
+    if (runtimeContextObserver) {
+      runtimeContextObserver.disconnect();
+    }
+
+    runtimeContextObserver = new MutationObserver(() => scheduleRuntimeContextSync());
+    [
+      document.getElementById('sidebar-path'),
+      document.getElementById('workspace-bar'),
+      document.getElementById('workspace-branch-name'),
+      document.getElementById('workspace-label'),
+      document.getElementById('brainPickerLabel'),
+      document.getElementById('status-edits'),
+      document.getElementById('bottom-dock')
+    ].filter(Boolean).forEach((element) => {
+      runtimeContextObserver.observe(element, {
+        attributes: true,
+        childList: true,
+        characterData: true,
+        subtree: true,
+        attributeFilter: ['class', 'style', 'data-state']
+      });
+    });
+
+    document.addEventListener('change', (event) => {
+      if (event.target?.id === 'ai-model-select') {
+        scheduleRuntimeContextSync();
+      }
+    });
+
+    window.addEventListener('resize', () => {
+      if (window.innerWidth > 768) {
+        closeRuntimeContextSheet();
+      }
+      scheduleRuntimeContextSync();
+    });
+    window.addEventListener('cosmo:folderChanged', scheduleRuntimeContextSync);
+    window.addEventListener('cosmo:brainLoaded', scheduleRuntimeContextSync);
+    window.addEventListener('cosmo:brainUnloaded', scheduleRuntimeContextSync);
+    window.addEventListener('evobrew:runtime-context-refresh', scheduleRuntimeContextSync);
+
+    scheduleRuntimeContextSync();
+    setTimeout(scheduleRuntimeContextSync, 250);
+    setTimeout(scheduleRuntimeContextSync, 1000);
+  }
+
+  function closeRuntimeContextSheet() {
+    const els = getRuntimeContextElements();
+    if (!els.sheet || !els.summaryButton) return;
+    els.sheet.classList.add('hidden');
+    els.sheet.setAttribute('aria-hidden', 'true');
+    els.summaryButton.setAttribute('aria-expanded', 'false');
+  }
+
+  function toggleRuntimeContextSheet() {
+    const els = getRuntimeContextElements();
+    if (!els.sheet || !els.summaryButton) return;
+    const willOpen = els.sheet.classList.contains('hidden');
+    els.sheet.classList.toggle('hidden', !willOpen);
+    els.sheet.setAttribute('aria-hidden', willOpen ? 'false' : 'true');
+    els.summaryButton.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+    if (willOpen) scheduleRuntimeContextSync();
+  }
+
+  function focusRuntimeModelPicker() {
+    const select = document.getElementById('ai-model-select');
+    if (!select) return;
+    try {
+      select.focus();
+      select.click();
+    } catch (_) {
+      select.focus();
+    }
+  }
+
   function initShell() {
     if (initialized) return;
     initialized = true;
@@ -184,6 +456,7 @@
     initOverflowMenu();
     normalizeA11y();
     bindHeaderMetrics();
+    bindRuntimeContext();
 
     if (window.UIRefreshPanels?.init) window.UIRefreshPanels.init();
     if (window.UIRefreshOnboarding?.init) window.UIRefreshOnboarding.init();
@@ -211,6 +484,10 @@
   }
 
   window.initUIRefresh = maybeInitFromFlag;
+  window.toggleRuntimeContextSheet = toggleRuntimeContextSheet;
+  window.closeRuntimeContextSheet = closeRuntimeContextSheet;
+  window.focusRuntimeModelPicker = focusRuntimeModelPicker;
+  window.refreshRuntimeContext = scheduleRuntimeContextSync;
 
   window.addEventListener('evobrew:ui-refresh-toggle', (event) => {
     maybeInitFromFlag(event?.detail?.enabled !== false);

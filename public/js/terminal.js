@@ -118,6 +118,16 @@
     return !els.dock.classList.contains('hidden');
   }
 
+  function notifyRuntimeContextRefresh() {
+    try {
+      window.dispatchEvent(new CustomEvent('evobrew:runtime-context-refresh'));
+    } catch (_) {
+      if (typeof window.refreshRuntimeContext === 'function') {
+        window.refreshRuntimeContext();
+      }
+    }
+  }
+
   function openDock({ focus = false } = {}) {
     if (!els.dock) return;
     els.dock.classList.remove('hidden');
@@ -126,12 +136,14 @@
     if (typeof window.switchDockTab === 'function') window.switchDockTab('terminal');
     fitActiveTerminal();
     if (focus) focusActiveTerminal();
+    notifyRuntimeContextRefresh();
   }
 
   function closeDock() {
     if (!els.dock) return;
     els.dock.classList.add('hidden');
     writeStorage(STORAGE.dockOpen, 'false');
+    notifyRuntimeContextRefresh();
   }
 
   function toggleDock({ focus = false } = {}) {

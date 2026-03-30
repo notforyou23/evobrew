@@ -97,6 +97,20 @@ Secrets (any key containing `api_key`, `token`, `password`, `secret`) are AES-25
 
 6-step interactive onboarding: (1) AI Providers — multiSelect UI, per-provider test via raw HTTPS POST, (2) OpenClaw, (3) Brains, (4) Server ports, (5) Service installation, (6) Verification. Config saved incrementally after each step. Secret inputs use raw terminal mode with `*` echo.
 
+Important flow details:
+
+- Wizard is **state-aware** — loads existing config, prints current status, then offers: configure missing only, reconfigure specific sections, full setup, or exit.
+- Provider step is richer than the docs imply:
+  - **OpenAI** → ChatGPT OAuth (Codex models) or API key
+  - **Anthropic** → OAuth or API key, with API-key fallback when OAuth fails
+  - **xAI** → API key with live validation
+  - **Ollama Cloud** → API key with live validation
+  - **Local Models** → detects Ollama and LMStudio, can save custom URLs even if unverified
+- **OpenClaw step** auto-detects three states: running gateway, installed-but-not-running, not detected. In all three cases the user can still save a manual config.
+- **Brains step** is not cosmetic — it configures directories plus embeddings. If the user skips embeddings, brain search falls back to keyword search.
+- **Service step** exposes real deployment choices: PM2 vs native service manager (`launchd`/`systemd`) vs skip/manual. Linux defaults toward PM2 when available.
+- Verification re-tests configured providers/OpenClaw after setup. Completion message prints the final URL and operational commands.
+
 ### Config Loaders
 
 - `lib/config-loader-sync.js` — Used at server startup (before event loop). **Inlines its own decryption** to avoid circular dependency.
@@ -217,7 +231,16 @@ Static: Anthropic, OpenAI, xAI, Codex. Dynamic: Ollama local (`/api/tags`), Olla
 
 **Init:** Registry lookup → provider flags → tool filtering (capability + security policy + terminal policy) → run context injection (walks up for `run-metadata.json`) → system prompt assembly (~4000 chars) → brain context injection (if enabled, top nodes scoring ≥0.20) → message array construction.
 
+Request shaping happens in `server/server.js` before the loop starts:
+
+- `allowedRoot` is derived from security profile/admin status.
+- `terminalPolicy` is attached per request (`enabled`, `allowedRoot`, default client id).
+- In internet profile with mutations disabled, chat tools are reduced to an explicit allowlist.
+- If `workspaceId` is present, `currentFolder`, `allowedRoot`, and terminal root are all rebound to the git worktree path.
+
 **Loop (max 75 iterations):** Each iteration: prune ephemeral messages → dispatch to provider branch → if tool calls present, execute all in parallel via `Promise.all()` → store results → continue. Loop exits when provider returns no tool calls.
+
+Concurrency guard: there is a **per-folder session mutex**. Two agent runs cannot operate on the same `currentFolder` simultaneously unless the previous session appears stale (>10 minutes).
 
 ### Provider Branches in the Loop
 
@@ -226,6 +249,11 @@ Each provider has its own streaming branch in `handleFunctionCalling()`:
 - **OpenAI** — `responses.create()` (Responses API), stateful via `previousResponseId`. Subsequent tool-call turns send only function outputs, not full history.
 - **Grok/xAI** — `responses.create()` (OpenAI-compatible), system prompt as first input item (xAI doesn't support `instructions`).
 - **Ollama/Ollama Cloud** — `provider.streamMessage()` from registry. Gemma models: tools disabled entirely.
+
+Reality of the architecture:
+
+- Provider detection prefers the registry, but `handleFunctionCalling()` still receives legacy OpenAI/Anthropic/xAI clients as arguments. The loop is mid-migration, not purely registry-driven yet.
+- OpenAI Codex is still a special case upstream in `server/server.js`: if the selected model is Codex, the route injects the legacy ChatGPT OAuth-backed client before entering the loop.
 
 ### Token Management
 
@@ -237,6 +265,24 @@ Each provider has its own streaming branch in `handleFunctionCalling()`:
 ### SSE Event Types
 
 `iteration`, `status`, `brain_search`, `thinking`, `tool_preparing`, `tool_progress` (throttled 200ms), `response_chunk`, `tools_start`, `tool_start`, `tool_complete`, `tool_result`, `info`, `error`, `complete` (includes `fullResponse`, `tokensUsed`, `iterations`, `pendingEdits`).
+
+Important caveats:
+
+- SSE is implemented manually with `fetch()` + `ReadableStream`, not the browser `EventSource` API.
+- The server calls `req.socket.setNoDelay(true)` for chat streams so short events (like tool starts/results) flush immediately instead of batching behind Nagle's algorithm.
+- `thinking` events are emitted when the assistant returns explanatory text alongside tool calls, so the UI can show reasoning before/while tools run.
+- `complete` is the handoff point for queued edits: `pendingEdits` only materialize in the frontend once the agent turn finishes.
+
+### Planning / Tool Policy Nuances
+
+- Tool availability is filtered in layers:
+  1. provider capability filter
+  2. explicit security allowlist (`allowedToolNames`)
+  3. terminal policy gating
+  4. planning-mode write restriction
+- Planning mode is activated either by `planningMode=true` or by a message starting with `plan:` (unless `executePlan` is true). In planning mode, write tools are removed but read/plan tools remain.
+- Tool execution is parallel within an iteration, but capped by provider performance hints (`maxConcurrentTools`, `maxToolsPerIteration`).
+- Pending edits are tracked inside the tool executor so later tool calls in the same iteration/turn can build on earlier proposed edits before anything touches disk.
 
 ---
 
@@ -271,6 +317,21 @@ Single-page app from `public/index.html` (~6400 lines). No bundler, no framework
 
 Cross-module communication via `window.*` globals and custom events (`cosmo:folderChanged`).
 
+UI Refresh layer details:
+
+- `ui-shell.js` is a glue layer that converts simple inline `onclick` handlers into delegated `data-action` handlers for key shell regions. This is a partial migration away from direct inline wiring, not a full architectural reset.
+- `ui-panels.js` persists layout state in `evobrew.ui.layout.v2` and restores panel visibility/docking heuristically on load.
+- `ui-shortcuts.js` is the newer shortcut system; legacy Monaco/global shortcuts still coexist with it.
+- `ui-onboarding.js` adds a **non-blocking empty-state card** (“Start Your Workspace”) over the editor when no folder is selected, reinforcing that folder + optional brain is the first interaction contract.
+
+Runtime context strip notes:
+
+- The header-adjacent runtime context strip and mobile bottom sheet are additive UI Refresh surfaces implemented in `public/index.html`, `public/js/ui-shell.js`, `public/css/ui-shell.css`, and `public/css/ui-responsive.css`.
+- It derives state from existing DOM/global state for folder, workspace, brain, model, pending edits, and terminal status rather than a backend runtime-context API.
+- Explicit refresh triggers were added to source flows (workspace activate/reset, folder switching, brain load, edit queue changes, terminal dock open/close) to reduce reliance on MutationObserver updates alone.
+- `workspaceCreate()` had a real bug: it referenced a missing `getActiveFolderPath()` function. A concrete active-folder resolver now lives in the page script.
+- Browsing the connected brain folder can sit inside a separate git repo; the runtime/workspace UI now avoids falsely showing repo workspace availability there unless a real active workspace already exists.
+
 ### Tab System
 
 5 tabs: `readme` (docs), `query` (semantic search), `files` (Agent IDE, default), `explore` (D3 graph), `openclaw` (COZ chat). Switched via `switchBrainTab(tabName)`. Each lazy-initialized on first visit.
@@ -278,6 +339,18 @@ Cross-module communication via `window.*` globals and custom events (`cosmo:fold
 ### Agent IDE Layout (files tab)
 
 Left sidebar (280px, resizable) | Center editor (Monaco, flex:1) | Right AI panel (400px, resizable) | Bottom terminal dock (280px, collapsible). Tablet (≤900px): sidebar/AI become fixed overlays with backdrop.
+
+Additional shell surfaces worth knowing about:
+
+- Workspace bar appears only when the current folder is inside a git repo and is the visible entry point to worktree isolation.
+- Brain picker button is independent from folder browsing; connected brain and working folder are intentionally separate concepts in the UI.
+- Command palette and recent-file/folder flows exist as first-class shell interactions, not just editor conveniences.
+- OpenClaw is treated as a tab/panel **and** as a model option, reinforcing the multi-surface design of the product.
+
+### Naming / Product Seams
+
+- Branding is still mixed across the repo: `Evobrew` is the canonical name, but `COSMO IDE`, `Brain Studio`, and older `COSMO` terminology still appear in docs and UI text.
+- This is not just docs drift — it shows up in visible interface strings (`Brain Studio`, OpenClaw copy, older comments/docs). Be careful when editing user-facing text not to create even more naming fragmentation.
 
 ### Theme System
 
@@ -303,6 +376,29 @@ User message → `escapeHtml()` (no markdown). Assistant message → `marked.par
 6. Preview: naive line-by-line diff in `alert()` (known weak point)
 7. Queue is in-memory only — lost on page refresh
 
+Important details:
+
+- Backend surgical edit tools (`edit_file_range`, `search_replace`, `insert_lines`, `delete_lines`) still return **complete edited file content** in `code_edit`; the frontend queue does not apply patches incrementally.
+- `ToolExecutor.trackPendingEdit()` means later tool calls within the same agent turn read from the **proposed** edited content, not the on-disk file. This lets the agent stack multiple edits coherently before the user approves anything.
+- Frontend review is intentionally explicit: nothing auto-applies. Acceptance writes to disk only when the user clicks accept.
+- Current preview UX is intentionally simple and is one of the known weak points in the otherwise strong review story.
+
+### Workspace Isolation
+
+- Workspaces are **git worktrees**, not ad-hoc temp directories. One workspace = one new branch under `.evobrew-workspaces/<id>` with branch name `evobrew/workspace-<id>`.
+- UI detects whether the current folder is inside a git repo via `/api/workspace/check/*`. If so, it shows a workspace bar with branch state and actions.
+- When a workspace is active, `workspaceId` is sent with `/api/chat` requests. Server resolves it to the worktree path and clamps both file access and terminal access to that workspace root.
+- Workspace lifecycle routes:
+  - `POST /api/workspace/create`
+  - `GET /api/workspace/list`
+  - `GET /api/workspace/:id` (includes diff summary/full diff/file list)
+  - `POST /api/workspace/:id/commit`
+  - `POST /api/workspace/:id/merge`
+  - `DELETE /api/workspace/:id`
+- Merge behavior is pragmatic: uncommitted changes in the worktree are auto-committed first; merge conflicts are detected and aborted so the source repo is not left in a conflicted state.
+- Workspace metadata is persisted in `.evobrew-workspaces/workspaces.json` per repo and restored lazily when that repo is re-opened.
+- UI currently auto-selects the **most recent active workspace** for a repo when refreshing workspace state.
+
 ### Keyboard Shortcuts
 
 Two systems: legacy (Monaco `addCommand()`, hardcoded) and UI Refresh (`ui-shortcuts.js`, capture-phase keydown listener with chord support, user-remappable via settings, persisted to localStorage).
@@ -327,6 +423,16 @@ Nodes have: `id`, `concept` (text content), `tag`, `weight`, `activation`, `embe
 
 `COSMO_BRAIN_DIRS`: comma-separated paths in env, or `config.json → features.brains.directories[]`. Each directory recursively scanned for subdirs containing `state.json.gz`.
 
+Operational details:
+
+- Brain loading is **singleton + hot-swappable**. `unloadBrain()` is called before loading a new brain; previous query engine is disposed/closed first.
+- Picker/list routes are separate from load routes:
+  - `/api/brains/locations` → configured brain roots + availability/counts
+  - `/api/brains/list` → brains within those roots, with optional exact counts (`counts=1`) or fast size estimates
+  - `/api/brain/info` → currently loaded brain, outputs path, admin status
+- UI brain selection is **non-blocking** relative to folder selection. Loading a brain does not switch the current folder; it updates brain state, enables the `Use Brain` toggle, refreshes brain-aware panels, and clears stale chat context.
+- Brain picker persists last loaded brain path and a short recent-brains list in localStorage so the UI can restore context across refreshes.
+
 ### Semantic Search (`lib/query-engine.js`, ~4000 lines)
 
 **Embedding model:** `text-embedding-3-small` with `dimensions: 512`. Must match brain file embeddings.
@@ -337,6 +443,22 @@ Nodes have: `id`, `concept` (text content), `tag`, `weight`, `activation`, `embe
 
 **Live journal merge:** Scans `agents/agent_N/findings.jsonl` for active runs. Baseline nodes take priority; live entries only added if not already captured.
 
+**Output-file context:** `executeEnhancedQuery()` can scan `outputs/` plus deliverables/code/execution artifacts. It prefers memory-guided document loading when available, but still includes filesystem-derived deliverables/code/execution so the query sees both semantic relevance and the concrete work product.
+
+**Follow-up context:** `/api/brain/query/stream` reconstructs the latest user/assistant pair from `conversationHistory` and passes it as `priorContext`, which is injected into the next query so follow-up questions can refer back to the previous answer.
+
+**Evidence model:** successful queries can attach `metadata.evidenceQuality` (confidence, temporal coverage, consensus, gaps) plus source counts. This is used by exporters and downstream context tracking.
+
+### Brain UI Surface
+
+- Main chat has a **`Use Brain`** toggle plus optional **PGS** controls. PGS controls are disabled unless a brain is loaded and brain context is enabled.
+- Brain activity is surfaced in multiple ways:
+  - status indicator (`none` / `passive` / `active`)
+  - expandable brain-context cards appended into chat when nodes are injected
+  - brain drawer with top activated nodes
+- The frontend listens for `brain_search` / `brain_context` events from the AI route and updates the UI live as retrieval happens.
+- Query/Explore tabs are hidden entirely if the brains feature is disabled in `/api/config`.
+
 ### PGS — Partitioned Graph Synthesis (`lib/pgs-engine.js`)
 
 For brains too large for single-pass context. Decomposes graph into communities via Louvain, runs parallel LLM sweeps per community, then synthesizes.
@@ -346,6 +468,14 @@ For brains too large for single-pass context. Decomposes graph into communities 
 **Sweep depth chips:** Skim (10%), Sample (25%, default), Deep (50%), Full (100%). Fraction applies to routed partitions only, not all partitions.
 
 **Session modes:** `full` (default, reset), `continue` (skip already-swept), `targeted` (re-route among unsearched).
+
+Runtime details:
+
+- PGS is entered through `executeEnhancedQuery()` when `enablePGS=true`; standard brain queries and PGS queries share the same endpoint contract.
+- Session state is persisted in `pgs-sessions/<sessionId>.json`, so users can resume or continue previous sweeps.
+- `partitions.json` is a disk cache; stale cache is invalidated when the brain hash changes.
+- SSE/streaming callers receive rich chunk events (`pgs_init`, `pgs_phase`, `pgs_session_updated`, `progress`) so long-running sweeps can show real progress instead of looking frozen.
+- Standard brain retrieval is the fast, selective context-injection path for the main AI loop; PGS is the deeper, slower, explicit retrieval strategy surfaced to the user.
 
 ### Codebase Indexer (`server/codebase-indexer.js`)
 
@@ -402,6 +532,20 @@ Dual-layer on every file operation: (1) string-normalized containment check agai
 ### OpenClaw/COZ Integration
 
 Two integration points: (1) COZ as virtual AI model (`openclaw:coz` in dropdown) — frontend detects prefix, bypasses `/api/chat`, sends directly to Gateway WebSocket with IDE context. (2) WebSocket proxy at `/api/gateway-ws` — raw TCP pipe to `OPENCLAW_GATEWAY_HOST:OPENCLAW_GATEWAY_PORT` for HTTPS mixed-content bypass.
+
+More precise architecture:
+
+- OpenClaw is exposed as a **virtual provider option** in `/api/providers/models`, labeled `COZ — Agent with Memory`. It is not part of the provider registry.
+- There are **two distinct OpenClaw sessions** in the UI:
+  - `evobrew:sidebar` — dedicated OpenClaw tab/chat
+  - `evobrew:main` — model-picker path used when the main assistant is set to OpenClaw
+- Browser auth is mediated through **`/api/gateway-auth`**. The frontend fetches connect-level auth params from the Evobrew server, so gateway credentials stay server-side.
+- Browser always connects to **`/api/gateway-ws`**; the server uses `net.connect()` and rewrites the WebSocket upgrade (`Origin`, query auth params) before piping frames to the Gateway. This is a raw TCP passthrough, not a ws-to-ws relay.
+- In **internet profile**, gateway proxying can be disabled independently via `INTERNET_ENABLE_GATEWAY_PROXY=false`; if enabled, it still requires proxy-secret auth on upgrade.
+- Main-chat OpenClaw requests are **context-enriched in the frontend** before being sent to Gateway: current file, selected text, brain status/path, and file-tree context are wrapped into the message.
+- Gateway events drive the UI directly: `connect.challenge` → send connect request, `agent` events stream deltas/lifecycle, `chat` final events provide deduped final responses.
+- Session keys coming back from Gateway may be prefixed; frontend handlers intentionally match with `endsWith(':evobrew:main')` / `endsWith(':evobrew:sidebar')` semantics.
+- Safe config exposed to the frontend via `/api/config` controls whether the OpenClaw tab is shown and what custom tab label (`openclaw.tab_name`) to use.
 
 ### OnlyOffice / Collabora
 
