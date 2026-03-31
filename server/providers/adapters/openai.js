@@ -557,10 +557,17 @@ class OpenAIAdapter extends ProviderAdapter {
     try {
       const stream = await client.chat.completions.create(openaiRequest);
 
-      let currentToolId = null;
-      let currentToolName = null;
-      let currentToolArgs = '';
+      const toolCallStates = new Map();
       let fullContent = '';
+
+      const parseToolArgs = (rawArgs) => {
+        if (!rawArgs) return {};
+        try {
+          return JSON.parse(rawArgs);
+        } catch {
+          return {};
+        }
+      };
 
       for await (const chunk of stream) {
         const delta = chunk.choices?.[0]?.delta;
@@ -578,31 +585,38 @@ class OpenAIAdapter extends ProviderAdapter {
         // Tool calls
         if (delta?.tool_calls) {
           for (const tc of delta.tool_calls) {
+            const index = Number.isInteger(tc.index) ? tc.index : 0;
+            const existing = toolCallStates.get(index) || {
+              id: null,
+              name: null,
+              argumentsText: ''
+            };
+            const isNew = !toolCallStates.has(index);
+
             if (tc.id) {
-              // New tool call starting
-              if (currentToolId) {
-                yield {
-                  type: 'tool_use_end',
-                  toolId: currentToolId,
-                  toolName: currentToolName,
-                  arguments: currentToolArgs ? JSON.parse(currentToolArgs) : {}
-                };
-              }
+              existing.id = tc.id;
+            }
+            if (typeof tc.function?.name === 'string' && tc.function.name.trim()) {
+              existing.name = tc.function.name.trim();
+            }
+            if (typeof tc.function?.arguments === 'string') {
+              existing.argumentsText += tc.function.arguments;
+            }
 
-              currentToolId = tc.id;
-              currentToolName = tc.function?.name;
-              currentToolArgs = tc.function?.arguments || '';
+            toolCallStates.set(index, existing);
 
+            if (isNew) {
               yield {
                 type: 'tool_use_start',
-                toolId: currentToolId,
-                toolName: currentToolName
+                toolId: existing.id || `tool_call_${index}`,
+                toolName: existing.name || 'unknown'
               };
-            } else if (tc.function?.arguments) {
-              currentToolArgs += tc.function.arguments;
+            }
+
+            if (typeof tc.function?.arguments === 'string' && tc.function.arguments.length > 0) {
               yield {
                 type: 'tool_use_delta',
-                toolId: currentToolId,
+                toolId: existing.id || `tool_call_${index}`,
                 argumentsDelta: tc.function.arguments
               };
             }
@@ -611,20 +625,22 @@ class OpenAIAdapter extends ProviderAdapter {
 
         // Stream finished
         if (finishReason) {
-          if (currentToolId) {
+          const orderedToolCalls = Array.from(toolCallStates.entries())
+            .sort((a, b) => a[0] - b[0])
+            .map(([index, state]) => ({
+              id: state.id || `tool_call_${index}`,
+              name: state.name || 'unknown',
+              arguments: parseToolArgs(state.argumentsText)
+            }));
+
+          for (const toolCall of orderedToolCalls) {
             yield {
               type: 'tool_use_end',
-              toolId: currentToolId,
-              toolName: currentToolName,
-              arguments: currentToolArgs ? JSON.parse(currentToolArgs) : {}
+              toolId: toolCall.id,
+              toolName: toolCall.name,
+              arguments: toolCall.arguments
             };
           }
-
-          const toolCalls = currentToolId ? [{
-            id: currentToolId,
-            name: currentToolName,
-            arguments: currentToolArgs ? JSON.parse(currentToolArgs) : {}
-          }] : [];
 
           yield {
             type: 'done',
@@ -632,7 +648,7 @@ class OpenAIAdapter extends ProviderAdapter {
               id: chunk.id,
               model: chunk.model,
               content: fullContent,
-              toolCalls,
+              toolCalls: orderedToolCalls,
               stopReason: this._mapStopReason(finishReason),
               usage: {
                 inputTokens: 0,

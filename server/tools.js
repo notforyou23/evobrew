@@ -928,6 +928,7 @@ class ToolExecutor {
         ? options.terminalPolicy.defaultClientId.trim()
         : 'ai'
     };
+    this.toolNames = new Set(toolDefinitions.map((tool) => tool.function.name));
     // Track proposed edits so file_read returns agent's own pending changes, not stale disk state
     this.pendingFileContents = new Map();
   }
@@ -1010,8 +1011,39 @@ class ToolExecutor {
   }
 
   isToolAllowed(toolName) {
+    const normalizedToolName = this.normalizeToolName(toolName);
     if (!this.allowedToolNames) return true;
-    return this.allowedToolNames.has(toolName);
+    return this.allowedToolNames.has(normalizedToolName);
+  }
+
+  normalizeToolName(toolName) {
+    const value = typeof toolName === 'string' ? toolName.trim() : '';
+    if (!value) return '';
+    if (this.toolNames.has(value)) return value;
+
+    const candidates = [value];
+    const seen = new Set();
+    const prefixPattern = /^(?:mshtools|mcp|tool|tools|function|functions)[._:-]+/i;
+
+    while (candidates.length > 0) {
+      const candidate = candidates.shift();
+      if (!candidate || seen.has(candidate)) continue;
+      seen.add(candidate);
+
+      if (this.toolNames.has(candidate)) return candidate;
+
+      const strippedPrefix = candidate.replace(prefixPattern, '');
+      if (strippedPrefix && strippedPrefix !== candidate) {
+        candidates.push(strippedPrefix);
+      }
+
+      const tailSegment = candidate.split(/[.:/]/).pop();
+      if (tailSegment && tailSegment !== candidate) {
+        candidates.push(tailSegment);
+      }
+    }
+
+    return value;
   }
 
   /**
@@ -1031,6 +1063,9 @@ class ToolExecutor {
 
     const pickFirstString = (...values) => {
       for (const value of values) {
+        if (typeof value === 'number' && Number.isFinite(value)) {
+          return String(value);
+        }
         if (typeof value === 'string' && value.trim()) {
           return value.trim();
         }
@@ -1134,17 +1169,18 @@ class ToolExecutor {
   }
 
   async execute(toolName, args) {
-    const normalizedArgs = this.normalizeToolArgs(toolName, args);
-    console.log(`[TOOL] ${toolName}(${JSON.stringify(normalizedArgs).substring(0, 100)}...)`);
+    const normalizedToolName = this.normalizeToolName(toolName);
+    const normalizedArgs = this.normalizeToolArgs(normalizedToolName, args);
+    console.log(`[TOOL] ${normalizedToolName}(${JSON.stringify(normalizedArgs).substring(0, 100)}...)`);
 
-    if (!this.isToolAllowed(toolName)) {
+    if (!this.isToolAllowed(normalizedToolName)) {
       return {
-        error: `Tool "${toolName}" is disabled by security policy in this deployment profile`
+        error: `Tool "${normalizedToolName || toolName}" is disabled by security policy in this deployment profile`
       };
     }
     
     try {
-      switch (toolName) {
+      switch (normalizedToolName) {
         case 'file_read':
           return await this.readFile(normalizedArgs.file_path);
           
@@ -1242,7 +1278,7 @@ class ToolExecutor {
           return this.planStatus(normalizedArgs.step_id, normalizedArgs.status, normalizedArgs.message);
 
         default:
-          return { error: `Unknown tool: ${toolName}` };
+          return { error: `Unknown tool: ${normalizedToolName || toolName}` };
       }
     } catch (error) {
       console.error(`[TOOL ERROR] ${toolName}:`, error.message);

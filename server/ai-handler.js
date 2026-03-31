@@ -1938,13 +1938,17 @@ Execute the pending steps now. Start with the first step that has status "pendin
                 return { toolCall: tc, result: { error: `Failed to parse arguments: ${e.message}` } };
               }
 
+              const canonicalToolName = typeof toolExecutor.normalizeToolName === 'function'
+                ? toolExecutor.normalizeToolName(toolName)
+                : toolName;
+
               try {
-                eventEmitter?.({ type: 'tool_start', tool: toolName, args, index: idx });
+                eventEmitter?.({ type: 'tool_start', tool: canonicalToolName, args, index: idx });
               } catch (emitErr) {
                 console.error(`[AI] Failed to emit tool_start:`, emitErr.message);
               }
 
-              const result = await toolExecutor.execute(toolName, args);
+              const result = await toolExecutor.execute(canonicalToolName, args);
             
             if (result.action === 'queue_edit' || result.action === 'queue_create') {
               pendingEdits.push({
@@ -1969,7 +1973,7 @@ Execute the pending steps now. Start with the first step that has status "pendin
               eventEmitter?.({ type: 'plan', action: 'step_status', stepId: result.stepId, status: result.status, message: result.message, planState: result.planState });
             }
             
-            eventEmitter?.({ type: 'tool_complete', tool: toolName, result, index: idx });
+            eventEmitter?.({ type: 'tool_complete', tool: canonicalToolName, result, index: idx });
             
             // Emit tool result summary for visibility
             let summary;
@@ -1977,38 +1981,38 @@ Execute the pending steps now. Start with the first step that has status "pendin
               summary = `Error: ${result.error}`;
             } else if (result.action === 'queue_edit' || result.action === 'queue_create') {
               summary = `${result.action === 'queue_create' ? 'New file' : 'Edit'} queued: ${result.file_path || 'file'}`;
-            } else if (toolName === 'file_read' || toolName === 'read_image') {
+            } else if (canonicalToolName === 'file_read' || canonicalToolName === 'read_image') {
               const size = result.content ? `${(result.content.length / 1024).toFixed(1)}KB` : '';
               summary = `${args?.file_path || 'file'} ${size ? `(${size})` : ''}`;
-            } else if (toolName === 'create_file') {
+            } else if (canonicalToolName === 'create_file') {
               summary = `Created: ${args?.file_path || 'file'}`;
-            } else if (toolName === 'edit_file' || toolName === 'search_replace') {
+            } else if (canonicalToolName === 'edit_file' || canonicalToolName === 'search_replace') {
               summary = `Edited: ${args?.file_path || 'file'}`;
-            } else if (toolName === 'list_directory') {
-              summary = `${result.files?.length || 0} items in ${args?.directory_path || 'directory'}`;
-            } else if (toolName === 'grep_search' || toolName === 'codebase_search') {
+            } else if (canonicalToolName === 'list_directory') {
+              summary = `${result.items?.length || result.count || 0} items in ${args?.directory_path || args?.path || 'directory'}`;
+            } else if (canonicalToolName === 'grep_search' || canonicalToolName === 'codebase_search') {
               const matches = result.results?.length || result.matches?.length || 0;
               summary = `${matches} match${matches !== 1 ? 'es' : ''} for "${(args?.query || args?.pattern || '').substring(0, 30)}"`;
-            } else if (toolName === 'run_terminal') {
+            } else if (canonicalToolName === 'run_terminal') {
               const commandPreview = (args?.command || '').substring(0, 40);
               const exitCode = Number.isInteger(result.exitCode) ? result.exitCode : '?';
               const status = result.success ? 'ok' : 'failed';
               summary = `Terminal ${status} (exit ${exitCode}): ${commandPreview}`;
-            } else if (toolName === 'terminal_open') {
+            } else if (canonicalToolName === 'terminal_open') {
               summary = `Terminal opened: ${result.session_id || 'session'}`;
-            } else if (toolName === 'terminal_write') {
+            } else if (canonicalToolName === 'terminal_write') {
               summary = `Terminal input sent: ${result.session_id || args?.session_id || 'session'}`;
-            } else if (toolName === 'terminal_wait') {
+            } else if (canonicalToolName === 'terminal_wait') {
               const status = result.timed_out ? 'timeout' : (result.matched ? 'matched' : (result.exited ? 'exited' : 'ok'));
               const sessionId = result.session_id || args?.session_id || 'session';
               summary = `Terminal wait (${status}): ${sessionId}`;
-            } else if (toolName === 'terminal_resize') {
+            } else if (canonicalToolName === 'terminal_resize') {
               summary = `Terminal resized: ${result.cols || args?.cols}x${result.rows || args?.rows}`;
-            } else if (toolName === 'terminal_close') {
+            } else if (canonicalToolName === 'terminal_close') {
               summary = `Terminal closed: ${result.session_id || args?.session_id || 'session'}`;
-            } else if (toolName === 'terminal_list') {
+            } else if (canonicalToolName === 'terminal_list') {
               summary = `${result.count || 0} terminal session(s)`;
-            } else if (toolName === 'delete_file') {
+            } else if (canonicalToolName === 'delete_file') {
               summary = `Deleted: ${args?.file_path || 'file'}`;
             } else if (result.files) {
               summary = `${result.files.length} items`;
@@ -2016,12 +2020,12 @@ Execute the pending steps now. Start with the first step that has status "pendin
               summary = 'Success';
             }
             
-            console.log(`[AI] Tool result for ${toolName}: ${summary}`); // DEBUG
+            console.log(`[AI] Tool result for ${canonicalToolName}: ${summary}`); // DEBUG
             
             try {
               eventEmitter?.({
                 type: 'tool_result',
-                tool: toolName,
+                tool: canonicalToolName,
                 success: !result.error,
                 summary: summary,
                 index: idx
