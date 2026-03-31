@@ -103,10 +103,14 @@ async function createRegistry(options = {}) {
   const registry = new ProviderRegistry();
   const detectOllamaEnabled = options.detectOllama !== false;
   const useAnthropicOAuth = options.useAnthropicOAuth !== false;
+  const evobrewConfig = await loadEvobrewConfig();
+  const anthropicConfig = evobrewConfig?.providers?.anthropic || {};
+  const anthropicApiKey = process.env.ANTHROPIC_API_KEY || anthropicConfig.api_key;
+  const preferAnthropicOAuth = useAnthropicOAuth && anthropicConfig.oauth !== false;
 
   // Initialize Anthropic
   // Uses COSMO IDE's existing OAuth service for token management
-  if (useAnthropicOAuth) {
+  if (preferAnthropicOAuth) {
     try {
       const anthropicAdapter = createAnthropicAdapterWithOAuth();
       registry.register(anthropicAdapter);
@@ -114,13 +118,13 @@ async function createRegistry(options = {}) {
     } catch (e) {
       console.warn('[Providers] ⚠️ Anthropic OAuth service failed, trying API key:', e.message);
       // Fallback to API key
-      if (process.env.ANTHROPIC_API_KEY) {
-        registry.initializeProvider('anthropic', { apiKey: process.env.ANTHROPIC_API_KEY });
+      if (anthropicApiKey) {
+        registry.initializeProvider('anthropic', { apiKey: anthropicApiKey });
         console.log('[Providers] ✅ Anthropic registered (API key)');
       }
     }
-  } else if (process.env.ANTHROPIC_API_KEY) {
-    registry.initializeProvider('anthropic', { apiKey: process.env.ANTHROPIC_API_KEY });
+  } else if (anthropicApiKey) {
+    registry.initializeProvider('anthropic', { apiKey: anthropicApiKey });
     console.log('[Providers] ✅ Anthropic registered (API key)');
   }
 
@@ -142,9 +146,6 @@ async function createRegistry(options = {}) {
   registry.registerModel('gpt-5.3-codex', 'openai-codex');
   registry.registerModel('gpt-5.3-codex-spark', 'openai-codex');
   console.log('[Providers] ℹ️ OpenAI Codex models available (OAuth via legacy backend client)');
-
-  // Load evobrew config for provider + local LLM settings
-  const evobrewConfig = await loadEvobrewConfig();
 
   // Initialize xAI (Grok)
   const xaiKey = process.env.XAI_API_KEY || evobrewConfig?.providers?.xai?.api_key;

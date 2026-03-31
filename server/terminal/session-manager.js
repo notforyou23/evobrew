@@ -72,6 +72,57 @@ function sessionId() {
   return crypto.randomBytes(12).toString('hex');
 }
 
+function getUnixShellLaunchArgs(shellPath) {
+  const shellName = path.basename(String(shellPath || '')).toLowerCase();
+
+  if (shellName === 'zsh') {
+    return ['-f'];
+  }
+
+  if (shellName === 'bash') {
+    return ['--noprofile', '--norc'];
+  }
+
+  if (shellName === 'fish') {
+    return ['--no-config'];
+  }
+
+  if (shellName === 'sh' || shellName === 'dash' || shellName === 'ksh') {
+    return [];
+  }
+
+  return [];
+}
+
+function buildIsolatedTerminalEnv(baseEnv, extraEnv = {}, metadata = {}) {
+  const env = {
+    ...baseEnv,
+    TERM: 'xterm-256color',
+    COLORTERM: baseEnv.COLORTERM || 'truecolor',
+    ...extraEnv
+  };
+
+  [
+    'TMUX',
+    'TMUX_PANE',
+    'TMUX_TMPDIR',
+    'STY',
+    'WINDOW',
+    'ZELLIJ',
+    'ZELLIJ_SESSION_NAME',
+    'ZELLIJ_PANE_ID'
+  ].forEach((key) => {
+    delete env[key];
+  });
+
+  env.EVOBREW_TERMINAL_SESSION = '1';
+  if (metadata.clientId) {
+    env.EVOBREW_TERMINAL_CLIENT_ID = String(metadata.clientId);
+  }
+
+  return env;
+}
+
 function resolveCanonicalPathForBoundary(absolutePath) {
   let candidate = path.resolve(absolutePath);
   while (!fs.existsSync(candidate)) {
@@ -183,7 +234,7 @@ class TerminalSessionManager {
       return {
         shell: explicit,
         shellType: platform === 'win32' ? 'powershell' : 'unix',
-        args: platform === 'win32' ? ['-NoLogo', '-NoProfile'] : []
+        args: platform === 'win32' ? ['-NoLogo', '-NoProfile'] : getUnixShellLaunchArgs(explicit)
       };
     }
 
@@ -206,7 +257,7 @@ class TerminalSessionManager {
     return {
       shell: process.env.SHELL || '/bin/bash',
       shellType: 'unix',
-      args: []
+      args: getUnixShellLaunchArgs(process.env.SHELL || '/bin/bash')
     };
   }
 
@@ -312,15 +363,13 @@ class TerminalSessionManager {
     const resolvedCwd = this._resolveCwd(params.cwd, params.allowedRoot || null);
     const shellInfo = this._resolveShell(params.shell || '');
 
-    const env = {
-      ...process.env,
-      TERM: 'xterm-256color',
-      COLORTERM: process.env.COLORTERM || 'truecolor',
-      ...(params.env && typeof params.env === 'object' ? params.env : {})
-    };
-
     const id = sessionId();
     const createdAt = nowIso();
+    const env = buildIsolatedTerminalEnv(
+      process.env,
+      params.env && typeof params.env === 'object' ? params.env : {},
+      { clientId }
+    );
 
     const ptyProcess = pty.spawn(shellInfo.shell, shellInfo.args, {
       name: 'xterm-256color',

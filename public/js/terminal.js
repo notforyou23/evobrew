@@ -461,6 +461,101 @@
     return state.sessions.get(state.activeSessionId) || null;
   }
 
+  function waitForWsOpen(timeoutMs = 4000) {
+    if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+      return Promise.resolve();
+    }
+
+    connectWs();
+
+    const ws = state.ws;
+    if (!ws) {
+      return Promise.reject(new Error('Terminal WebSocket is unavailable'));
+    }
+
+    return new Promise((resolve, reject) => {
+      const onOpen = () => {
+        cleanup();
+        resolve();
+      };
+
+      const onClose = () => {
+        cleanup();
+        reject(new Error('Terminal connection closed before it became ready'));
+      };
+
+      const onError = () => {
+        cleanup();
+        reject(new Error('Terminal connection failed'));
+      };
+
+      const cleanup = () => {
+        clearTimeout(timer);
+        ws.removeEventListener('open', onOpen);
+        ws.removeEventListener('close', onClose);
+        ws.removeEventListener('error', onError);
+      };
+
+      const timer = setTimeout(() => {
+        cleanup();
+        reject(new Error('Timed out waiting for terminal connection'));
+      }, timeoutMs);
+
+      ws.addEventListener('open', onOpen);
+      ws.addEventListener('close', onClose);
+      ws.addEventListener('error', onError);
+    });
+  }
+
+  async function sendInput(data, sessionId = state.activeSessionId) {
+    const targetSessionId = String(sessionId || '').trim();
+    if (!targetSessionId) {
+      throw new Error('No terminal session is active');
+    }
+
+    await waitForWsOpen();
+    attachWsSession(targetSessionId);
+    sendWs({
+      type: 'input',
+      session_id: targetSessionId,
+      data: String(data || '')
+    });
+
+    return {
+      success: true,
+      session_id: targetSessionId
+    };
+  }
+
+  async function runCommand(command, options = {}) {
+    const commandText = String(command || '').trim();
+    if (!commandText) {
+      throw new Error('Command is required');
+    }
+
+    const shouldFocus = options.focus !== false;
+    const shouldCreateNewSession = options.newSession === true;
+    let sessionId = String(options.sessionId || '').trim();
+
+    if (!sessionId) {
+      const active = activeSessionRecord();
+      sessionId = shouldCreateNewSession ? '' : (active?.session_id || '');
+    }
+
+    if (!sessionId) {
+      const created = await createSession();
+      sessionId = created?.session_id || '';
+    }
+
+    if (!sessionId) {
+      throw new Error('Unable to create a terminal session');
+    }
+
+    openDock({ focus: shouldFocus });
+    activateSession(sessionId, { focus: shouldFocus, attach: true });
+    return sendInput(`${commandText}${options.submit === false ? '' : '\r'}`, sessionId);
+  }
+
   async function listSessions() {
     const data = await fetchJson(`/api/terminal/sessions?clientId=${encodeURIComponent(getClientId())}`, {
       method: 'GET'
@@ -791,10 +886,13 @@
 
     window.evobrewTerminal = {
       getClientId,
+      getActiveSessionId: () => state.activeSessionId,
       toggleDock,
       createSession: enabled ? createSession : unavailable,
       focusTerminal: window.focusTerminal,
       killActiveSession: enabled ? killActiveSession : unavailable,
+      sendInput: enabled ? sendInput : unavailable,
+      runCommand: enabled ? runCommand : unavailable,
       listSessions: () => Array.from(state.sessions.values()).map((s) => ({
         session_id: s.session_id,
         state: s.state,

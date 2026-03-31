@@ -166,8 +166,15 @@ class OpenAIAdapter extends ProviderAdapter {
     }
 
     for (const msg of messages) {
-      // Skip system messages (already handled above)
-      if (msg.role === 'system') continue;
+      if (msg.role === 'system') {
+        if (!systemPrompt && typeof msg.content === 'string' && msg.content.trim()) {
+          converted.push({
+            role: 'system',
+            content: msg.content
+          });
+        }
+        continue;
+      }
 
       const converted_msg = {
         role: msg.role === 'tool' ? 'tool' : msg.role,

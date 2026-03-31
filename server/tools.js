@@ -1026,8 +1026,116 @@ class ToolExecutor {
     return resolved;
   }
 
+  normalizeToolArgs(toolName, rawArgs = {}) {
+    const args = rawArgs && typeof rawArgs === 'object' ? { ...rawArgs } : {};
+
+    const pickFirstString = (...values) => {
+      for (const value of values) {
+        if (typeof value === 'string' && value.trim()) {
+          return value.trim();
+        }
+      }
+      return '';
+    };
+
+    const pickFirstNumber = (...values) => {
+      for (const value of values) {
+        if (typeof value === 'number' && Number.isFinite(value)) {
+          return value;
+        }
+        if (typeof value === 'string' && value.trim() !== '') {
+          const parsed = Number(value);
+          if (Number.isFinite(parsed)) {
+            return parsed;
+          }
+        }
+      }
+      return undefined;
+    };
+
+    switch (toolName) {
+      case 'file_read':
+      case 'delete_file':
+      case 'read_image':
+        args.file_path = pickFirstString(args.file_path, args.path, args.filename, args.file);
+        break;
+      case 'list_directory':
+        args.directory_path = pickFirstString(args.directory_path, args.path, args.directory, args.folder, args.folder_path, args.cwd) || '.';
+        break;
+      case 'grep_search':
+        args.pattern = pickFirstString(args.pattern, args.query, args.search, args.text);
+        args.path = pickFirstString(args.path, args.directory_path, args.directory, args.folder, args.folder_path) || '.';
+        break;
+      case 'codebase_search':
+      case 'brain_search':
+      case 'brain_thoughts':
+        args.query = pickFirstString(args.query, args.search, args.prompt, args.topic, args.text);
+        args.limit = pickFirstNumber(args.limit, args.max_results, args.maxResults, args.count);
+        break;
+      case 'brain_node':
+        args.node_id = pickFirstString(args.node_id, args.id, args.nodeId);
+        break;
+      case 'edit_file':
+        args.file_path = pickFirstString(args.file_path, args.path, args.filename, args.file);
+        args.instructions = pickFirstString(args.instructions, args.instruction, args.prompt, args.request);
+        if (typeof args.code_edit !== 'string' && typeof args.content === 'string') {
+          args.code_edit = args.content;
+        }
+        break;
+      case 'edit_file_range':
+        args.file_path = pickFirstString(args.file_path, args.path, args.filename, args.file);
+        args.start_line = pickFirstNumber(args.start_line, args.startLine, args.from_line, args.fromLine);
+        args.end_line = pickFirstNumber(args.end_line, args.endLine, args.to_line, args.toLine);
+        if (typeof args.new_content !== 'string' && typeof args.content === 'string') {
+          args.new_content = args.content;
+        }
+        args.instructions = pickFirstString(args.instructions, args.instruction, args.prompt, args.request);
+        break;
+      case 'search_replace':
+        args.file_path = pickFirstString(args.file_path, args.path, args.filename, args.file);
+        args.old_string = pickFirstString(args.old_string, args.search, args.search_text, args.find);
+        args.new_string = pickFirstString(args.new_string, args.replace, args.replace_text, args.replacement);
+        args.instructions = pickFirstString(args.instructions, args.instruction, args.prompt, args.request);
+        break;
+      case 'insert_lines':
+        args.file_path = pickFirstString(args.file_path, args.path, args.filename, args.file);
+        args.line_number = pickFirstNumber(args.line_number, args.lineNumber, args.line, args.after_line, args.afterLine);
+        args.content = pickFirstString(args.content, args.new_content, args.text);
+        args.instructions = pickFirstString(args.instructions, args.instruction, args.prompt, args.request);
+        break;
+      case 'delete_lines':
+        args.file_path = pickFirstString(args.file_path, args.path, args.filename, args.file);
+        args.start_line = pickFirstNumber(args.start_line, args.startLine, args.from_line, args.fromLine);
+        args.end_line = pickFirstNumber(args.end_line, args.endLine, args.to_line, args.toLine);
+        args.instructions = pickFirstString(args.instructions, args.instruction, args.prompt, args.request);
+        break;
+      case 'create_file':
+      case 'create_docx':
+        args.file_path = pickFirstString(args.file_path, args.path, args.filename, args.file, args.output_path);
+        if (typeof args.content !== 'string') {
+          args.content = pickFirstString(args.content, args.text);
+        }
+        break;
+      case 'create_xlsx':
+        args.file_path = pickFirstString(args.file_path, args.path, args.filename, args.file, args.output_path);
+        break;
+      case 'run_terminal':
+        args.command = pickFirstString(args.command, args.cmd, args.shell_command, args.script);
+        break;
+      case 'run_tests':
+        args.command = pickFirstString(args.command, args.cmd, args.script);
+        args.file = pickFirstString(args.file, args.file_path, args.path, args.filename);
+        break;
+      default:
+        break;
+    }
+
+    return args;
+  }
+
   async execute(toolName, args) {
-    console.log(`[TOOL] ${toolName}(${JSON.stringify(args).substring(0, 100)}...)`);
+    const normalizedArgs = this.normalizeToolArgs(toolName, args);
+    console.log(`[TOOL] ${toolName}(${JSON.stringify(normalizedArgs).substring(0, 100)}...)`);
 
     if (!this.isToolAllowed(toolName)) {
       return {
@@ -1038,61 +1146,61 @@ class ToolExecutor {
     try {
       switch (toolName) {
         case 'file_read':
-          return await this.readFile(args.file_path);
+          return await this.readFile(normalizedArgs.file_path);
           
         case 'list_directory':
-          return await this.listDirectory(args.directory_path);
+          return await this.listDirectory(normalizedArgs.directory_path);
           
         case 'grep_search':
-          return await this.grepSearch(args.pattern, args.path);
+          return await this.grepSearch(normalizedArgs.pattern, normalizedArgs.path);
           
         case 'codebase_search':
-          return await this.codebaseSearch(args.query, args.limit);
+          return await this.codebaseSearch(normalizedArgs.query, normalizedArgs.limit);
           
         case 'edit_file':
-          return this.queueEdit(args.file_path, args.instructions, args.code_edit);
+          return this.queueEdit(normalizedArgs.file_path, normalizedArgs.instructions, normalizedArgs.code_edit);
           
         case 'edit_file_range':
-          return await this.queueEditRange(args.file_path, args.start_line, args.end_line, args.new_content, args.instructions);
+          return await this.queueEditRange(normalizedArgs.file_path, normalizedArgs.start_line, normalizedArgs.end_line, normalizedArgs.new_content, normalizedArgs.instructions);
           
         case 'search_replace':
-          return await this.queueSearchReplace(args.file_path, args.old_string, args.new_string, args.instructions);
+          return await this.queueSearchReplace(normalizedArgs.file_path, normalizedArgs.old_string, normalizedArgs.new_string, normalizedArgs.instructions);
           
         case 'insert_lines':
-          return await this.queueInsertLines(args.file_path, args.line_number, args.content, args.instructions);
+          return await this.queueInsertLines(normalizedArgs.file_path, normalizedArgs.line_number, normalizedArgs.content, normalizedArgs.instructions);
           
         case 'delete_lines':
-          return await this.queueDeleteLines(args.file_path, args.start_line, args.end_line, args.instructions);
+          return await this.queueDeleteLines(normalizedArgs.file_path, normalizedArgs.start_line, normalizedArgs.end_line, normalizedArgs.instructions);
           
         case 'create_file':
-          return await this.createFile(args.file_path, args.content);
+          return await this.createFile(normalizedArgs.file_path, normalizedArgs.content);
 
         case 'terminal_open':
-          return await this.terminalOpen(args);
+          return await this.terminalOpen(normalizedArgs);
 
         case 'terminal_write':
-          return await this.terminalWrite(args);
+          return await this.terminalWrite(normalizedArgs);
 
         case 'terminal_wait':
-          return await this.terminalWait(args);
+          return await this.terminalWait(normalizedArgs);
 
         case 'terminal_resize':
-          return await this.terminalResize(args);
+          return await this.terminalResize(normalizedArgs);
 
         case 'terminal_close':
-          return await this.terminalClose(args);
+          return await this.terminalClose(normalizedArgs);
 
         case 'terminal_list':
-          return await this.terminalList(args);
+          return await this.terminalList(normalizedArgs);
           
         case 'run_terminal':
-          return await this.runCommand(args.command);
+          return await this.runCommand(normalizedArgs.command);
           
         case 'delete_file':
-          return await this.deleteFile(args.file_path);
+          return await this.deleteFile(normalizedArgs.file_path);
           
         case 'read_image':
-          return await this.readImage(args.file_path);
+          return await this.readImage(normalizedArgs.file_path);
 
         case 'create_image':
           return await this.createImage(args.prompt, args.file_path, args.size, args.quality);
@@ -1101,37 +1209,37 @@ class ToolExecutor {
           return await this.editImage(args.prompt, args.input_images, args.output_path, args.mask_image, args.input_fidelity, args.size, args.quality);
 
         case 'create_docx':
-          return await this.createDocx(args.file_path, args.content);
+          return await this.createDocx(normalizedArgs.file_path, normalizedArgs.content);
           
         case 'create_xlsx':
-          return await this.createXlsx(args.file_path, args.sheets);
+          return await this.createXlsx(normalizedArgs.file_path, normalizedArgs.sheets);
 
         // Brain tools
         case 'brain_search':
-          return await this.brainSearch(args.query, args.limit);
+          return await this.brainSearch(normalizedArgs.query, normalizedArgs.limit);
         case 'brain_node':
-          return await this.brainNode(args.node_id);
+          return await this.brainNode(normalizedArgs.node_id);
         case 'brain_thoughts':
-          return await this.brainThoughts(args.query, args.limit);
+          return await this.brainThoughts(normalizedArgs.query, normalizedArgs.limit);
         case 'brain_coordinator_insights':
           return await this.brainCoordinatorInsights();
         case 'brain_stats':
           return await this.brainStats();
 
         case 'run_tests':
-          return await this.runTests(args.command, args.file);
+          return await this.runTests(normalizedArgs.command, normalizedArgs.file);
 
         case 'progress_update':
-          return await this.progressUpdate(args.completed, args.state, args.next_steps);
+          return await this.progressUpdate(normalizedArgs.completed, normalizedArgs.state, normalizedArgs.next_steps);
 
         case 'plan_create':
-          return this.planCreate(args.title, args.steps);
+          return this.planCreate(normalizedArgs.title, normalizedArgs.steps);
 
         case 'plan_update':
-          return this.planUpdate(args.step_id, args);
+          return this.planUpdate(normalizedArgs.step_id, normalizedArgs);
 
         case 'plan_status':
-          return this.planStatus(args.step_id, args.status, args.message);
+          return this.planStatus(normalizedArgs.step_id, normalizedArgs.status, normalizedArgs.message);
 
         default:
           return { error: `Unknown tool: ${toolName}` };

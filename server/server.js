@@ -399,6 +399,53 @@ function getTerminalClientId(req) {
   return raw;
 }
 
+function getAiTerminalClientId(req) {
+  const baseClientId = getTerminalClientId(req);
+  if (!baseClientId) return 'ai';
+
+  const candidate = `ai:${baseClientId}`;
+  if (candidate.length <= 128) {
+    return candidate;
+  }
+
+  const digest = crypto.createHash('sha256').update(baseClientId).digest('hex').slice(0, 24);
+  return `ai:${digest}`;
+}
+
+async function loadMutableServerConfig() {
+  const { loadConfigSafe, getDefaultConfig } = require('../lib/config-manager');
+  return (await loadConfigSafe()) || getDefaultConfig();
+}
+
+function syncProviderEnvFromConfig(config) {
+  const providers = config?.providers || {};
+
+  if (providers.openai?.api_key) process.env.OPENAI_API_KEY = providers.openai.api_key;
+  else delete process.env.OPENAI_API_KEY;
+
+  if (providers.anthropic?.api_key) process.env.ANTHROPIC_API_KEY = providers.anthropic.api_key;
+  else delete process.env.ANTHROPIC_API_KEY;
+
+  if (providers.xai?.api_key) process.env.XAI_API_KEY = providers.xai.api_key;
+  else delete process.env.XAI_API_KEY;
+
+  if (providers['ollama-cloud']?.api_key) process.env.OLLAMA_CLOUD_API_KEY = providers['ollama-cloud'].api_key;
+  else delete process.env.OLLAMA_CLOUD_API_KEY;
+}
+
+async function applyUpdatedServerConfig(config, options = {}) {
+  serverConfig = config;
+  syncProviderEnvFromConfig(config);
+
+  if (options.resetProviders === false) {
+    return;
+  }
+
+  const { resetDefaultRegistry, getDefaultRegistry } = require('./providers');
+  resetDefaultRegistry();
+  await getDefaultRegistry();
+}
+
 function ensureTerminalEnabled(req, res) {
   if (isTerminalEnabledForRequest(req)) {
     return true;
@@ -2104,7 +2151,7 @@ app.post('/api/chat', async (req, res) => {
     params.allowedRoot = getEffectiveAllowedRoot({ requestIsAdmin: isRequestAdmin(req) });
     params.disableSpreadsheetParsing = securityConfig.isInternetProfile;
     const terminalEnabled = isTerminalEnabledForRequest(req);
-    const terminalClientId = getTerminalClientId(req) || 'ai';
+    const terminalClientId = getAiTerminalClientId(req);
     params.terminalPolicy = {
       enabled: terminalEnabled,
       allowedRoot: getTerminalAllowedRoot(),
@@ -3797,7 +3844,7 @@ ALWAYS cite your sources with file paths and node IDs when possible.`;
 
     params.allowedRoot = getEffectiveAllowedRoot({ requestIsAdmin: isRequestAdmin(req) });
     const terminalEnabled = isTerminalEnabledForRequest(req);
-    const terminalClientId = getTerminalClientId(req) || 'ai';
+    const terminalClientId = getAiTerminalClientId(req);
     params.terminalPolicy = {
       enabled: terminalEnabled,
       allowedRoot: getTerminalAllowedRoot(),
@@ -4214,6 +4261,470 @@ app.get('/api/config', (req, res) => {
       tab_name: serverConfig?.openclaw?.tab_name || 'OpenClaw'
     }
   });
+});
+
+app.get('/api/setup/status', async (req, res) => {
+  try {
+    const { getConfigStatus } = require('../lib/setup-wizard');
+    const configStatus = await getConfigStatus(serverConfig);
+    const providers = serverConfig?.providers || {};
+    const brainsDirectories = Array.isArray(brainsConfig?.directories)
+      ? brainsConfig.directories.map((entry) => String(entry || '').trim()).filter(Boolean)
+      : [];
+    const httpsEnabled = fsSync.existsSync(path.join(__dirname, '../ssl/cert.pem'))
+      && fsSync.existsSync(path.join(__dirname, '../ssl/key.pem'));
+
+    res.json({
+      success: true,
+      app: {
+        config_source: configSource,
+        security_profile: securityConfig.securityProfile,
+        http_port: Number(PORT),
+        https_port: Number(HTTPS_PORT),
+        https_enabled: httpsEnabled,
+        terminal_enabled: terminalSessionManager.isEnabled(),
+        ui_refresh_enabled: process.env.UI_REFRESH_V1 !== 'false'
+      },
+      status: configStatus,
+      details: {
+        anthropic: {
+          enabled: providers.anthropic?.enabled === true,
+          auth_mode: providers.anthropic?.oauth ? 'oauth' : (providers.anthropic?.api_key ? 'api_key' : 'not_configured')
+        },
+        openai_api: {
+          enabled: providers.openai?.enabled === true,
+          has_api_key: Boolean(providers.openai?.api_key)
+        },
+        openai_codex: {
+          enabled: providers['openai-codex']?.enabled === true,
+          auth_mode: providers['openai-codex']?.enabled ? 'oauth' : 'not_configured'
+        },
+        xai: {
+          enabled: providers.xai?.enabled === true,
+          has_api_key: Boolean(providers.xai?.api_key)
+        },
+        ollama_cloud: {
+          enabled: providers['ollama-cloud']?.enabled === true,
+          has_api_key: Boolean(providers['ollama-cloud']?.api_key)
+        },
+        ollama: {
+          enabled: providers.ollama?.enabled !== false,
+          base_url: providers.ollama?.base_url || 'http://localhost:11434',
+          auto_detect: providers.ollama?.auto_detect !== false
+        },
+        brains: {
+          enabled: BRAINS_ENABLED,
+          directory_count: brainsDirectories.length,
+          semantic_search: Boolean(serverConfig?.embeddings?.api_key)
+        },
+        openclaw: {
+          enabled: serverConfig?.openclaw?.enabled === true,
+          tab_name: serverConfig?.openclaw?.tab_name || 'OpenClaw'
+        }
+      },
+      setup: {
+        command: 'evobrew setup',
+        status_command: 'evobrew setup --status',
+        may_restart_server: true,
+        restart_note: 'Running setup can temporarily stop and restart the Evobrew server.',
+        ollama_cloud_hot_apply: true
+      }
+    });
+  } catch (error) {
+    console.error('[SETUP-STATUS] Failed to build setup status:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/setup/providers/ollama-cloud/test', async (req, res) => {
+  try {
+    const apiKey = String(req.body?.apiKey || '').trim();
+    if (!apiKey) {
+      return res.status(400).json({ success: false, error: 'apiKey is required' });
+    }
+
+    const { testOllamaCloud } = require('../lib/setup-wizard');
+    const result = await testOllamaCloud(apiKey);
+    if (!result.valid) {
+      return res.status(400).json({
+        success: false,
+        error: result.error || 'Ollama Cloud API key test failed'
+      });
+    }
+
+    res.json({
+      success: true,
+      valid: true,
+      modelCount: Number(result.modelCount || 0)
+    });
+  } catch (error) {
+    console.error('[SETUP-OLLAMA-CLOUD] Test failed:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.put('/api/setup/providers/ollama-cloud', async (req, res) => {
+  try {
+    const apiKey = String(req.body?.apiKey || '').trim();
+    if (!apiKey) {
+      return res.status(400).json({ success: false, error: 'apiKey is required' });
+    }
+
+    const { testOllamaCloud } = require('../lib/setup-wizard');
+    const { saveConfig } = require('../lib/config-manager');
+
+    const validation = await testOllamaCloud(apiKey);
+    if (!validation.valid) {
+      return res.status(400).json({
+        success: false,
+        error: validation.error || 'Invalid Ollama Cloud API key'
+      });
+    }
+
+    const config = await loadMutableServerConfig();
+    if (!config.providers || typeof config.providers !== 'object') {
+      config.providers = {};
+    }
+
+    config.providers['ollama-cloud'] = {
+      ...(config.providers['ollama-cloud'] || {}),
+      enabled: true,
+      api_key: apiKey
+    };
+
+    await saveConfig(config);
+    await applyUpdatedServerConfig(config);
+
+    res.json({
+      success: true,
+      provider: 'ollama-cloud',
+      configured: true,
+      applied: true,
+      modelCount: Number(validation.modelCount || 0),
+      message: 'Ollama Cloud API key saved and applied'
+    });
+  } catch (error) {
+    console.error('[SETUP-OLLAMA-CLOUD] Save failed:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.delete('/api/setup/providers/ollama-cloud', async (req, res) => {
+  try {
+    const { saveConfig } = require('../lib/config-manager');
+    const config = await loadMutableServerConfig();
+    if (!config.providers || typeof config.providers !== 'object') {
+      config.providers = {};
+    }
+
+    config.providers['ollama-cloud'] = {
+      ...(config.providers['ollama-cloud'] || {}),
+      enabled: false,
+      api_key: ''
+    };
+
+    await saveConfig(config);
+    await applyUpdatedServerConfig(config);
+
+    res.json({
+      success: true,
+      provider: 'ollama-cloud',
+      configured: false,
+      applied: true,
+      message: 'Ollama Cloud disabled'
+    });
+  } catch (error) {
+    console.error('[SETUP-OLLAMA-CLOUD] Disable failed:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/setup/providers/openai/test', async (req, res) => {
+  try {
+    const apiKey = String(req.body?.apiKey || '').trim();
+    if (!apiKey) {
+      return res.status(400).json({ success: false, error: 'apiKey is required' });
+    }
+
+    const { testOpenAI } = require('../lib/setup-wizard');
+    const result = await testOpenAI(apiKey);
+    if (!result.valid) {
+      return res.status(400).json({ success: false, error: result.error || 'OpenAI API key test failed' });
+    }
+
+    res.json({ success: true, valid: true });
+  } catch (error) {
+    console.error('[SETUP-OPENAI] Test failed:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.put('/api/setup/providers/openai', async (req, res) => {
+  try {
+    const apiKey = String(req.body?.apiKey || '').trim();
+    if (!apiKey) {
+      return res.status(400).json({ success: false, error: 'apiKey is required' });
+    }
+
+    const { testOpenAI } = require('../lib/setup-wizard');
+    const { saveConfig } = require('../lib/config-manager');
+    const result = await testOpenAI(apiKey);
+    if (!result.valid) {
+      return res.status(400).json({ success: false, error: result.error || 'Invalid OpenAI API key' });
+    }
+
+    const config = await loadMutableServerConfig();
+    if (!config.providers || typeof config.providers !== 'object') config.providers = {};
+    config.providers.openai = {
+      ...(config.providers.openai || {}),
+      enabled: true,
+      api_key: apiKey
+    };
+
+    await saveConfig(config);
+    await applyUpdatedServerConfig(config);
+
+    res.json({ success: true, provider: 'openai', configured: true, applied: true, message: 'OpenAI API key saved and applied' });
+  } catch (error) {
+    console.error('[SETUP-OPENAI] Save failed:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.delete('/api/setup/providers/openai', async (req, res) => {
+  try {
+    const { saveConfig } = require('../lib/config-manager');
+    const config = await loadMutableServerConfig();
+    if (!config.providers || typeof config.providers !== 'object') config.providers = {};
+    config.providers.openai = {
+      ...(config.providers.openai || {}),
+      enabled: false,
+      api_key: ''
+    };
+
+    await saveConfig(config);
+    await applyUpdatedServerConfig(config);
+
+    res.json({ success: true, provider: 'openai', configured: false, applied: true, message: 'OpenAI API disabled' });
+  } catch (error) {
+    console.error('[SETUP-OPENAI] Disable failed:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/setup/providers/anthropic/test', async (req, res) => {
+  try {
+    const apiKey = String(req.body?.apiKey || '').trim();
+    if (!apiKey) {
+      return res.status(400).json({ success: false, error: 'apiKey is required' });
+    }
+
+    const { testAnthropic } = require('../lib/setup-wizard');
+    const result = await testAnthropic(apiKey);
+    if (!result.valid) {
+      return res.status(400).json({ success: false, error: result.error || 'Anthropic API key test failed' });
+    }
+
+    res.json({ success: true, valid: true });
+  } catch (error) {
+    console.error('[SETUP-ANTHROPIC] Test failed:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.put('/api/setup/providers/anthropic', async (req, res) => {
+  try {
+    const apiKey = String(req.body?.apiKey || '').trim();
+    if (!apiKey) {
+      return res.status(400).json({ success: false, error: 'apiKey is required' });
+    }
+
+    const { testAnthropic } = require('../lib/setup-wizard');
+    const { saveConfig } = require('../lib/config-manager');
+    const result = await testAnthropic(apiKey);
+    if (!result.valid) {
+      return res.status(400).json({ success: false, error: result.error || 'Invalid Anthropic API key' });
+    }
+
+    const config = await loadMutableServerConfig();
+    if (!config.providers || typeof config.providers !== 'object') config.providers = {};
+    config.providers.anthropic = {
+      ...(config.providers.anthropic || {}),
+      enabled: true,
+      oauth: false,
+      api_key: apiKey
+    };
+
+    await saveConfig(config);
+    await applyUpdatedServerConfig(config);
+
+    res.json({ success: true, provider: 'anthropic', configured: true, applied: true, message: 'Anthropic API key saved and applied', auth_mode: 'api_key' });
+  } catch (error) {
+    console.error('[SETUP-ANTHROPIC] Save failed:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.delete('/api/setup/providers/anthropic', async (req, res) => {
+  try {
+    const { saveConfig } = require('../lib/config-manager');
+    const config = await loadMutableServerConfig();
+    if (!config.providers || typeof config.providers !== 'object') config.providers = {};
+    config.providers.anthropic = {
+      ...(config.providers.anthropic || {}),
+      enabled: false,
+      oauth: false,
+      api_key: ''
+    };
+
+    await saveConfig(config);
+    await applyUpdatedServerConfig(config);
+
+    res.json({ success: true, provider: 'anthropic', configured: false, applied: true, message: 'Anthropic disabled' });
+  } catch (error) {
+    console.error('[SETUP-ANTHROPIC] Disable failed:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/setup/providers/xai/test', async (req, res) => {
+  try {
+    const apiKey = String(req.body?.apiKey || '').trim();
+    if (!apiKey) {
+      return res.status(400).json({ success: false, error: 'apiKey is required' });
+    }
+
+    const { testXAI } = require('../lib/setup-wizard');
+    const result = await testXAI(apiKey);
+    if (!result.valid) {
+      return res.status(400).json({ success: false, error: result.error || 'xAI API key test failed' });
+    }
+
+    res.json({ success: true, valid: true });
+  } catch (error) {
+    console.error('[SETUP-XAI] Test failed:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.put('/api/setup/providers/xai', async (req, res) => {
+  try {
+    const apiKey = String(req.body?.apiKey || '').trim();
+    if (!apiKey) {
+      return res.status(400).json({ success: false, error: 'apiKey is required' });
+    }
+
+    const { testXAI } = require('../lib/setup-wizard');
+    const { saveConfig } = require('../lib/config-manager');
+    const result = await testXAI(apiKey);
+    if (!result.valid) {
+      return res.status(400).json({ success: false, error: result.error || 'Invalid xAI API key' });
+    }
+
+    const config = await loadMutableServerConfig();
+    if (!config.providers || typeof config.providers !== 'object') config.providers = {};
+    config.providers.xai = {
+      ...(config.providers.xai || {}),
+      enabled: true,
+      api_key: apiKey
+    };
+
+    await saveConfig(config);
+    await applyUpdatedServerConfig(config);
+
+    res.json({ success: true, provider: 'xai', configured: true, applied: true, message: 'xAI API key saved and applied' });
+  } catch (error) {
+    console.error('[SETUP-XAI] Save failed:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.delete('/api/setup/providers/xai', async (req, res) => {
+  try {
+    const { saveConfig } = require('../lib/config-manager');
+    const config = await loadMutableServerConfig();
+    if (!config.providers || typeof config.providers !== 'object') config.providers = {};
+    config.providers.xai = {
+      ...(config.providers.xai || {}),
+      enabled: false,
+      api_key: ''
+    };
+
+    await saveConfig(config);
+    await applyUpdatedServerConfig(config);
+
+    res.json({ success: true, provider: 'xai', configured: false, applied: true, message: 'xAI disabled' });
+  } catch (error) {
+    console.error('[SETUP-XAI] Disable failed:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/setup/providers/ollama/test', async (req, res) => {
+  try {
+    const baseUrl = String(req.body?.baseUrl || 'http://localhost:11434').trim() || 'http://localhost:11434';
+    const { detectOllama } = require('../lib/setup-wizard');
+    const result = await detectOllama(baseUrl);
+    if (!result.running) {
+      return res.status(400).json({ success: false, error: result.error || 'Ollama is not reachable at the provided URL' });
+    }
+
+    res.json({ success: true, running: true, modelCount: Number(result.modelCount || 0), models: result.models || [] });
+  } catch (error) {
+    console.error('[SETUP-OLLAMA] Test failed:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.put('/api/setup/providers/ollama', async (req, res) => {
+  try {
+    const baseUrl = String(req.body?.baseUrl || 'http://localhost:11434').trim() || 'http://localhost:11434';
+    const autoDetect = req.body?.autoDetect !== false;
+
+    const { detectOllama } = require('../lib/setup-wizard');
+    const { saveConfig } = require('../lib/config-manager');
+    const result = await detectOllama(baseUrl);
+    if (!result.running) {
+      return res.status(400).json({ success: false, error: result.error || 'Ollama is not reachable at the provided URL' });
+    }
+
+    const config = await loadMutableServerConfig();
+    if (!config.providers || typeof config.providers !== 'object') config.providers = {};
+    config.providers.ollama = {
+      ...(config.providers.ollama || {}),
+      enabled: true,
+      base_url: baseUrl,
+      auto_detect: autoDetect
+    };
+
+    await saveConfig(config);
+    await applyUpdatedServerConfig(config);
+
+    res.json({ success: true, provider: 'ollama', configured: true, applied: true, baseUrl, autoDetect, modelCount: Number(result.modelCount || 0), message: 'Ollama settings saved and applied' });
+  } catch (error) {
+    console.error('[SETUP-OLLAMA] Save failed:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.delete('/api/setup/providers/ollama', async (req, res) => {
+  try {
+    const { saveConfig } = require('../lib/config-manager');
+    const config = await loadMutableServerConfig();
+    if (!config.providers || typeof config.providers !== 'object') config.providers = {};
+    config.providers.ollama = {
+      ...(config.providers.ollama || {}),
+      enabled: false
+    };
+
+    await saveConfig(config);
+    await applyUpdatedServerConfig(config);
+
+    res.json({ success: true, provider: 'ollama', configured: false, applied: true, message: 'Ollama disabled' });
+  } catch (error) {
+    console.error('[SETUP-OLLAMA] Disable failed:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 app.get('/api/brains/locations', async (req, res) => {

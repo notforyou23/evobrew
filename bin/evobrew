@@ -131,10 +131,11 @@ function needsSetup() {
     const hasOpenAI = config.providers?.openai?.enabled && config.providers.openai.api_key;
     const hasOpenAICodex = config.providers?.['openai-codex']?.enabled;
     const hasXAI = config.providers?.xai?.enabled && config.providers.xai.api_key;
+    const hasOllamaCloud = config.providers?.['ollama-cloud']?.enabled && config.providers['ollama-cloud'].api_key;
     const hasOllama = config.providers?.ollama?.enabled;
     
     // Need setup if no providers are configured
-    if (!hasAnthropic && !hasOpenAI && !hasOpenAICodex && !hasXAI && !hasOllama) {
+    if (!hasAnthropic && !hasOpenAI && !hasOpenAICodex && !hasXAI && !hasOllamaCloud && !hasOllama) {
       return true;
     }
     
@@ -156,7 +157,7 @@ function parseCsvList(input) {
 function printConfigStatus(status) {
   console.log('📋 Current Configuration:');
 
-  const order = ['anthropic', 'openaiCodex', 'xai', 'ollama', 'openclaw'];
+  const order = ['anthropic', 'openaiApi', 'openaiCodex', 'xai', 'ollamaCloud', 'ollama', 'openclaw', 'brains'];
 
   for (const key of order) {
     const item = status[key];
@@ -805,12 +806,18 @@ async function handleConfigCommand() {
       }
         
       case 'setup': {
-        const staleCheck = await checkAndKillStaleProcess(3405);
-        if (!staleCheck.ok) {
-          process.exit(1);
+        const setupArgs = process.argv.slice(3);
+        const setupOptions = parseSetupArgs(setupArgs);
+
+        let staleCheck = { ok: true, killed: false };
+        if (!setupOptions.showStatus) {
+          staleCheck = await checkAndKillStaleProcess(3405);
+          if (!staleCheck.ok) {
+            process.exit(1);
+          }
         }
 
-        await runSetupWizard(process.argv.slice(3));
+        await runSetupWizard(setupArgs);
         
         // If we killed a server to run setup, restart it
         if (staleCheck.killed) {

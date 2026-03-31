@@ -128,4 +128,5 @@ dist/
 build/
 out/
 .playwright-cli/
+.playwright-mcp/
 .evobrew-workspaces/

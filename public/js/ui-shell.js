@@ -461,6 +461,7 @@
     if (window.UIRefreshPanels?.init) window.UIRefreshPanels.init();
     if (window.UIRefreshOnboarding?.init) window.UIRefreshOnboarding.init();
     if (window.UIRefreshShortcuts?.init) window.UIRefreshShortcuts.init();
+    if (window.UIRefreshLiveSettings?.init) window.UIRefreshLiveSettings.init();
   }
 
   function maybeInitFromFlag(enabled) {

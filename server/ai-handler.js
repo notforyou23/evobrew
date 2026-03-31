@@ -121,6 +121,43 @@ function trimMessages(messages, maxTokenEstimate = 200000) {
   return trimmed;
 }
 
+function normalizeUnifiedToolCalls(toolCalls = []) {
+  if (!Array.isArray(toolCalls)) return [];
+
+  return toolCalls
+    .map((toolCall) => {
+      if (!toolCall) return null;
+
+      if (toolCall.function?.name) {
+        return toolCall;
+      }
+
+      const name = toolCall.name || toolCall.toolName || '';
+      const rawArgs = toolCall.arguments;
+      let argsText = '{}';
+
+      if (typeof rawArgs === 'string') {
+        argsText = rawArgs || '{}';
+      } else if (rawArgs && typeof rawArgs === 'object') {
+        try {
+          argsText = JSON.stringify(rawArgs);
+        } catch (_) {
+          argsText = '{}';
+        }
+      }
+
+      return {
+        id: toolCall.id || `call_${Date.now()}`,
+        type: 'function',
+        function: {
+          name,
+          arguments: argsText
+        }
+      };
+    })
+    .filter(Boolean);
+}
+
 // ============================================================================
 // TOOL RESULT SANITIZATION - avoid storing huge payloads in message history
 // ============================================================================
@@ -592,6 +629,17 @@ This makes you a true IDE assistant, not just a chatbot.
 When exploring brain research outputs, know the dual structure:
 - **agents/** → Agent discoveries, insights, findings
 - **outputs/** → Actual deliverables (documents, code, reports)
+
+## Brain Tool Strategy
+
+When the human asks about remembered research, prior findings, coordinator insights, or anything in the connected brain:
+- Start with **\`brain_search\`** using a natural-language query.
+- Use **\`brain_node\`** with a returned \`node_id\` to read the full node.
+- Use **\`brain_thoughts\`** to inspect agent reasoning trails.
+- Use **\`brain_coordinator_insights\`** for high-level strategic review.
+- Use **\`brain_stats\`** for overview/health of the loaded brain.
+
+Do not claim the brain is unavailable unless these tools fail or no brain is loaded.
 
 ## Remember
 
@@ -1649,9 +1697,27 @@ Execute the pending steps now. Start with the first step that has status "pendin
             if (chunk.type === 'content_delta' && chunk.delta?.text) {
               textContent += chunk.delta.text;
               eventEmitter?.({ type: 'response_chunk', chunk: chunk.delta.text });
+              continue;
             }
+
+            if (chunk.type === 'text' && chunk.text) {
+              textContent += chunk.text;
+              eventEmitter?.({ type: 'response_chunk', chunk: chunk.text });
+              continue;
+            }
+
             if (chunk.type === 'tool_calls' && chunk.tool_calls) {
-              toolCalls = chunk.tool_calls;
+              toolCalls = normalizeUnifiedToolCalls(chunk.tool_calls);
+              continue;
+            }
+
+            if (chunk.type === 'done' && chunk.response) {
+              if (!textContent && chunk.response.content) {
+                textContent = String(chunk.response.content || '');
+              }
+              if ((!toolCalls || toolCalls.length === 0) && chunk.response.toolCalls) {
+                toolCalls = normalizeUnifiedToolCalls(chunk.response.toolCalls);
+              }
             }
           }
 

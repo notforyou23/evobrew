@@ -1612,3 +1612,7 @@ function getQueryTabStyles() {
   }
   `;
 }
+
+window.QueryTab = {
+  populateModels
+};
