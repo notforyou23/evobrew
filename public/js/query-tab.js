@@ -213,6 +213,12 @@ function bindQueryTabEvents() {
     }
   });
 
+  if (modelSelect && !modelSelect.dataset.catalogHydrationBound) {
+    modelSelect.addEventListener('focus', ensureQueryModelCatalogLoaded);
+    modelSelect.addEventListener('mousedown', ensureQueryModelCatalogLoaded);
+    modelSelect.dataset.catalogHydrationBound = 'true';
+  }
+
   // Update options summary
   const updateSummary = () => {
     const summary = document.getElementById('qt-options-summary');
@@ -291,7 +297,16 @@ async function populateModels() {
   if (!select) return;
 
   // Default fallback
-  select.innerHTML = '<option value="openai/latest-stable" data-provider="openai">Latest OpenAI Stable</option>';
+  select.innerHTML = `
+    <option value="openai/latest-stable" data-provider="openai">Latest OpenAI Stable</option>
+    <option value="anthropic/latest-sonnet" data-provider="anthropic">Latest Sonnet</option>
+    <option value="anthropic/latest-opus" data-provider="anthropic">Latest Opus</option>
+    <option value="openai-codex/latest-codex" data-provider="openai-codex">Latest Codex</option>
+    <option value="xai/latest-fast" data-provider="xai">Latest xAI Fast</option>
+    <option value="ollama-cloud/latest-coder" data-provider="ollama-cloud">Latest Ollama Cloud Coder</option>
+    <option value="openai/o4-mini" data-provider="openai">o4-mini</option>
+    <option value="anthropic/claude-sonnet-4-20250514" data-provider="anthropic">Claude Sonnet 4</option>
+  `;
 
   try {
     const res = await fetch('/api/providers/models');
@@ -322,6 +337,8 @@ async function populateModels() {
       select.appendChild(group);
     }
 
+    select.dataset.catalogLoaded = 'true';
+
     // Update summary
     const summary = document.getElementById('qt-options-summary');
     const mode = document.getElementById('qt-mode')?.value || 'full';
@@ -330,6 +347,14 @@ async function populateModels() {
   } catch (e) {
     console.warn('[QueryTab] Could not load models:', e);
   }
+}
+
+function ensureQueryModelCatalogLoaded() {
+  const select = document.getElementById('qt-model');
+  if (!select) return;
+  const optionCount = select.querySelectorAll('option').length;
+  if (select.dataset.catalogLoaded === 'true' && optionCount > 20) return;
+  populateModels();
 }
 
 /* ═══════════════════════════════════════════════════════

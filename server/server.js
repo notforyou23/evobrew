@@ -4709,7 +4709,7 @@ app.get('/api/brains/locations', async (req, res) => {
   }
 
   try {
-    const locations = [];
+    const rawLocations = [];
     for (const dir of BRAIN_DIRS) {
       let available = true;
       try {
@@ -4747,13 +4747,36 @@ app.get('/api/brains/locations', async (req, res) => {
         return BRAIN_DIR_LABELS[dir] || path.basename(dir) || 'brains';
       })();
 
-      locations.push({
+      rawLocations.push({
         label,
         path: dir,
         available,
         brainCount
       });
     }
+
+    const labelCounts = rawLocations.reduce((acc, location) => {
+      acc[location.label] = (acc[location.label] || 0) + 1;
+      return acc;
+    }, {});
+
+    const locations = rawLocations.map((location) => {
+      const duplicateCount = labelCounts[location.label] || 0;
+      const resolvedPath = path.resolve(location.path);
+      let suffix = path.basename(resolvedPath) || path.basename(path.dirname(resolvedPath));
+      if (suffix === 'runs' || suffix === 'priorRuns') {
+        suffix = path.basename(path.dirname(resolvedPath)) || suffix;
+      }
+      const displayLabel = duplicateCount > 1
+        ? `${location.label} · ${suffix}`
+        : location.label;
+
+      return {
+        ...location,
+        id: location.path,
+        displayLabel
+      };
+    });
 
     res.json({ success: true, locations });
   } catch (error) {
@@ -4772,15 +4795,18 @@ app.get('/api/brains/list', async (req, res) => {
   }
   
   try {
+    const locationPathFilter = req.query.locationPath || null;
     const locationFilter = req.query.location || null;
     const withCounts = req.query.counts === '1';
-    const cacheKey = `${locationFilter || 'all'}:${withCounts ? 'c' : 'f'}`;
+    const cacheKey = `${locationPathFilter || locationFilter || 'all'}:${withCounts ? 'c' : 'f'}`;
     const cached = _getCachedBrains(cacheKey);
     if (cached) return res.json({ success: true, brains: cached, cached: true });
 
-    const dirs = locationFilter
-      ? BRAIN_DIRS.filter(d => BRAIN_DIR_LABELS[d] === locationFilter)
-      : BRAIN_DIRS;
+    const dirs = locationPathFilter
+      ? BRAIN_DIRS.filter(d => path.resolve(d) === path.resolve(locationPathFilter))
+      : locationFilter
+        ? BRAIN_DIRS.filter(d => BRAIN_DIR_LABELS[d] === locationFilter)
+        : BRAIN_DIRS;
 
     const brains = [];
     for (const dir of dirs) {

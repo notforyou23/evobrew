@@ -4989,6 +4989,16 @@
                                     <option value="openai/latest-stable" data-provider="openai">Latest OpenAI Stable</option>
                                     <option value="openai-codex/latest-codex" data-provider="openai-codex">Latest Codex</option>
                                     <option value="xai/latest-fast" data-provider="xai">Latest xAI Fast</option>
+                                    <option value="anthropic/claude-sonnet-4-20250514" data-provider="anthropic">Claude Sonnet 4</option>
+                                    <option value="anthropic/claude-opus-4-20250514" data-provider="anthropic">Claude Opus 4</option>
+                                    <option value="openai/o4-mini" data-provider="openai">o4-mini</option>
+                                    <option value="openai/o3-pro" data-provider="openai">o3-pro</option>
+                                    <option value="openai/gpt-5.3-codex" data-provider="openai">GPT-5.3 Codex</option>
+                                    <option value="openai-codex/gpt-5.3-codex-spark" data-provider="openai-codex">GPT-5.3 Codex Spark</option>
+                                    <option value="xai/grok-code-fast-1" data-provider="xai">Grok Code Fast 1</option>
+                                    <option value="xai/grok-4-fast-reasoning" data-provider="xai">Grok 4 Fast Reasoning</option>
+                                    <option value="ollama-cloud/latest-coder" data-provider="ollama-cloud">Latest Ollama Cloud Coder</option>
+                                    <option value="ollama/qwen2.5-coder:7b" data-provider="ollama">Ollama Qwen2.5 Coder 7B</option>
                                 </select>
                             </div>
                             
@@ -13083,10 +13093,19 @@ ${html}
             updateProviderStatus(data.providerCount);
             
             console.log(`[Models] Loaded ${data.models.length} models from ${data.providerCount} providers`);
+            select.dataset.catalogLoaded = 'true';
           } catch (err) {
             console.error('[Models] Failed to load models:', err);
             // Keep existing hardcoded options as fallback
           }
+        }
+
+        function ensureModelSelectorHydrated() {
+          const select = document.getElementById('ai-model-select');
+          if (!select) return;
+          const optionCount = select.querySelectorAll('option').length;
+          if (select.dataset.catalogLoaded === 'true' && optionCount > 20) return;
+          populateModelSelector();
         }
         
         function updateProviderStatus(count) {
@@ -13110,6 +13129,12 @@ ${html}
         function setupOpenClawModelHandler() {
           const select = document.getElementById('ai-model-select');
           if (!select) return;
+
+          if (!select.dataset.catalogHydrationBound) {
+            select.addEventListener('focus', ensureModelSelectorHydrated);
+            select.addEventListener('mousedown', ensureModelSelectorHydrated);
+            select.dataset.catalogHydrationBound = 'true';
+          }
 
           select.addEventListener('change', () => {
             if (select.selectedOptions?.[0]?.dataset?.provider === 'openclaw') {
@@ -14118,6 +14143,10 @@ ${html}
     let _bpSelectedLocation = null;
     let _bpLocations = null;
 
+    function brainPickerKey(value) {
+      return String(value || '').replace(/[^a-z0-9]/gi, '_');
+    }
+
     const _locationColors = {
       'cosmo-home': '#10b981',
       'main': '#0d9488',
@@ -14191,18 +14220,19 @@ ${html}
         _bpLocations = data.locations.filter(l => l.available && l.brainCount > 0);
         locEl.innerHTML = _bpLocations.map(loc => {
           const color = _locationColors[loc.label] || '#6b7280';
-          return `<button onclick="selectBrainLocation('${loc.label}')" 
-            id="bp-loc-${loc.label.replace(/[^a-z0-9]/gi,'_')}"
+          const locationKey = loc.id || loc.path;
+          return `<button onclick="selectBrainLocation('${locationKey.replace(/'/g, "\\'")}')" 
+            id="bp-loc-${brainPickerKey(locationKey)}"
             style="padding:6px 12px; border-radius:6px; border:1px solid ${color}40; background:${color}15; 
             color:${color}; cursor:pointer; font-size:12px; font-weight:500; transition:all 0.15s;"
             onmouseover="this.style.background='${color}30'" onmouseout="this.style.background=this.classList.contains('bp-active')?'${color}30':'${color}15'">
-            ${loc.label} <span style="opacity:0.7">(${loc.brainCount})</span>
+            ${loc.displayLabel || loc.label} <span style="opacity:0.7">(${loc.brainCount})</span>
           </button>`;
         }).join('');
 
         // Auto-select cosmo-home if available, otherwise first
         const defaultLoc = _bpLocations.find(l => l.label === 'cosmo-home') || _bpLocations[0];
-        if (defaultLoc) selectBrainLocation(defaultLoc.label);
+        if (defaultLoc) selectBrainLocation(defaultLoc.id || defaultLoc.path);
         else listEl.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-secondary);">No brain locations found</div>';
       } catch (err) {
         // Fallback: locations endpoint not present — hide location row and use flat list
@@ -14214,12 +14244,14 @@ ${html}
       }
     }
 
-    async function selectBrainLocation(label) {
-      _bpSelectedLocation = label;
+    async function selectBrainLocation(locationKey) {
+      _bpSelectedLocation = locationKey;
+      const location = (_bpLocations || []).find(loc => (loc.id || loc.path) === locationKey) || null;
+      const label = location?.label || 'main';
       // Update active tab styling
       document.querySelectorAll('#brainPickerLocations button').forEach(btn => {
         btn.classList.remove('bp-active');
-        const isThis = btn.id === `bp-loc-${label.replace(/[^a-z0-9]/gi,'_')}`;
+        const isThis = btn.id === `bp-loc-${brainPickerKey(locationKey)}`;
         const color = _locationColors[label] || '#6b7280';
         if (isThis) {
           btn.classList.add('bp-active');
@@ -14227,21 +14259,23 @@ ${html}
           btn.style.borderColor = color;
           btn.style.fontWeight = '700';
         } else {
-          const origLabel = btn.textContent.trim().split(' ')[0];
+          const match = (_bpLocations || []).find(loc => `bp-loc-${brainPickerKey(loc.id || loc.path)}` === btn.id);
+          const origLabel = match?.label || btn.textContent.trim().split(' ')[0];
           const origColor = _locationColors[origLabel] || '#6b7280';
           btn.style.background = origColor + '15';
           btn.style.borderColor = origColor + '40';
           btn.style.fontWeight = '500';
         }
       });
-      await fetchBrainList(label);
+      await fetchBrainList(locationKey);
     }
 
-    async function fetchBrainList(location) {
+    async function fetchBrainList(locationKey) {
       const listEl = document.getElementById('brainPickerList');
       listEl.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-secondary);">Loading brains...</div>';
       try {
-        const url = location ? `/api/brains/list?location=${encodeURIComponent(location)}` : '/api/brains/list';
+        const location = (_bpLocations || []).find(loc => (loc.id || loc.path) === locationKey) || null;
+        const url = locationKey ? `/api/brains/list?locationPath=${encodeURIComponent(locationKey)}` : '/api/brains/list';
         const res = await fetch(url);
         const data = await res.json();
         if (!data.success || !data.brains.length) {
@@ -14251,7 +14285,7 @@ ${html}
         const infoRes = await fetch('/api/brain/info');
         const info = await infoRes.json();
         const currentPath = info.brainPath || null;
-        const color = _locationColors[location] || '#6b7280';
+        const color = _locationColors[location?.label] || '#6b7280';
 
         listEl.innerHTML = data.brains.map(b => {
           const isActive = currentPath && b.path === currentPath;
@@ -14294,13 +14328,13 @@ ${html}
         if (!data.success) throw new Error(data.error);
         // Persist brain path so it survives page refresh
         try { localStorage.setItem(BRAIN_PATH_STORAGE_KEY, brainPath); } catch (_) {}
-        // Track recent brains (last 3)
+        // Track recent brains
         try {
           const RECENT_KEY = 'evobrew.brain.recent';
           let recent = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
           recent = recent.filter(r => r.path !== brainPath);
           recent.unshift({ path: brainPath, name: data.brain.name, nodes: data.brain.nodes });
-          if (recent.length > 3) recent = recent.slice(0, 3);
+          if (recent.length > 8) recent = recent.slice(0, 8);
           localStorage.setItem(RECENT_KEY, JSON.stringify(recent));
         } catch (_) {}
         // Update brain indicator to passive state
