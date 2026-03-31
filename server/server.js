@@ -3567,6 +3567,27 @@ app.get('/api/brain/info', (req, res) => {
   });
 });
 
+app.post('/api/brain/unload', (req, res) => {
+  try {
+    const loader = getBrainLoader();
+    if (!loader) {
+      return res.json({ success: true, unloaded: false, message: 'No brain loaded' });
+    }
+
+    const unloadedPath = loader.brainPath;
+    unloadBrain();
+
+    return res.json({
+      success: true,
+      unloaded: true,
+      brainPath: unloadedPath
+    });
+  } catch (error) {
+    console.error('[BRAIN] Failed to unload brain:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // ── Streaming SSE query endpoint ──────────────────────────────────
 app.post('/api/brain/query/stream', async (req, res) => {
   const queryEngine = getQueryEngine();

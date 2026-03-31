@@ -4668,6 +4668,10 @@
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v2H3z"/><path d="M3 10h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
                                 Choose Folder
                             </button>
+                            <button class="overflow-item" onclick="startFreshApp()" role="menuitem">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/></svg>
+                                Start Fresh
+                            </button>
                             <button class="overflow-item" data-action="createNewFile()" role="menuitem">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M14 2v6h6"/><path d="M12 12v6"/><path d="M9 15h6"/></svg>
                                 New File
@@ -4846,6 +4850,9 @@
                         <button class="btn btn-icon" id="go-up-btn" data-action="goUpDirectory()" data-tooltip="Go Up" style="background: none; padding: 4px 8px; font-size: 14px;" title="Go to parent folder">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"/><path d="m6 11 6-6 6 6"/></svg>
                         </button>
+                        <button class="btn btn-icon" onclick="startFreshApp()" data-tooltip="Start Fresh" style="background: none; padding: 4px 8px; font-size: 14px;" title="Start fresh: clear current session, folder, brain, and terminal state">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/></svg>
+                        </button>
                         <button class="btn btn-icon" id="brain-folder-btn" data-action="toggleBrainFolder()" data-tooltip="Brain Folder" style="background: none; padding: 4px 8px; font-size: 14px; display: none;" title="Open connected brain folder">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7z"/><path d="M9 21h6"/></svg>
                         </button>
@@ -4957,6 +4964,7 @@
                                     </label>
                                     <button class="btn-icon" id="history-toggle-btn" data-action="toggleChatHistory()" title="History">H</button>
                                     <button class="btn-icon" data-action="startNewChat()" title="New Chat">+</button>
+                                    <button class="btn-icon" onclick="startFreshApp()" title="Start Fresh">↺</button>
                                     <button class="btn-icon" data-action="toggleAI()" title="Close">x</button>
                                 </div>
                             </div>
@@ -5378,6 +5386,7 @@
                 <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
                     <button onclick="navigateUp()" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;">Up</button>
                     <button onclick="navigateToHome()" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;" title="Jump to working folder start">Working</button>
+                    <button onclick="navigateToRoot()" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;" title="Jump to filesystem root">Root</button>
                     <div style="flex: 1; padding: 6px 12px; background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; font-size: 12px; font-family: monospace; overflow-x: auto; white-space: nowrap;" id="current-path-display">
                         /Users
                     </div>
@@ -11479,6 +11488,159 @@ ${result.content}`;
             updateTokenCounter();
         }
 
+        function closeAllOpenFiles(options = {}) {
+            const { force = false } = options;
+            const fileEntries = Array.from(openFiles.entries());
+            const dirtyFiles = fileEntries.filter(([, fileData]) => fileData?.dirty && !fileData?.readOnly);
+
+            if (!force && dirtyFiles.length > 0) {
+                const names = dirtyFiles.slice(0, 5).map(([, fileData]) => fileData?.name || 'Untitled');
+                const moreCount = Math.max(0, dirtyFiles.length - names.length);
+                const summary = moreCount > 0 ? `${names.join(', ')} and ${moreCount} more` : names.join(', ');
+                if (!confirm(`Discard unsaved changes and start over?\n\n${summary}`)) {
+                    return false;
+                }
+            }
+
+            fileEntries.forEach(([filePath, fileData]) => {
+                try {
+                    if (fileData?.model && typeof fileData.model.dispose === 'function') {
+                        fileData.model.dispose();
+                    }
+                } catch (_) {}
+
+                const selectorPath = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(filePath) : filePath.replace(/"/g, '\\"');
+                const tab = document.querySelector(`.tab[data-path="${selectorPath}"]`);
+                if (tab) tab.remove();
+            });
+
+            openFiles.clear();
+            pinnedTabs = new Set();
+            activeFile = null;
+
+            if (editor) {
+                editor.setModel(null);
+            }
+
+            const tabsBar = document.getElementById('tabs-bar');
+            if (tabsBar) tabsBar.innerHTML = '';
+            const breadcrumbBar = document.getElementById('breadcrumb-bar');
+            if (breadcrumbBar) breadcrumbBar.style.display = 'none';
+            const statusFile = document.getElementById('status-file');
+            if (statusFile) statusFile.textContent = 'No file open';
+            const statusLang = document.getElementById('status-lang');
+            if (statusLang) statusLang.textContent = '';
+            updateSaveButtons();
+            updateFileStats();
+
+            return true;
+        }
+
+        function clearWorkspacePersistence() {
+            try {
+                const keysToRemove = [];
+                for (let index = 0; index < localStorage.length; index += 1) {
+                    const key = localStorage.key(index);
+                    if (!key) continue;
+                    if (key.startsWith('evobrew-workspace-') || key.startsWith('evobrew-recent-files-')) {
+                        keysToRemove.push(key);
+                    }
+                }
+                keysToRemove.forEach((key) => localStorage.removeItem(key));
+            } catch (_) {}
+        }
+
+        async function closeAllTerminalSessions() {
+            if (typeof window.getTerminalClientId !== 'function') {
+                return;
+            }
+
+            const clientId = window.getTerminalClientId();
+            if (!clientId) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/terminal/sessions?clientId=${encodeURIComponent(clientId)}`);
+                if (!response.ok) return;
+
+                const data = await response.json();
+                const sessions = Array.isArray(data.sessions) ? data.sessions : [];
+
+                await Promise.allSettled(sessions.map((session) => {
+                    const sessionId = session?.session_id;
+                    if (!sessionId) return Promise.resolve();
+                    return fetch(`/api/terminal/sessions/${encodeURIComponent(sessionId)}?clientId=${encodeURIComponent(clientId)}`, {
+                        method: 'DELETE'
+                    });
+                }));
+            } catch (error) {
+                console.warn('[RESET] Failed to close terminal sessions:', error.message);
+            }
+
+            try {
+                localStorage.removeItem('evobrew.terminal.client_id.v1');
+                localStorage.removeItem('evobrew.terminal.active_session.v1');
+                localStorage.removeItem('evobrew.terminal.open.v1');
+            } catch (_) {}
+        }
+
+        async function unloadActiveBrain() {
+            try {
+                await fetch('/api/brain/unload', { method: 'POST' });
+            } catch (error) {
+                console.warn('[RESET] Failed to unload brain:', error.message);
+            }
+
+            try {
+                localStorage.removeItem(BRAIN_PATH_STORAGE_KEY);
+            } catch (_) {}
+        }
+
+        async function startFreshApp() {
+            const confirmed = confirm('Start fresh? This clears the current chat session, open tabs, working folder, connected brain, and terminal sessions. Saved files and saved conversation history stay intact.');
+            if (!confirmed) {
+                return;
+            }
+
+            const filesClosed = closeAllOpenFiles();
+            if (!filesClosed) {
+                return;
+            }
+
+            clearAIChat();
+            chatHistory.startNewConversation();
+            closeAllModals();
+            if (typeof closeHeaderOverflow === 'function') {
+                closeHeaderOverflow();
+            }
+            stopAutoRefresh();
+            clearWorkspacePersistence();
+
+            workingDirectory = null;
+            viewingBrainFolder = false;
+            folderPath = null;
+            currentBrowsePath = null;
+            allFiles = [];
+            window.activeWorkspaceId = null;
+            window.currentBrainInfo = { hasBrain: false, brainPath: null, outputsPath: null };
+            window.brainOutputsPath = null;
+
+            try {
+                localStorage.removeItem(WORKING_FOLDER_STORAGE_KEY);
+            } catch (_) {}
+
+            await Promise.allSettled([
+                closeAllTerminalSessions(),
+                unloadActiveBrain()
+            ]);
+
+            const url = new URL(window.location.href);
+            url.searchParams.delete('path');
+            url.searchParams.delete('file');
+            window.location.href = url.toString();
+        }
+
         // ============================================================================
         // EXPORT & DOWNLOAD
         // ============================================================================
@@ -12825,6 +12987,11 @@ ${html}
         async function navigateToHome() {
             await browseFolders(getFolderBrowserStartPath());
         }
+
+        async function navigateToRoot() {
+            const rootPath = isWindows ? 'C:\\' : '/';
+            await browseFolders(rootPath);
+        }
         
         function selectCurrentFolder() {
             if (!currentBrowsePath) {
@@ -12927,6 +13094,7 @@ ${html}
                 { id: 'file.new', label: 'New File', action: showNewFileDialog },
                 { id: 'file.rename', label: 'Rename File', action: () => { if (activeFile) renameFileDialog(activeFile); } },
                 { id: 'file.delete', label: 'Delete File', action: () => { if (activeFile) deleteFileDialog(activeFile); } },
+                { id: 'workspace.startFresh', label: 'Start Fresh', action: startFreshApp },
                 { id: 'export.html', label: 'Export Markdown to HTML', action: exportMarkdownToHTML },
                 { id: 'export.pdf', label: 'Export Markdown to PDF', action: exportMarkdownToPDF },
                 { id: 'view.toggleSidebar', label: 'Toggle Sidebar', action: toggleSidebar, keys: 'Cmd+B' },
