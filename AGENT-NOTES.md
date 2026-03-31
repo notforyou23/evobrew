@@ -101,7 +101,7 @@ This repository has **TWO local installations** with different purposes:
    ```bash
    cd /Users/jtr/_JTR23_/cosmo_ide_v2_dev
    # Make changes
-   npm start  # Test on port 3407
+   ./bin/evobrew start  # Test from the CLI entrypoint
    ```
 
 2. **Test alongside stable**
@@ -218,8 +218,8 @@ switch (os.platform()) {
 
 ### Start Server
 ```bash
-npm start  # Production
-npm run dev  # Development (auto-reload)
+./bin/evobrew start  # Preferred CLI entrypoint
+node server/server.js  # Direct server entrypoint for debugging
 ```
 
 ### Add New AI Tool
@@ -292,7 +292,7 @@ lsof -ti:3407 | xargs kill -9  # For dev
 
 ### Can't Start Server
 1. Check `.env` exists and has API keys
-2. Check `node_modules/` exists - run `npm install`
+2. Check dependencies are installed for this checkout
 3. Check ports not in use
 4. Verify you're in the correct folder (dev vs stable)
 

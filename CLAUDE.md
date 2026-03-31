@@ -4,20 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-Evobrew — model-agnostic AI workspace (Node.js/Express + vanilla JS frontend). Global npm package that provides an IDE-like environment with multi-provider AI chat, semantic knowledge graphs (.brain packages), function calling, PTY terminal sessions, and persistent memory via OpenClaw. Also branded "COSMO IDE" in some docs.
+Evobrew — model-agnostic AI workspace (Node.js/Express + vanilla JS frontend). CLI-driven app with multi-provider AI chat, semantic knowledge graphs (.brain packages), function calling, PTY terminal sessions, and persistent memory via OpenClaw. Also branded "COSMO IDE" in some docs.
 
 ## Commands
 
 ```bash
-npm start                # Run server (node server/server.js)
-npm run dev              # Run with nodemon auto-restart
+./bin/evobrew start      # Preferred local CLI entrypoint
+node server/server.js    # Direct server entrypoint for debugging
 node --check <file>      # Syntax-check a file (always do this before committing)
-npm run db:migrate       # Run Prisma migrations
-npm run db:generate      # Regenerate Prisma client
-npm run security:test    # Security smoke tests (spawns server, tests auth/boundary)
+./node_modules/.bin/prisma migrate dev  # Run Prisma migrations
+./node_modules/.bin/prisma generate     # Regenerate Prisma client
+node scripts/security-smoke.js          # Security smoke tests (spawns server, tests auth/boundary)
 ```
 
-CLI (when installed globally): `evobrew start`, `evobrew setup`, `evobrew daemon install|start|stop`, `evobrew doctor`, `evobrew config show|edit|reset`, `evobrew update`, `evobrew version`
+CLI commands: `./bin/evobrew start`, `./bin/evobrew setup`, `./bin/evobrew daemon install|start|stop`, `./bin/evobrew doctor`, `./bin/evobrew config show|edit|reset`, `./bin/evobrew version`
+
+When the CLI is installed globally, drop the `./bin/` prefix. For source checkouts, prefer `git pull` + restart over `evobrew update` until the updater is generalized beyond package-manager-specific flows.
 
 No formal linter or test suite — validate with `node --check` on all modified files.
 

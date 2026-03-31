@@ -2,21 +2,18 @@
 
 ## One-Time Setup (5 minutes)
 
+Install the source-checkout dependencies with your preferred Node package manager before continuing.
+
 ```bash
-# 1. Clone and install
+# 1. Clone
 git clone https://github.com/notforyou23/evobrew.git
 cd evobrew
-npm install
 
-# 2. Configure
-cp .env.example .env
-nano .env  # Add your API keys
+# 2. Run setup
+./bin/evobrew setup
 
-# 3. Initialize database
-npm run db:migrate
-
-# 4. Start
-npx evobrew start
+# 3. Start
+./bin/evobrew start
 ```
 
 ## What to Add in `.env`
@@ -36,9 +33,10 @@ Open http://localhost:3405 (or your custom port)
 ## Commands
 
 ```bash
-npx evobrew start   # Start server
-npx evobrew setup   # Show setup guide
-npx evobrew config  # Open .env file
+./bin/evobrew start         # Start server
+./bin/evobrew setup         # Run onboarding/setup
+./bin/evobrew setup --status
+./bin/evobrew config show   # Show current config
 ```
 
 ## Anthropic Setup
@@ -52,8 +50,8 @@ ANTHROPIC_OAUTH_ONLY=false
 
 **Option B: OAuth (better rate limits)**
 ```bash
-node import-oauth.js
-# Opens browser for authorization
+./bin/evobrew setup
+# Choose the Anthropic OAuth path in setup
 ```
 
 See [docs/ANTHROPIC_OAUTH_SETUP.md](./docs/ANTHROPIC_OAUTH_SETUP.md) for details.
@@ -64,7 +62,7 @@ See [docs/ANTHROPIC_OAUTH_SETUP.md](./docs/ANTHROPIC_OAUTH_SETUP.md) for details
 - Change `HTTP_PORT` in `.env` to a different port (e.g., 3410)
 
 **Database errors:**
-- Run: `npm run db:migrate`
+- Make sure dependencies are installed for this checkout, then rerun `./bin/evobrew setup`
 
 **API key errors:**
 - Check `.env` has valid keys
