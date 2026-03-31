@@ -4,6 +4,39 @@
 
 ---
 
+## Provider Setup + Context Regression Handoff (Mar 2026)
+
+- Added native in-app provider setup/status controls in Settings for `OpenAI API`, `Anthropic API-key mode`, `xAI`, `Ollama Cloud`, and local `Ollama`.
+- Main files touched for that pass: `server/server.js`, `server/providers/index.js`, `lib/config-manager.js`, `lib/config-loader.js`, `lib/config-loader-sync.js`, `public/js/ui-live-settings.js`, `public/css/ui-components.css`, `public/js/query-tab.js`.
+- Added live setup/status endpoints and hot-apply flows so provider keys can be saved encrypted and applied without a full manual restart.
+- `evobrew setup --status` is now safe to launch from inside the app terminal; full `evobrew setup` still warns because it may stop/restart the server.
+
+### Ollama Cloud Fixes
+
+- `Ollama Cloud` backend wiring was real, but the runtime behavior regressed in two places:
+  1. `server/providers/adapters/openai.js` was dropping inline `system` messages for chat-completions requests.
+  2. `server/ai-handler.js` expected `content_delta` chunks, while `OpenAIAdapter`-style streams for `ollama-cloud` emit `text` and `done` chunks.
+- Resulting symptoms were severe: models forgot they were in Evobrew, lost IDE/tool/brain context, failed to remember prior turns, and acted like generic public chatbots.
+- Fixes landed in `server/providers/adapters/openai.js` and `server/ai-handler.js`; live verification showed `ollama-cloud` models again understand app identity, tool access, brain access patterns, and previous-turn context.
+
+### Tool Compatibility Fixes
+
+- `Ollama Cloud` tool use was also brittle because some models emitted argument aliases like `path` instead of exact schema keys like `directory_path`.
+- `server/tools.js` now normalizes common aliases before dispatch for core file/directory tools, search tools, brain tools, edit tools, and test/terminal helpers.
+- Verified fix: forced `list_directory` on `ollama-cloud/glm-5` now works instead of looping with `Path must be a non-empty string`.
+
+### Important Current State
+
+- `OpenAI`, `xAI`, and fixed `Ollama Cloud` all now preserve IDE identity + prior-turn memory correctly in local verification.
+- `Anthropic` API-key mode is now properly respected by provider init; saving an Anthropic API key in live Settings flips config to `oauth: false`.
+- Local server used during verification had `hasBrain=false` at `/api/brain/info`, so live brain-tool execution against a loaded brain was not re-verified in that exact session — only the prompt/tool understanding path was checked.
+
+### Suggested Next Step
+
+- If another provider starts acting like a generic public chatbot again, inspect `system` message preservation first, then inspect tool-argument normalization before assuming the model itself is broken.
+
+---
+
 ## Runtime Context Handoff (Mar 2026)
 
 - Added an additive runtime context UI under the header and as a mobile bottom sheet.

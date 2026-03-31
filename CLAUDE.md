@@ -111,6 +111,24 @@ Important flow details:
 - **Service step** exposes real deployment choices: PM2 vs native service manager (`launchd`/`systemd`) vs skip/manual. Linux defaults toward PM2 when available.
 - Verification re-tests configured providers/OpenClaw after setup. Completion message prints the final URL and operational commands.
 
+### Runtime Provider Setup Surface
+
+There is now a real in-app provider setup surface in Settings, backed by `server/server.js` routes under `/api/setup/*`.
+
+- **Status route:** `/api/setup/status` returns live app/provider state plus safe detail fields (auth mode, has_api_key, Ollama base URL, brain directory count, etc.).
+- **Native in-app save/test/disable flows:**
+  - `OpenAI API`
+  - `Anthropic` **API-key mode only**
+  - `xAI`
+  - `Ollama Cloud`
+  - local `Ollama`
+- **Still terminal/CLI-driven:**
+  - `Anthropic OAuth`
+  - `OpenAI Codex OAuth`
+  These are launched from Settings into the integrated terminal because they still depend on the full CLI/browser exchange.
+- Provider changes are **hot-applied** by saving encrypted config, syncing env, then calling `resetDefaultRegistry()` + `getDefaultRegistry()`.
+- `evobrew setup --status` is special-cased to avoid stopping the server; full `evobrew setup` may still stop/restart it.
+
 ### Config Loaders
 
 - `lib/config-loader-sync.js` — Used at server startup (before event loop). **Inlines its own decryption** to avoid circular dependency.
@@ -181,6 +199,12 @@ Anthropic (OAuth or API key) → OpenAI → OpenAI Codex (model IDs only, no ada
 | `ollama-cloud` | OpenAIAdapter + override | API key | Yes — `/v1/models` |
 | `lmstudio` | OpenAIAdapter + override | None (local) | Via listModels() |
 
+Important provider nuance:
+
+- `Anthropic` init now respects `config.providers.anthropic.oauth === false`; saving an Anthropic API key from the live Settings panel intentionally flips it out of OAuth mode.
+- `Ollama Cloud`, `xAI`, and `OpenAI` all ride the OpenAI-compatible adapter path, so system-prompt handling and tool-call normalization bugs can affect them together.
+- `Ollama Cloud` is **not** just model listing wiring; it is a real provider path used by `ai-handler.js` with streamed chat and tool calls.
+
 ### Available Models
 
 **Anthropic:** `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-opus-4-5`, `claude-sonnet-4-5`, `claude-sonnet-5`
@@ -189,6 +213,14 @@ Anthropic (OAuth or API key) → OpenAI → OpenAI Codex (model IDs only, no ada
 **Ollama Cloud:** dynamic — seed list includes `nemotron-3-super:cloud`, `qwen3.5:397b`, `deepseek-v3.1:671b`, `kimi-k2:1t`
 **Ollama (local):** dynamic — whatever is installed (`ollama list`)
 **OpenAI Codex:** `gpt-5.2`, `gpt-5.3-codex`, `gpt-5.3-codex-spark` (via ChatGPT OAuth)
+
+### OpenAI-Compatible Adapter Gotcha
+
+The OpenAI-compatible path (`OpenAI`, `xAI`, `Ollama Cloud`, `LMStudio`) is sensitive to how `system` messages are preserved:
+
+- For **Responses API** models, system content is converted into `instructions` plus non-system input items.
+- For **chat-completions** models, inline `system` messages must survive `_convertMessages()` or the model loses IDE identity, tool guidance, brain/tool strategy, open-files context, and conversation summary.
+- A real Mar 2026 regression came from dropping inline `system` messages in `server/providers/adapters/openai.js`, which made `Ollama Cloud` behave like a generic public chatbot with no Evobrew context.
 
 ### Adding a New Provider
 
@@ -303,6 +335,20 @@ Important caveats:
 ### ToolExecutor Security
 
 Three-level path validation: (1) `allowedToolNames` whitelist, (2) `resolveAndValidatePath()` — resolves to absolute, (3) `isPathAllowed()` — dual check: string-normalized containment AND `realpathSync` canonical check (catches symlink escapes). Null bytes rejected. Admin mode (`COSMO_ADMIN_MODE=true`) bypasses all path restrictions.
+
+### Tool Argument Normalization
+
+`server/tools.js` now has a compatibility normalization layer before dispatch. This matters for weaker OpenAI-compatible tool callers (especially some `Ollama Cloud` models) that often emit near-correct argument names instead of exact schema keys.
+
+Examples of accepted aliasing:
+
+- `list_directory`: `path`, `directory`, `folder`, `folder_path` → `directory_path`
+- `file_read` / `delete_file` / `read_image`: `path`, `file`, `filename` → `file_path`
+- `brain_node`: `id`, `nodeId` → `node_id`
+- `brain_search` / `brain_thoughts`: `search`, `topic`, `text` → `query`
+- edit tools: common camelCase/synonym variants for line numbers, search/replace text, and instructions
+
+If a cloud model appears “bad at tools,” check whether it is producing alias-style arguments before blaming the model or tool implementation.
 
 ---
 
@@ -600,7 +646,9 @@ Key sections in the 4200+ line monolith:
 - **Wizard missing provider** — Check `providerOptions` array in `stepProviders()` in `setup-wizard.js`
 - **Terminal broken on Pi** — `node-pty` needs native ARM compilation
 - **Brain not loading** — Check `COSMO_BRAIN_DIRS` in config (comma-separated paths). Path must be in BRAIN_DIRS allowlist
-- **Ollama stream format mismatch** — OllamaAdapter emits `content_delta` not `text`, and batches tool calls at end. Consumers need special handling
+- **OpenAI-compatible model acts like a generic chatbot** — Check whether inline `system` messages are being preserved in `server/providers/adapters/openai.js`; losing them strips IDE identity, tool guidance, brain strategy, open-files context, and history summary
+- **Ollama/Ollama Cloud stream format mismatch** — consumers may need to handle both `content_delta` and `text`/`done` chunk styles depending on provider/model path
+- **Ollama Cloud tool failures with nearly-correct args** — inspect `server/tools.js` normalization path; some models emit aliases like `path` instead of `directory_path`
 - **Codex tools breaking** — `ai-handler.js`'s `buildOpenAIResponsesToolsFromChatTools()` does stricter JSON Schema normalization than `OpenAIAdapter._convertToolsForResponses()`. Check the handler version first
 - **Registry singleton stale** — Provider registration state determined once at first call, never re-evaluated unless `resetDefaultRegistry()` called
 - **OAuth token refresh** — AnthropicClient has 50-min refresh window. AnthropicAdapter does not have periodic refresh. Legacy client handles OAuth lifecycle better
