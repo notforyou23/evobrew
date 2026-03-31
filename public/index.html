@@ -10653,6 +10653,20 @@ ${result.content}`;
                                 }
 
                                 else if (event.type === 'brain_search') {
+                                    const chatMessages = document.getElementById('ai-chat-messages');
+                                    const searchingIndicator = document.getElementById('brain-searching-indicator');
+                                    const renderBrainStatus = (html) => {
+                                        if (searchingIndicator) {
+                                            searchingIndicator.innerHTML = html;
+                                            return;
+                                        }
+                                        const statusDiv = document.createElement('div');
+                                        statusDiv.className = 'ai-brain-context';
+                                        statusDiv.id = 'brain-searching-indicator';
+                                        statusDiv.innerHTML = html;
+                                        if (chatMessages) chatMessages.appendChild(statusDiv);
+                                    };
+
                                     // Update brain indicator
                                     if (event.status === 'searching') {
                                         updateBrainIndicator('active');
@@ -10660,19 +10674,39 @@ ${result.content}`;
                                     // Show brain search status in UI
                                     if (event.status === 'searching') {
                                         console.log('[BRAIN] Searching brain...');
-                                        // Show searching indicator
-                                        const searchingDiv = document.createElement('div');
-                                        searchingDiv.className = 'ai-brain-context';
-                                        searchingDiv.id = 'brain-searching-indicator';
-                                        searchingDiv.innerHTML = `<div style="padding: 8px; color: #c8a8e8;">🧠 Searching brain for relevant knowledge...</div>`;
-                                        const chatMessages = document.getElementById('ai-chat-messages');
-                                        if (chatMessages) chatMessages.appendChild(searchingDiv);
+                                        renderBrainStatus(`<div style="padding: 8px; color: #c8a8e8;">${event.pgs ? '🧬 Running PGS sweep for deeper brain context…' : '🧠 Searching brain for relevant knowledge...'}</div>`);
+                                    } else if (event.status === 'auto_pgs') {
+                                        console.log('[BRAIN] Auto-escalating to PGS');
+                                        renderBrainStatus(`<div style="padding: 8px; color: #c8a8e8;">🧬 ${event.message || 'Auto-escalating to PGS for broader brain coverage...'}</div>`);
+                                    } else if (event.status === 'pgs_fallback') {
+                                        console.log('[BRAIN] PGS fallback to standard search');
+                                        renderBrainStatus(`<div style="padding: 8px; color: #f0d090;">🧠 ${event.message || 'PGS failed, falling back to standard brain search...'}</div>`);
+                                    } else if (event.status === 'injected') {
+                                        if (searchingIndicator) searchingIndicator.remove();
+                                        const infoDiv = document.createElement('div');
+                                        infoDiv.className = 'ai-brain-context';
+                                        infoDiv.innerHTML = event.pgs
+                                            ? `<div style="padding: 8px; color: #c8a8e8;">🧬 ${event.message || 'PGS context injected'}${event.nodesInjected ? ` · ${event.nodesInjected} partitions` : ''}</div>`
+                                            : `<div style="padding: 8px; color: #c8a8e8;">🧠 ${event.message || 'Brain context injected'}${event.nodesInjected ? ` · ${event.nodesInjected} findings` : ''}</div>`;
+                                        if (chatMessages) chatMessages.appendChild(infoDiv);
+                                    } else if (event.status === 'no_results') {
+                                        if (searchingIndicator) searchingIndicator.remove();
+                                        const noResultsDiv = document.createElement('div');
+                                        noResultsDiv.className = 'ai-brain-context';
+                                        noResultsDiv.innerHTML = `<div style="padding: 8px; color: #a0a0b0;">${event.pgs ? '🧬' : '🧠'} ${event.pgs ? 'PGS' : 'Brain'} searched ${event.totalSearched || 0} nodes${event.nodesInjected ? ` / ${event.nodesInjected} partitions` : ''} - no relevant matches found</div>`;
+                                        if (chatMessages) chatMessages.appendChild(noResultsDiv);
+                                    } else if (event.status === 'error') {
+                                        if (searchingIndicator) searchingIndicator.remove();
+                                        const errorDiv = document.createElement('div');
+                                        errorDiv.className = 'ai-brain-context';
+                                        errorDiv.innerHTML = `<div style="padding: 8px; color: #f0a090;">${event.pgs ? '🧬' : '🧠'} ${event.error || 'Brain retrieval failed'}</div>`;
+                                        if (chatMessages) chatMessages.appendChild(errorDiv);
                                     } else if (event.status === 'not_loaded') {
                                         console.log('[BRAIN] ⚠️ Brain not loaded on server');
+                                        if (searchingIndicator) searchingIndicator.remove();
                                         const errorDiv = document.createElement('div');
                                         errorDiv.className = 'ai-brain-context';
                                         errorDiv.innerHTML = `<div style="padding: 8px; color: #f0a090;">🧠 ⚠️ Brain not loaded - ${event.error || 'unknown error'}</div>`;
-                                        const chatMessages = document.getElementById('ai-chat-messages');
                                         if (chatMessages) chatMessages.appendChild(errorDiv);
                                     }
                                 }

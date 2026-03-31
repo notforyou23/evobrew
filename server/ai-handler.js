@@ -653,29 +653,36 @@ But always wait for the human to direct you.`;
 // ============================================================================
 
 function buildBrainContextSection(nodes, loader) {
+  let renderNodes = Array.isArray(nodes) ? nodes : [];
+  let maxNodeContent = 5000;
+  if (typeof arguments[2] === 'object' && arguments[2] !== null) {
+    const options = arguments[2];
+    if (typeof options.maxNodeContent === 'number' && Number.isFinite(options.maxNodeContent)) {
+      maxNodeContent = options.maxNodeContent;
+    }
+    if (typeof options.maxNodes === 'number' && Number.isFinite(options.maxNodes) && options.maxNodes > 0) {
+      renderNodes = renderNodes.slice(0, options.maxNodes);
+    }
+  }
+
   const sections = [];
 
   sections.push('\n\n## Brain Knowledge Context\n');
-  sections.push(`*${nodes.length} relevant findings from brain (${loader.nodes.length} total nodes)*\n`);
+  sections.push(`*${renderNodes.length} relevant findings from brain (${loader.nodes.length} total nodes)*\n`);
 
-  // NO artificial limit - include ALL nodes that passed the relevance threshold
-  // Consistent content length for all nodes - relevance is already filtered by threshold
-  const MAX_NODE_CONTENT = 5000;  // All relevant nodes get full content
-
-  nodes.forEach((node, i) => {
+  renderNodes.forEach((node, i) => {
     const score = Math.round(node.score * 100) / 100;
     const tags = Array.isArray(node.tag) ? node.tag.join(', ') : node.tag;
 
-    // All nodes above threshold get the same generous content limit
-    const content = (node.concept || '').substring(0, MAX_NODE_CONTENT);
+    const content = (node.concept || '').substring(0, maxNodeContent);
 
     sections.push(`\n### Finding ${i + 1} (score: ${score}, tags: ${tags})`);
     sections.push(`**Node ID:** ${node.id}`);
     if (node.connected) sections.push(`*(connected to top results)*`);
     sections.push(`\n${content}`);
 
-    if (node.concept && node.concept.length > MAX_NODE_CONTENT) {
-      sections.push(`\n*[...${node.concept.length - MAX_NODE_CONTENT} more chars available via brain_node tool]*`);
+    if (node.concept && node.concept.length > maxNodeContent) {
+      sections.push(`\n*[...${node.concept.length - maxNodeContent} more chars available via brain_node tool]*`);
     }
   });
 
@@ -683,6 +690,148 @@ function buildBrainContextSection(nodes, loader) {
   sections.push('*Use brain_search, brain_node, brain_thoughts tools for deeper exploration.*\n');
 
   return sections.join('\n');
+}
+
+function determineAssistantBrainStrategy({
+  message,
+  enablePGS,
+  pgsMode,
+  pgsSessionId,
+  pgsConfig,
+  planningMode,
+  fileName,
+  selectedText,
+  documentContent,
+  loader
+}) {
+  const manualSweepFraction = Number(pgsConfig?.sweepFraction || 0.25) || 0.25;
+
+  if (enablePGS) {
+    return {
+      usePGS: true,
+      auto: false,
+      mode: pgsMode || 'full',
+      sessionId: pgsSessionId || 'default',
+      sweepFraction: manualSweepFraction,
+      reason: 'manual'
+    };
+  }
+
+  const text = String(message || '').trim().toLowerCase();
+  const nodeCount = Number(loader?.nodes?.length || 0);
+
+  if (!text || nodeCount < 250) {
+    return { usePGS: false, auto: false, reason: 'brain_too_small_or_empty' };
+  }
+
+  if (planningMode || fileName || (selectedText && selectedText.trim()) || (documentContent && documentContent.trim())) {
+    return { usePGS: false, auto: false, reason: 'file_or_planning_context' };
+  }
+
+  if (/\b(no pgs|don['’]?t sweep|dont sweep|skip pgs|quick answer|fast answer)\b/i.test(text)) {
+    return { usePGS: false, auto: false, reason: 'explicit_opt_out' };
+  }
+
+  const codeSignals = [
+    'code', 'file', 'files', 'folder', 'directory', 'repo', 'workspace', 'implement', 'edit',
+    'refactor', 'fix', 'bug', 'test', 'tests', 'terminal', 'command', 'route', 'api', 'component',
+    'function', 'class', 'package.json', 'readme', 'server'
+  ];
+  const researchSignals = [
+    'novel', 'novelty', 'synthesis', 'synthesize', 'strategic', 'strategy', 'recommendation',
+    'recommendations', 'patterns', 'themes', 'cross-domain', 'across', 'all findings', 'opportunity',
+    'opportunities', 'defensible', 'moat', 'market', 'tam', 'sam', 'monetization', 'customers',
+    'what did we learn', 'blind spots', 'gaps', 'contradiction', 'contradictions', 'comprehensive',
+    'full coverage', 'full graph', 'entire brain', 'across all', 'survey'
+  ];
+
+  const scoreSignals = (signals) => signals.reduce((score, signal) => score + (text.includes(signal) ? 1 : 0), 0);
+  const codeScore = scoreSignals(codeSignals);
+  const researchScore = scoreSignals(researchSignals);
+
+  if (researchScore === 0 || codeScore > researchScore) {
+    return { usePGS: false, auto: false, reason: 'not_broad_research' };
+  }
+
+  const explicitFull = /\b(full sweep|full coverage|full graph|entire brain|across all|exhaustive|systematic)\b/i.test(text);
+  const deepSweep = explicitFull || /\b(comprehensive|everything|all findings|all themes|all patterns)\b/i.test(text);
+  const sweepFraction = explicitFull ? 1.0 : deepSweep ? 0.5 : 0.25;
+  const mode = explicitFull ? 'full' : 'targeted';
+  const brainSlug = String(loader?.brainPath || 'brain').split('/').filter(Boolean).pop() || 'brain';
+
+  return {
+    usePGS: true,
+    auto: true,
+    mode,
+    sessionId: `assistant-${brainSlug}`,
+    sweepFraction,
+    reason: explicitFull ? 'explicit_full_coverage_request' : 'broad_research_query'
+  };
+}
+
+function determineStandardBrainInjectionProfile({
+  message,
+  planningMode,
+  fileName,
+  selectedText,
+  documentContent
+}) {
+  const text = String(message || '').trim().toLowerCase();
+  const hasEditorContext = Boolean(planningMode || fileName || (selectedText && selectedText.trim()) || (documentContent && documentContent.trim()));
+
+  const codeSignals = [
+    'code', 'file', 'files', 'folder', 'directory', 'repo', 'workspace', 'implement', 'edit',
+    'refactor', 'fix', 'bug', 'test', 'tests', 'terminal', 'command', 'route', 'api', 'component',
+    'function', 'class', 'package.json', 'readme', 'server', 'endpoint', 'frontend', 'backend'
+  ];
+  const researchSignals = [
+    'novel', 'novelty', 'synthesis', 'synthesize', 'strategic', 'strategy', 'recommendation',
+    'recommendations', 'patterns', 'themes', 'cross-domain', 'across', 'all findings', 'opportunity',
+    'opportunities', 'defensible', 'moat', 'market', 'tam', 'sam', 'monetization', 'customers',
+    'what did we learn', 'blind spots', 'gaps', 'contradiction', 'contradictions', 'comprehensive',
+    'full coverage', 'full graph', 'entire brain', 'across all', 'survey'
+  ];
+  const scoreSignals = (signals) => signals.reduce((score, signal) => score + (text.includes(signal) ? 1 : 0), 0);
+  const codeScore = scoreSignals(codeSignals) + (hasEditorContext ? 2 : 0);
+  const researchScore = scoreSignals(researchSignals);
+  const profile = codeScore > researchScore ? 'task' : (researchScore >= 2 ? 'research' : 'balanced');
+
+  if (profile === 'task') {
+    return {
+      profile,
+      queryLimit: 140,
+      includeConnected: false,
+      thresholdFloor: 26,
+      thresholdShare: 0.72,
+      injectLimit: 10,
+      maxNodeContent: 700,
+      useSourceDiversity: false
+    };
+  }
+
+  if (profile === 'research') {
+    return {
+      profile,
+      queryLimit: 260,
+      includeConnected: true,
+      thresholdFloor: 18,
+      thresholdShare: 0.5,
+      injectLimit: 18,
+      maxNodeContent: 1400,
+      useSourceDiversity: true
+    };
+  }
+
+  return {
+    profile,
+    queryLimit: 180,
+    includeConnected: true,
+    thresholdFloor: 22,
+    thresholdShare: 0.6,
+    injectLimit: 14,
+    maxNodeContent: 1000,
+    useSourceDiversity: true
+  };
 }
 
 // ============================================================================
@@ -991,37 +1140,136 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
     const loader = getBrainLoader();
 
     if (qe && loader) {
+      const runStandardBrainSearch = async () => {
+        console.log('[AI] Brain context injection enabled - searching brain...');
+        eventEmitter?.({ type: 'brain_search', status: 'searching' });
+
+        const injectionProfile = determineStandardBrainInjectionProfile({
+          message,
+          planningMode,
+          fileName,
+          selectedText,
+          documentContent
+        });
+
+        const state = await qe.queryEngine.loadBrainState();
+
+        const allRelevantNodes = await qe.queryEngine.queryMemory(state, message, {
+          limit: injectionProfile.queryLimit,
+          includeConnected: injectionProfile.includeConnected,
+          useSemanticSearch: true
+        });
+
+        const topScore = Number(allRelevantNodes[0]?.score || 0);
+        const scoreThreshold = Math.max(
+          injectionProfile.thresholdFloor,
+          topScore > 0 ? topScore * injectionProfile.thresholdShare : 0
+        );
+        let relevantNodes = allRelevantNodes.filter(n => (n.score || 0) >= scoreThreshold);
+
+        if (injectionProfile.useSourceDiversity && typeof qe.queryEngine.getSourceDiverseNodes === 'function') {
+          relevantNodes = qe.queryEngine.getSourceDiverseNodes(relevantNodes, injectionProfile.injectLimit);
+        } else {
+          relevantNodes = relevantNodes.slice(0, injectionProfile.injectLimit);
+        }
+
+        console.log(`[AI] Brain search (${injectionProfile.profile}): ${allRelevantNodes.length} candidates → ${relevantNodes.length} injected (threshold ${scoreThreshold.toFixed(2)})`);
+
+        if (relevantNodes.length > 0) {
+          const brainContext = buildBrainContextSection(relevantNodes, loader, {
+            maxNodes: injectionProfile.injectLimit,
+            maxNodeContent: injectionProfile.maxNodeContent
+          });
+          systemPrompt = systemPrompt + brainContext;
+          console.log(`[AI] Injected ${relevantNodes.length} brain nodes into context`);
+          eventEmitter?.({
+            type: 'brain_search',
+            status: 'injected',
+            totalSearched: allRelevantNodes.length,
+            nodesInjected: relevantNodes.length,
+            scoreThreshold,
+            message: `${relevantNodes.length} relevant brain findings injected (${injectionProfile.profile})`
+          });
+        } else {
+          console.log('[AI] No relevant brain nodes found for query');
+          eventEmitter?.({ type: 'brain_search', status: 'no_results', totalSearched: allRelevantNodes.length });
+        }
+      };
+
       try {
+        const brainStrategy = determineAssistantBrainStrategy({
+          message,
+          enablePGS,
+          pgsMode,
+          pgsSessionId,
+          pgsConfig,
+          planningMode,
+          fileName,
+          selectedText,
+          documentContent,
+          loader
+        });
+
         // PGS path: use Partitioned Graph Synthesis for deep, full-coverage brain search
-        if (enablePGS && qe.queryEngine) {
-          console.log(`[AI] PGS brain context injection — mode: ${pgsMode}, session: ${pgsSessionId}`);
+        if (brainStrategy.usePGS && qe.queryEngine) {
+          const resolvedPgsMode = brainStrategy.mode || pgsMode || 'full';
+          const resolvedPgsSessionId = brainStrategy.sessionId || pgsSessionId || 'default';
+          const resolvedSweepFraction = brainStrategy.sweepFraction || pgsConfig?.sweepFraction || 0.25;
+
+          console.log(`[AI] PGS brain context injection — mode: ${resolvedPgsMode}, session: ${resolvedPgsSessionId}${brainStrategy.auto ? ' (auto)' : ''}`);
           eventEmitter?.({ type: 'brain_search', status: 'searching', pgs: true });
+          if (brainStrategy.auto) {
+            const modeLabel = resolvedSweepFraction >= 1.0 ? 'full' : resolvedSweepFraction >= 0.5 ? 'deep' : 'targeted';
+            eventEmitter?.({
+              type: 'brain_search',
+              status: 'auto_pgs',
+              pgs: true,
+              mode: resolvedPgsMode,
+              sweepFraction: resolvedSweepFraction,
+              reason: brainStrategy.reason,
+              message: `Auto-PGS: escalating to a ${modeLabel} graph sweep for this broad research question`
+            });
+          }
           eventEmitter?.({ type: 'status', message: 'PGS: Running partitioned graph synthesis (this takes longer)...' });
 
-          const sweepFraction = pgsConfig?.sweepFraction || 0.25;
-          const pgsResult = await qe.queryEngine.executeEnhancedQuery(message, {
-            enablePGS: true,
-            pgsMode: pgsMode || 'full',
-            pgsSessionId: pgsSessionId || 'default',
-            pgsFullSweep: sweepFraction >= 1.0,
-            pgsConfig: { sweepFraction },
-            pgsSweepModel: pgsSweepModel || null,
-            model: effectiveModel,
-            onChunk: (chunk) => {
-              // Forward PGS progress events to the frontend
-              if (chunk.type === 'progress' || chunk.type === 'pgs_partition' || chunk.type === 'pgs_sweep') {
-                eventEmitter?.({ type: 'status', message: chunk.message || 'PGS processing...' });
+          let pgsResult = null;
+          try {
+            pgsResult = await qe.queryEngine.executeEnhancedQuery(message, {
+              enablePGS: true,
+              pgsMode: resolvedPgsMode,
+              pgsSessionId: resolvedPgsSessionId,
+              pgsFullSweep: resolvedSweepFraction >= 1.0,
+              pgsConfig: { sweepFraction: resolvedSweepFraction },
+              pgsSweepModel: pgsSweepModel || null,
+              model: effectiveModel,
+              onChunk: (chunk) => {
+                if (chunk.type === 'progress' || chunk.type === 'pgs_phase' || chunk.type === 'pgs_sweep_progress' || chunk.type === 'pgs_session' || chunk.type === 'pgs_routed') {
+                  eventEmitter?.({ type: 'status', message: chunk.message || 'PGS processing...' });
+                }
               }
-            }
-          });
+            });
+          } catch (pgsErr) {
+            console.error('[AI] PGS brain context injection failed:', pgsErr.message);
+            eventEmitter?.({
+              type: 'brain_search',
+              status: 'pgs_fallback',
+              pgs: true,
+              error: pgsErr.message,
+              message: 'PGS failed, falling back to standard brain search'
+            });
+            eventEmitter?.({ type: 'status', message: 'PGS failed, falling back to standard brain search...' });
+            await runStandardBrainSearch();
+            pgsResult = null;
+          }
 
           // Inject PGS synthesis result as brain context
           if (pgsResult && pgsResult.answer) {
+            const pgsMeta = pgsResult.metadata?.pgs || {};
             const pgsContext = `\n\n═══════════════════════════════════════════════════════════════════════════════
 ## 🧠 BRAIN CONTEXT (PGS — Partitioned Graph Synthesis)
 
 The following is a deep synthesis of relevant knowledge from the brain's knowledge graph,
-produced by scanning ${pgsResult.metadata?.partitionsSwept || '?'} graph partitions:
+produced by scanning ${pgsMeta.sweptPartitions || '?'} graph partitions:
 
 ${pgsResult.answer.substring(0, 8000)}
 ═══════════════════════════════════════════════════════════════════════════════`;
@@ -1031,48 +1279,17 @@ ${pgsResult.answer.substring(0, 8000)}
               type: 'brain_search',
               status: 'injected',
               pgs: true,
-              totalSearched: pgsResult.metadata?.totalNodes || 0,
-              nodesInjected: pgsResult.metadata?.partitionsSwept || 0,
-              message: `PGS: ${pgsResult.metadata?.partitionsSwept || '?'} partitions swept`
+              totalSearched: pgsMeta.totalNodes || 0,
+              nodesInjected: pgsMeta.sweptPartitions || 0,
+              message: `PGS: ${pgsMeta.sweptPartitions || '?'} partitions swept`
             });
-          } else {
+          } else if (pgsResult) {
             console.log('[AI] PGS returned no synthesis');
             eventEmitter?.({ type: 'brain_search', status: 'no_results', pgs: true });
           }
 
         } else {
-          // Standard path: basic brain search with scoring
-          console.log('[AI] Brain context injection enabled - searching brain...');
-          eventEmitter?.({ type: 'brain_search', status: 'searching' });
-
-          const state = await qe.queryEngine.loadBrainState();
-
-          const allRelevantNodes = await qe.queryEngine.queryMemory(state, message, {
-            limit: 10000,
-            includeConnected: true,
-            useSemanticSearch: true
-          });
-
-          const scoreThreshold = 0.20;
-          const relevantNodes = allRelevantNodes.filter(n => (n.score || 0) >= scoreThreshold);
-
-          console.log(`[AI] Brain search: ${allRelevantNodes.length} candidates → ${relevantNodes.length} above threshold (${scoreThreshold})`);
-
-          if (relevantNodes.length > 0) {
-            const brainContext = buildBrainContextSection(relevantNodes, loader);
-            systemPrompt = systemPrompt + brainContext;
-            console.log(`[AI] Injected ${relevantNodes.length} brain nodes into context`);
-            eventEmitter?.({
-              type: 'brain_search',
-              status: 'injected',
-              totalSearched: allRelevantNodes.length,
-              nodesInjected: relevantNodes.length,
-              scoreThreshold
-            });
-          } else {
-            console.log('[AI] No relevant brain nodes found for query');
-            eventEmitter?.({ type: 'brain_search', status: 'no_results', totalSearched: allRelevantNodes.length });
-          }
+          await runStandardBrainSearch();
         }
       } catch (err) {
         console.error('[AI] Brain context injection failed:', err.message);
