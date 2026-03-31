@@ -122,6 +122,16 @@ function initQueryTab() {
               </div>
               <input type="hidden" id="qt-pgs-depth" value="0.25" />
             </div>
+            <div class="qt-pgs-model-row">
+              <div class="qt-option-group">
+                <label>Sweep Model:</label>
+                <select id="qt-pgs-sweep-model" class="qt-select" title="Model for partition sweeps (runs many times, cheaper is better)"></select>
+              </div>
+              <div class="qt-option-group">
+                <label>Synthesis Model:</label>
+                <select id="qt-pgs-synth-model" class="qt-select" title="Model for final synthesis (runs once, quality matters)"></select>
+              </div>
+            </div>
             <div class="qt-option-group">
               <label>Session Mode:</label>
               <select id="qt-pgs-mode" class="qt-select">
@@ -233,7 +243,16 @@ function bindQueryTabEvents() {
     }
   };
   modeSelect?.addEventListener('change', updateSummary);
-  modelSelect?.addEventListener('change', updateSummary);
+  modelSelect?.addEventListener('change', () => {
+    const synthSelect = document.getElementById('qt-pgs-synth-model');
+    if (synthSelect && !synthSelect.dataset.userChanged) {
+      synthSelect.value = modelSelect.value;
+    }
+    updateSummary();
+  });
+  document.getElementById('qt-pgs-synth-model')?.addEventListener('change', (e) => {
+    e.target.dataset.userChanged = '1';
+  });
   document.getElementById('qt-pgs-mode')?.addEventListener('change', updateSummary);
 
   const pgsToggle = document.getElementById('qt-pgs');
@@ -292,12 +311,36 @@ function bindQueryTabEvents() {
    Model Population
    ═══════════════════════════════════════════════════════ */
 
+function buildQueryModelOptions(byProvider, selectedValue) {
+  const fragment = document.createDocumentFragment();
+  for (const [provider, models] of Object.entries(byProvider)) {
+    const group = document.createElement('optgroup');
+    group.label = provider.charAt(0).toUpperCase() + provider.slice(1);
+    models.forEach((model) => {
+      const opt = document.createElement('option');
+      opt.value = model.value || model.id;
+      opt.dataset.provider = model.provider;
+      opt.dataset.modelId = model.id;
+      opt.textContent = model.label || model.id;
+      if ((model.value || model.id) === selectedValue) {
+        opt.selected = true;
+      }
+      group.appendChild(opt);
+    });
+    fragment.appendChild(group);
+  }
+  return fragment;
+}
+
 async function populateModels() {
   const select = document.getElementById('qt-model');
   if (!select) return;
 
+  const sweepSelect = document.getElementById('qt-pgs-sweep-model');
+  const synthSelect = document.getElementById('qt-pgs-synth-model');
+
   // Default fallback
-  select.innerHTML = `
+  const fallbackHtml = `
     <option value="openai/latest-stable" data-provider="openai">Latest OpenAI Stable</option>
     <option value="anthropic/latest-sonnet" data-provider="anthropic">Latest Sonnet</option>
     <option value="anthropic/latest-opus" data-provider="anthropic">Latest Opus</option>
@@ -307,37 +350,65 @@ async function populateModels() {
     <option value="openai/o4-mini" data-provider="openai">o4-mini</option>
     <option value="anthropic/claude-sonnet-4-20250514" data-provider="anthropic">Claude Sonnet 4</option>
   `;
+  select.innerHTML = fallbackHtml;
+  if (sweepSelect) {
+    sweepSelect.innerHTML = fallbackHtml;
+    if ([...sweepSelect.options].some((option) => option.value === 'anthropic/claude-sonnet-4-6')) {
+      sweepSelect.value = 'anthropic/claude-sonnet-4-6';
+    } else {
+      sweepSelect.value = 'anthropic/latest-sonnet';
+    }
+  }
+  if (synthSelect) {
+    synthSelect.innerHTML = fallbackHtml;
+    synthSelect.value = select.value || 'openai/latest-stable';
+  }
 
   try {
     const res = await fetch('/api/providers/models');
     const data = await res.json();
     if (!data.success || !data.models?.length) return;
 
-    select.innerHTML = '';
+    const currentValue = select.value || 'openai/latest-stable';
+    const currentSweepValue = sweepSelect?.value || 'anthropic/latest-sonnet';
+    const currentSynthValue = synthSelect?.value || currentValue;
+
     const byProvider = {};
     data.models.forEach(m => {
       if (!byProvider[m.provider]) byProvider[m.provider] = [];
       byProvider[m.provider].push(m);
     });
 
-    for (const [provider, models] of Object.entries(byProvider)) {
-      const group = document.createElement('optgroup');
-      group.label = provider.charAt(0).toUpperCase() + provider.slice(1);
-      models.forEach(m => {
-        const opt = document.createElement('option');
-        opt.value = m.value || m.id;
-        opt.dataset.provider = m.provider;
-        opt.dataset.modelId = m.id;
-        opt.textContent = m.label || m.id;
-        if ((m.value || '') === 'openai/latest-stable' || (m.provider === 'openai' && m.id === 'latest-stable')) {
-          opt.selected = true;
-        }
-        group.appendChild(opt);
-      });
-      select.appendChild(group);
+    select.innerHTML = '';
+    select.appendChild(buildQueryModelOptions(byProvider, currentValue));
+    if (![...select.options].some((option) => option.selected)) {
+      const fallback = [...select.options].find((option) => option.value === 'openai/latest-stable') || select.options[0];
+      if (fallback) fallback.selected = true;
+    }
+
+    if (sweepSelect) {
+      sweepSelect.innerHTML = '';
+      sweepSelect.appendChild(buildQueryModelOptions(byProvider, currentSweepValue));
+      if (![...sweepSelect.options].some((option) => option.selected)) {
+        const fallbackSweep = [...sweepSelect.options].find((option) => option.value === 'anthropic/claude-sonnet-4-6')
+          || [...sweepSelect.options].find((option) => option.value === 'anthropic/latest-sonnet')
+          || sweepSelect.options[0];
+        if (fallbackSweep) fallbackSweep.selected = true;
+      }
+    }
+
+    if (synthSelect) {
+      synthSelect.innerHTML = '';
+      synthSelect.appendChild(buildQueryModelOptions(byProvider, currentSynthValue));
+      if (![...synthSelect.options].some((option) => option.selected)) {
+        const fallbackSynth = [...synthSelect.options].find((option) => option.value === select.value) || synthSelect.options[0];
+        if (fallbackSynth) fallbackSynth.selected = true;
+      }
     }
 
     select.dataset.catalogLoaded = 'true';
+    if (sweepSelect) sweepSelect.dataset.catalogLoaded = 'true';
+    if (synthSelect) synthSelect.dataset.catalogLoaded = 'true';
 
     // Update summary
     const summary = document.getElementById('qt-options-summary');
@@ -381,7 +452,9 @@ async function executeQuery() {
   const query = input?.value?.trim();
   if (!query) return;
 
-  const model = document.getElementById('qt-model')?.value || 'openai/gpt-5.1';
+  const enablePGSEarly = document.getElementById('qt-pgs')?.checked || false;
+  const baseModel = document.getElementById('qt-model')?.value || 'openai/latest-stable';
+  const model = (enablePGSEarly && document.getElementById('qt-pgs-synth-model')?.value) || baseModel;
   const mode = document.getElementById('qt-mode')?.value || 'full';
   const includeEvidenceMetrics = document.getElementById('qt-evidence')?.checked || false;
   const enableSynthesis = document.getElementById('qt-synthesis')?.checked ?? true;
@@ -389,11 +462,12 @@ async function executeQuery() {
   const includeOutputs = document.getElementById('qt-outputs')?.checked ?? true;
   const includeThoughts = document.getElementById('qt-thoughts')?.checked ?? true;
   const allowActions = document.getElementById('qt-allow-actions')?.checked || false;
-  const enablePGS = document.getElementById('qt-pgs')?.checked || false;
+  const enablePGS = enablePGSEarly;
   const pgsMode = document.getElementById('qt-pgs-mode')?.value || 'full';
   const pgsSessionId = (document.getElementById('qt-pgs-session')?.value || '').trim() || 'default';
   const pgsDepth = parseFloat(document.getElementById('qt-pgs-depth')?.value || '0.25');
   const useStreaming = document.getElementById('qt-stream')?.checked ?? true;
+  const pgsSweepModel = enablePGS ? (document.getElementById('qt-pgs-sweep-model')?.value || null) : null;
 
   const submitBtn = document.getElementById('qt-submit');
   const loadingDiv = document.getElementById('qt-loading');
@@ -422,7 +496,8 @@ async function executeQuery() {
     pgsMode,
     pgsSessionId,
     pgsFullSweep: pgsDepth >= 1.0,
-    pgsConfig: { sweepFraction: pgsDepth }
+    pgsConfig: { sweepFraction: pgsDepth },
+    pgsSweepModel
   };
 
   try {
@@ -1341,6 +1416,15 @@ function getQueryTabStyles() {
     border: 1px solid var(--border-color);
     border-radius: 8px;
     background: var(--bg-primary);
+  }
+  .qt-pgs-model-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    grid-column: span 2;
+  }
+  .qt-pgs-model-row .qt-select {
+    width: 100%;
   }
   .qt-pgs-depth-chips {
     display: flex;

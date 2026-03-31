@@ -751,6 +751,7 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
     pgsMode = 'full',
     pgsSessionId = 'default',
     pgsConfig = null,
+    pgsSweepModel = null,
     allowedToolNames = null,
     disableSpreadsheetParsing = false,
     terminalPolicy = null,
@@ -1004,6 +1005,7 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
             pgsSessionId: pgsSessionId || 'default',
             pgsFullSweep: sweepFraction >= 1.0,
             pgsConfig: { sweepFraction },
+            pgsSweepModel: pgsSweepModel || null,
             model: effectiveModel,
             onChunk: (chunk) => {
               // Forward PGS progress events to the frontend

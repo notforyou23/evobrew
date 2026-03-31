@@ -3615,6 +3615,12 @@ app.post('/api/brain/query/stream', async (req, res) => {
       if (resolution?.resolvedModel) {
         otherOptions.model = resolution.resolvedModel;
       }
+      if (otherOptions.pgsSweepModel) {
+        const sweepResolution = await registry.resolveModelSelection(String(otherOptions.pgsSweepModel).trim());
+        if (sweepResolution?.resolvedModel) {
+          otherOptions.pgsSweepModel = sweepResolution.resolvedModel;
+        }
+      }
     } catch (error) {
       console.warn('[BRAIN-STREAM] Failed to resolve model alias:', error.message);
     }
@@ -3709,6 +3715,12 @@ app.post('/api/brain/query', async (req, res) => {
         const resolution = await registry.resolveModelSelection(requestedModelSelection);
         if (resolution?.resolvedModel) {
           otherOptions.model = resolution.resolvedModel;
+        }
+        if (otherOptions.pgsSweepModel) {
+          const sweepResolution = await registry.resolveModelSelection(String(otherOptions.pgsSweepModel).trim());
+          if (sweepResolution?.resolvedModel) {
+            otherOptions.pgsSweepModel = sweepResolution.resolvedModel;
+          }
         }
       } catch (resolveErr) {
         console.warn('[BRAIN-QUERY] Failed to resolve model alias:', resolveErr.message);
