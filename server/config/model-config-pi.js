@@ -12,16 +12,16 @@ module.exports = {
   modelAssignments: {
     default: {
       provider: 'anthropic',
-      model: 'claude-sonnet-4-5'
+      model: 'latest-sonnet'
     },
     fast: {
       provider: 'anthropic',
-      model: 'claude-sonnet-4-5',
+      model: 'latest-sonnet',
       // No fallback to local - cloud is the only option
     },
     reasoning: {
       provider: 'anthropic',
-      model: 'claude-opus-4-6'
+      model: 'latest-opus'
     }
   },
 

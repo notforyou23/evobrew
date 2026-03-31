@@ -65,6 +65,10 @@ class ProviderAdapter {
     throw new Error('Subclass must implement getAvailableModels');
   }
 
+  async listModels() {
+    return this.getAvailableModels();
+  }
+
   /**
    * Check if a model is supported by this provider
    * @param {string} model

@@ -120,15 +120,15 @@ function getDefaultModelAssignments() {
     return {
       default: {
         provider: 'anthropic',
-        model: 'claude-sonnet-4-5'
+        model: 'latest-sonnet'
       },
       fast: {
         provider: 'anthropic',
-        model: 'claude-sonnet-4-5'  // No local fast model on Pi
+        model: 'latest-sonnet'  // No local fast model on Pi
       },
       reasoning: {
         provider: 'anthropic',
-        model: 'claude-opus-4-6'
+        model: 'latest-opus'
       }
     };
   }
@@ -137,16 +137,16 @@ function getDefaultModelAssignments() {
   return {
     default: {
       provider: 'anthropic',
-      model: 'claude-sonnet-4-5'
+      model: 'latest-sonnet'
     },
     fast: {
       provider: 'ollama',
       model: 'qwen2.5-coder:7b',
-      fallback: 'anthropic/claude-sonnet-4-5'
+      fallback: 'anthropic/latest-sonnet'
     },
     reasoning: {
       provider: 'anthropic',
-      model: 'claude-opus-4-6'
+      model: 'latest-opus'
     }
   };
 }

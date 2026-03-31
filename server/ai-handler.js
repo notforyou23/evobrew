@@ -8,7 +8,7 @@
 const { toolDefinitions, ToolExecutor } = require('./tools');
 const { getAnthropicApiKey, prepareSystemPrompt } = require('./services/anthropic-oauth');
 const { getDefaultRegistry } = require('./providers');
-const { getModelId } = require('../lib/model-selection');
+const { getModelId, qualifyModelSelection } = require('../lib/model-selection');
 
 // ============================================================================
 // SESSION MUTEX - Prevent concurrent agent sessions on the same folder
@@ -777,8 +777,9 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
   const sessionId = require('crypto').randomUUID();
   if (currentFolder) activeSessions.set(currentFolder, { sessionId, startTime: Date.now() });
 
-  const requestedModelSelection = String(model || '').trim() || 'gpt-5.2';
-  const effectiveModel = getModelId(requestedModelSelection) || 'gpt-5.2';
+  const requestedModelSelection = String(model || '').trim() || 'anthropic/latest-sonnet';
+  let effectiveModel = getModelId(requestedModelSelection) || 'gpt-5.2';
+  let resolvedModelSelection = requestedModelSelection;
   
   // ═══════════════════════════════════════════════════════════════════════════
   // PROVIDER DETECTION: Use registry for model-agnostic provider selection
@@ -797,13 +798,28 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
   let provider = null;
   let providerId = null;
   if (registry) {
-    provider = registry.getProvider(requestedModelSelection);
+    try {
+      const resolution = await registry.resolveModelSelection(requestedModelSelection);
+      if (resolution?.resolvedModel) {
+        effectiveModel = resolution.resolvedModel;
+        resolvedModelSelection = resolution.resolvedSelection || qualifyModelSelection(resolution.providerId, resolution.resolvedModel);
+        provider = resolution.provider || null;
+        providerId = resolution.providerId || null;
+        if (resolution.aliasId) {
+          console.log(`[AI] Resolved model alias ${requestedModelSelection} -> ${resolvedModelSelection}`);
+        }
+      }
+    } catch (resolutionError) {
+      console.warn(`[AI] Failed to resolve model alias ${requestedModelSelection}:`, resolutionError.message);
+    }
+
+    provider = provider || registry.getProvider(resolvedModelSelection) || registry.getProvider(requestedModelSelection);
     if (!provider && effectiveModel !== requestedModelSelection) {
       provider = registry.getProvider(effectiveModel);
     }
     providerId = provider?.id;
     if (provider) {
-      console.log(`[AI] Provider registry detected: ${provider.name} (${provider.id}) for model ${requestedModelSelection}`);
+      console.log(`[AI] Provider registry detected: ${provider.name} (${provider.id}) for model ${resolvedModelSelection}`);
     } else {
       console.warn(`[AI] No provider found in registry for model: ${requestedModelSelection}, using legacy detection`);
     }

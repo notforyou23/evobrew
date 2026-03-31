@@ -12,6 +12,11 @@
 const OpenAI = require('openai');
 const { ProviderAdapter } = require('./base.js');
 const {
+  getCachedProviderModels,
+  setCachedProviderModels,
+  sortDiscoveredModels
+} = require('../model-catalog.js');
+const {
   createResponse,
   StopReasons
 } = require('../types/unified.js');
@@ -50,6 +55,30 @@ class OpenAIAdapter extends ProviderAdapter {
    */
   constructor(config = {}) {
     super(config);
+
+    this._catalogProviderId = String(config.providerId || 'openai');
+    this._seedModels = Array.isArray(config.seedModels) && config.seedModels.length > 0
+      ? config.seedModels.slice()
+      : [
+          'gpt-5.4',
+          'gpt-5.2-codex',
+          'gpt-5.2',
+          'gpt-5.1',
+          'gpt-4o',
+          'gpt-4o-mini'
+        ];
+    this._discoveryEnabled = config.discoveryEnabled !== false;
+    this._discoveryTtlMs = Number(config.discoveryTtlMs || (15 * 60 * 1000));
+    this._modelFilter = typeof config.modelFilter === 'function'
+      ? config.modelFilter
+      : ((modelId) => this._defaultModelFilter(modelId));
+    this._listModelsPromise = null;
+
+    const cachedModels = getCachedProviderModels(this._catalogProviderId, this._discoveryTtlMs);
+    this._availableModels = cachedModels && cachedModels.length > 0
+      ? cachedModels
+      : this._seedModels.slice();
+    this._modelsFetchedAt = cachedModels && cachedModels.length > 0 ? Date.now() : 0;
     
     // State for Responses API (stateful across tool-calling turns)
     this._previousResponseId = null;
@@ -77,14 +106,88 @@ class OpenAIAdapter extends ProviderAdapter {
   }
 
   getAvailableModels() {
-    return [
-      'gpt-5.4',
-      'gpt-5.2-codex',
-      'gpt-5.2',
-      'gpt-5.1',
-      'gpt-4o',
-      'gpt-4o-mini'
-    ];
+    return this._availableModels.slice();
+  }
+
+  _defaultModelFilter(modelId) {
+    const normalized = String(modelId || '').trim().toLowerCase();
+    if (!normalized) return false;
+
+    const looksLikeChatModel = (
+      normalized.startsWith('gpt-') ||
+      normalized.startsWith('o1') ||
+      normalized.startsWith('o3') ||
+      normalized.startsWith('o4') ||
+      normalized.startsWith('grok-')
+    );
+
+    if (!looksLikeChatModel) return false;
+
+    return !(
+      normalized.includes('audio') ||
+      normalized.includes('transcribe') ||
+      normalized.includes('tts') ||
+      normalized.includes('image') ||
+      normalized.includes('embedding') ||
+      normalized.includes('moderation') ||
+      normalized.includes('search') ||
+      normalized.includes('whisper') ||
+      normalized.includes('instruct') ||
+      normalized.includes('realtime')
+    );
+  }
+
+  async listModels(options = {}) {
+    if (!this._discoveryEnabled) {
+      return this.getAvailableModels();
+    }
+
+    const force = options.force === true;
+    const cacheFresh = this._modelsFetchedAt > 0 && (Date.now() - this._modelsFetchedAt) < this._discoveryTtlMs;
+    if (!force && cacheFresh && this._availableModels.length > 0) {
+      return this.getAvailableModels();
+    }
+
+    if (this._listModelsPromise) {
+      return this._listModelsPromise;
+    }
+
+    this._listModelsPromise = (async () => {
+      try {
+        const client = this._getClient();
+        const response = await client.models.list();
+        const ids = sortDiscoveredModels(
+          this._catalogProviderId,
+          (response.data || [])
+            .map((model) => model?.id)
+            .filter((modelId) => this._modelFilter(modelId))
+        );
+
+        if (ids.length > 0) {
+          this._availableModels = ids;
+          this._modelsFetchedAt = Date.now();
+          setCachedProviderModels(this._catalogProviderId, ids, {
+            source: 'live',
+            ttlMs: this._discoveryTtlMs
+          });
+          return this.getAvailableModels();
+        }
+      } catch (error) {
+        console.warn(`[${this._catalogProviderId}] Live model discovery failed, using cached/seed list:`, error.message);
+      } finally {
+        this._listModelsPromise = null;
+      }
+
+      const cachedModels = getCachedProviderModels(this._catalogProviderId, this._discoveryTtlMs * 4);
+      if (cachedModels && cachedModels.length > 0) {
+        this._availableModels = cachedModels;
+        this._modelsFetchedAt = Date.now();
+      }
+
+      return this.getAvailableModels();
+    })();
+
+    return this._listModelsPromise;
   }
 
   _initClient() {

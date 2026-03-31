@@ -4984,14 +4984,11 @@
                             <div style="padding: 10px 12px; border-bottom: 1px solid var(--border-color); background: var(--bg-secondary); display: flex; align-items: center; justify-content: space-between;">
                                 <span style="font-size: 10px; color: var(--text-secondary); font-weight: 700;">MODEL</span>
                                 <select id="ai-model-select" style="background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 3px 8px; font-size: 11px; outline: none; cursor: pointer;">
-                                    <option value="anthropic/claude-opus-4-6" data-provider="anthropic">Claude Opus 4.6</option>
-                                    <option value="anthropic/claude-sonnet-4-5" data-provider="anthropic" selected>Claude Sonnet 4.5</option>
-                                    <option value="anthropic/claude-sonnet-5" data-provider="anthropic">Claude Sonnet 5</option>
-                                    <option value="anthropic/claude-opus-4-5" data-provider="anthropic">Claude Opus 4.5</option>
-                                    <option value="openai/gpt-5.2" data-provider="openai">GPT-5.2</option>
-                                    <option value="openai-codex/gpt-5.3-codex" data-provider="openai-codex">GPT-5.3-Codex</option>
-                                    <option value="openai-codex/gpt-5.3-codex-spark" data-provider="openai-codex">GPT-5.3-Codex-Spark</option>
-                                    <option value="xai/grok-code-fast-1" data-provider="xai">Grok (xAI)</option>
+                                    <option value="anthropic/latest-sonnet" data-provider="anthropic" selected>Latest Sonnet</option>
+                                    <option value="anthropic/latest-opus" data-provider="anthropic">Latest Opus</option>
+                                    <option value="openai/latest-stable" data-provider="openai">Latest OpenAI Stable</option>
+                                    <option value="openai-codex/latest-codex" data-provider="openai-codex">Latest Codex</option>
+                                    <option value="xai/latest-fast" data-provider="xai">Latest xAI Fast</option>
                                 </select>
                             </div>
                             
@@ -10502,7 +10499,7 @@ ${result.content}`;
                 
                 // Get selected model
                 const modelSelect = document.getElementById('ai-model-select');
-                const selectedModel = modelSelect?.value || 'anthropic/claude-sonnet-4-5';
+                const selectedModel = modelSelect?.value || 'anthropic/latest-sonnet';
                 const selectedProvider = modelSelect?.selectedOptions?.[0]?.dataset?.provider || '';
 
                 const brainContextEnabled = (document.getElementById('brainEnabled')?.checked ?? false) && !(document.getElementById('brainEnabled')?.disabled ?? false);

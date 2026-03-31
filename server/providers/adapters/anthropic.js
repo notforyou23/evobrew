@@ -17,6 +17,11 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const { ProviderAdapter } = require('./base.js');
 const {
+  getCachedProviderModels,
+  setCachedProviderModels,
+  sortDiscoveredModels
+} = require('../model-catalog.js');
+const {
   createResponse,
   StopReasons,
   extractText
@@ -75,6 +80,25 @@ class AnthropicAdapter extends ProviderAdapter {
   constructor(config = {}) {
     super(config);
 
+    this._catalogProviderId = String(config.providerId || 'anthropic');
+    this._seedModels = Array.isArray(config.seedModels) && config.seedModels.length > 0
+      ? config.seedModels.slice()
+      : [
+          'claude-opus-4-6',
+          'claude-sonnet-4-6',
+          'claude-opus-4-5',
+          'claude-sonnet-4-5',
+          'claude-sonnet-5'
+        ];
+    this._discoveryEnabled = config.discoveryEnabled !== false;
+    this._discoveryTtlMs = Number(config.discoveryTtlMs || (15 * 60 * 1000));
+    this._listModelsPromise = null;
+    const cachedModels = getCachedProviderModels(this._catalogProviderId, this._discoveryTtlMs);
+    this._availableModels = cachedModels && cachedModels.length > 0
+      ? cachedModels
+      : this._seedModels.slice();
+    this._modelsFetchedAt = cachedModels && cachedModels.length > 0 ? Date.now() : 0;
+
     this._useOAuthService = config.useOAuthService !== false && anthropicOAuth !== null;
     
     // Determine if using OAuth mode
@@ -109,15 +133,80 @@ class AnthropicAdapter extends ProviderAdapter {
   }
 
   getAvailableModels() {
-    // NOTE: We include a "future" model id (claude-sonnet-5) so the IDE is ready
-    // when/if Anthropic enables it for this account. It may fail until available.
-    return [
-      'claude-opus-4-6',
-      'claude-sonnet-4-6',
-      'claude-opus-4-5',
-      'claude-sonnet-4-5',
-      'claude-sonnet-5'
-    ];
+    return this._availableModels.slice();
+  }
+
+  async listModels(options = {}) {
+    if (!this._discoveryEnabled) {
+      return this.getAvailableModels();
+    }
+
+    const force = options.force === true;
+    const cacheFresh = this._modelsFetchedAt > 0 && (Date.now() - this._modelsFetchedAt) < this._discoveryTtlMs;
+    if (!force && cacheFresh && this._availableModels.length > 0) {
+      return this.getAvailableModels();
+    }
+
+    if (this._listModelsPromise) {
+      return this._listModelsPromise;
+    }
+
+    this._listModelsPromise = (async () => {
+      try {
+        if ((this._useOAuthService || this._isOAuth) && !this._client) {
+          await this._initClientAsync();
+        }
+
+        const baseUrl = String(this.config.baseUrl || 'https://api.anthropic.com').replace(/\/$/, '');
+        const headers = this._isOAuth || this.config.authToken
+          ? {
+              ...getStealthHeaders(),
+              'anthropic-version': '2023-06-01',
+              Authorization: `Bearer ${this.config.authToken}`
+            }
+          : {
+              'x-api-key': this.config.apiKey,
+              'anthropic-version': '2023-06-01'
+            };
+
+        const response = await fetch(`${baseUrl}/v1/models`, { headers });
+        if (!response.ok) {
+          throw new Error(`Model list returned ${response.status}`);
+        }
+
+        const payload = await response.json();
+        const ids = sortDiscoveredModels(
+          this._catalogProviderId,
+          (payload.data || [])
+            .map((model) => model?.id)
+            .filter((modelId) => String(modelId || '').toLowerCase().includes('claude'))
+        );
+
+        if (ids.length > 0) {
+          this._availableModels = ids;
+          this._modelsFetchedAt = Date.now();
+          setCachedProviderModels(this._catalogProviderId, ids, {
+            source: 'live',
+            ttlMs: this._discoveryTtlMs
+          });
+          return this.getAvailableModels();
+        }
+      } catch (error) {
+        console.warn('[anthropic] Live model discovery failed, using cached/seed list:', error.message);
+      } finally {
+        this._listModelsPromise = null;
+      }
+
+      const cachedModels = getCachedProviderModels(this._catalogProviderId, this._discoveryTtlMs * 4);
+      if (cachedModels && cachedModels.length > 0) {
+        this._availableModels = cachedModels;
+        this._modelsFetchedAt = Date.now();
+      }
+
+      return this.getAvailableModels();
+    })();
+
+    return this._listModelsPromise;
   }
 
   /**

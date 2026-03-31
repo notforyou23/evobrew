@@ -3218,60 +3218,9 @@ app.get('/api/providers/models', async (req, res) => {
   try {
     const { getDefaultRegistry } = require('./providers');
     const registry = await getDefaultRegistry();
-    let models = registry.listModels();
-
-    // For Ollama, fetch actually installed models instead of defaults
-    const ollamaProvider = registry.getProviderById('ollama');
-    if (ollamaProvider) {
-      try {
-        const ollamaHealth = await ollamaProvider.healthCheck();
-        if (ollamaHealth.healthy) {
-          const installedModels = await ollamaProvider.listModels();
-
-          // Remove default Ollama models from list
-          models = models.filter(m => m.provider !== 'ollama');
-
-          // Add actually installed Ollama models
-          installedModels.forEach(modelId => {
-            models.push({
-              id: modelId,
-              provider: 'ollama',
-              value: qualifyModelSelection('ollama', modelId),
-              label: `${modelId} (Ollama)`
-            });
-          });
-
-          console.log(`[PROVIDERS] Fetched ${installedModels.length} installed Ollama models`);
-        } else {
-          console.log('[PROVIDERS] Ollama not running, using default model list');
-        }
-      } catch (ollamaErr) {
-        console.warn('[PROVIDERS] Failed to fetch Ollama models:', ollamaErr.message);
-      }
-    }
-
-    // Codex models now included via registerModel() in providers/index.js
-
-    // For Ollama Cloud, fetch live model list so new models appear without code changes
-    const ollamaCloudProvider = registry.getProviderById('ollama-cloud');
-    if (ollamaCloudProvider && typeof ollamaCloudProvider.listModels === 'function') {
-      try {
-        const cloudModels = await ollamaCloudProvider.listModels();
-        // Replace seed list with live list
-        models = models.filter(m => m.provider !== 'ollama-cloud');
-        cloudModels.forEach(modelId => {
-          models.push({
-            id: modelId,
-            provider: 'ollama-cloud',
-            value: qualifyModelSelection('ollama-cloud', modelId),
-            label: `${modelId} (Ollama Cloud)`
-          });
-        });
-        console.log(`[PROVIDERS] Fetched ${cloudModels.length} Ollama Cloud models`);
-      } catch (cloudErr) {
-        console.warn('[PROVIDERS] Failed to fetch Ollama Cloud models, using seed list:', cloudErr.message);
-      }
-    }
+    const forceRefresh = ['1', 'true', 'yes'].includes(String(req.query.refresh || '').toLowerCase());
+    await registry.refreshModelCatalog({ force: forceRefresh });
+    let models = registry.listModels({ includeAliases: true });
 
     // Add OpenClaw (COZ) as a virtual provider option
     models.push({
@@ -3288,7 +3237,7 @@ app.get('/api/providers/models', async (req, res) => {
     res.json({
       success: true,
       models,
-      providerCount: registry.getProviderIds().length,
+      providerCount: new Set(models.map((model) => model.provider)).size,
       platform: {
         type: platform.platform,
         supportsLocalModels: platform.supportsLocalModels,
@@ -3658,6 +3607,19 @@ app.post('/api/brain/query/stream', async (req, res) => {
     otherOptions.model = normalizedModel;
   }
 
+  if (requestedModelSelection) {
+    try {
+      const { getDefaultRegistry } = require('./providers');
+      const registry = await getDefaultRegistry();
+      const resolution = await registry.resolveModelSelection(requestedModelSelection);
+      if (resolution?.resolvedModel) {
+        otherOptions.model = resolution.resolvedModel;
+      }
+    } catch (error) {
+      console.warn('[BRAIN-STREAM] Failed to resolve model alias:', error.message);
+    }
+  }
+
   if (enablePGS) {
     req.setTimeout(600000);
   }
@@ -3738,6 +3700,19 @@ app.post('/api/brain/query', async (req, res) => {
     const normalizedModel = getModelId(requestedModelSelection) || requestedModelSelection;
     if (normalizedModel) {
       otherOptions.model = normalizedModel;
+    }
+
+    if (requestedModelSelection) {
+      try {
+        const { getDefaultRegistry } = require('./providers');
+        const registry = await getDefaultRegistry();
+        const resolution = await registry.resolveModelSelection(requestedModelSelection);
+        if (resolution?.resolvedModel) {
+          otherOptions.model = resolution.resolvedModel;
+        }
+      } catch (resolveErr) {
+        console.warn('[BRAIN-QUERY] Failed to resolve model alias:', resolveErr.message);
+      }
     }
 
     // PGS queries take 3-6 minutes - extend timeout

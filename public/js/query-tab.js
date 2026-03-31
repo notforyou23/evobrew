@@ -291,7 +291,7 @@ async function populateModels() {
   if (!select) return;
 
   // Default fallback
-  select.innerHTML = '<option value="openai/gpt-5.1" data-provider="openai">GPT-5.1</option>';
+  select.innerHTML = '<option value="openai/latest-stable" data-provider="openai">Latest OpenAI Stable</option>';
 
   try {
     const res = await fetch('/api/providers/models');
@@ -314,7 +314,7 @@ async function populateModels() {
         opt.dataset.provider = m.provider;
         opt.dataset.modelId = m.id;
         opt.textContent = m.label || m.id;
-        if ((m.value || '') === 'openai/gpt-5.1' || (m.provider === 'openai' && m.id === 'gpt-5.1')) {
+        if ((m.value || '') === 'openai/latest-stable' || (m.provider === 'openai' && m.id === 'latest-stable')) {
           opt.selected = true;
         }
         group.appendChild(opt);

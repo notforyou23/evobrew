@@ -10,7 +10,14 @@
 const { AnthropicAdapter } = require('./adapters/anthropic.js');
 const { OpenAIAdapter } = require('./adapters/openai.js');
 const { OllamaAdapter } = require('./adapters/ollama.js');
-const { qualifyModelSelection } = require('../../lib/model-selection.js');
+const {
+  buildModelAliases,
+  sortDiscoveredModels
+} = require('./model-catalog.js');
+const {
+  parseModelSelection,
+  qualifyModelSelection
+} = require('../../lib/model-selection.js');
 
 /**
  * @typedef {import('./adapters/base.js').ProviderAdapter} ProviderAdapter
@@ -24,8 +31,14 @@ class ProviderRegistry {
     /** @type {Map<string, string>} */
     this.modelMap = new Map();
 
+    /** @type {Map<string, Set<string>>} */
+    this.providerModels = new Map();
+
     /** @type {Map<string, Function>} */
     this.adapterFactories = new Map();
+
+    /** @type {Map<string, Map<string, {id:string,label:string,target:string}>>} */
+    this.aliasMap = new Map();
 
     // Register built-in adapter factories
     this._registerBuiltinFactories();
@@ -36,20 +49,27 @@ class ProviderRegistry {
    * @private
    */
   _registerBuiltinFactories() {
-    this.adapterFactories.set('anthropic', (config) => new AnthropicAdapter(config));
-    this.adapterFactories.set('openai', (config) => new OpenAIAdapter(config));
+    this.adapterFactories.set('anthropic', (config) => new AnthropicAdapter({
+      ...config,
+      providerId: 'anthropic'
+    }));
+    this.adapterFactories.set('openai', (config) => new OpenAIAdapter({
+      ...config,
+      providerId: 'openai'
+    }));
     this.adapterFactories.set('ollama', (config) => new OllamaAdapter(config));
     // xAI uses OpenAI adapter with different base URL and custom ID
     this.adapterFactories.set('xai', (config) => {
       const adapter = new OpenAIAdapter({
         ...config,
-        baseUrl: config.baseUrl || 'https://api.x.ai/v1'
+        providerId: 'xai',
+        baseUrl: config.baseUrl || 'https://api.x.ai/v1',
+        seedModels: ['grok-4-1-fast-reasoning', 'grok-4-1-fast-non-reasoning', 'grok-code-fast-1', 'grok-2', 'grok-beta'],
+        modelFilter: (modelId) => String(modelId || '').toLowerCase().startsWith('grok')
       });
       // Override ID for routing
       Object.defineProperty(adapter, 'id', { value: 'xai', writable: false });
       Object.defineProperty(adapter, 'name', { value: 'xAI (Grok)', writable: false });
-      // Override available models for xAI
-      adapter.getAvailableModels = () => ['grok-code-fast-1', 'grok-2', 'grok-beta'];
       return adapter;
     });
 
@@ -57,13 +77,15 @@ class ProviderRegistry {
     this.adapterFactories.set('openai-codex', (config) => {
       const adapter = new OpenAIAdapter({
         ...config,
-        baseUrl: config.baseUrl || 'https://chatgpt.com/backend-api'
+        providerId: 'openai-codex',
+        baseUrl: config.baseUrl || 'https://chatgpt.com/backend-api',
+        seedModels: ['gpt-5.2', 'gpt-5.3-codex', 'gpt-5.3-codex-spark'],
+        modelFilter: (modelId) => /gpt|codex/i.test(String(modelId || '')),
+        discoveryEnabled: false
       });
       // Override ID for routing
       Object.defineProperty(adapter, 'id', { value: 'openai-codex', writable: false });
       Object.defineProperty(adapter, 'name', { value: 'OpenAI Codex (OAuth)', writable: false });
-      // Override available models for Codex
-      adapter.getAvailableModels = () => ['gpt-5.2', 'gpt-5.3-codex', 'gpt-5.3-codex-spark'];
       return adapter;
     });
 
@@ -72,67 +94,30 @@ class ProviderRegistry {
     this.adapterFactories.set('ollama-cloud', (config) => {
       const adapter = new OpenAIAdapter({
         ...config,
-        baseUrl: 'https://ollama.com/v1'
+        providerId: 'ollama-cloud',
+        baseUrl: 'https://ollama.com/v1',
+        seedModels: [
+          'nemotron-3-super',
+          'nemotron-3-nano:30b',
+          'qwen3.5:397b',
+          'qwen3-next:80b',
+          'deepseek-v3.1:671b',
+          'cogito-2.1:671b',
+          'kimi-k2:1t',
+          'kimi-k2-thinking',
+          'gemma3:12b',
+          'devstral-small-2:24b',
+          'gpt-oss:20b',
+          'minimax-m2.5',
+          'glm-5'
+        ],
+        modelFilter: (modelId) => {
+          const normalized = String(modelId || '').toLowerCase();
+          return !normalized.includes('embed');
+        }
       });
       Object.defineProperty(adapter, 'id', { value: 'ollama-cloud', writable: false });
       Object.defineProperty(adapter, 'name', { value: 'Ollama Cloud', writable: false });
-
-      // Seed list — used as fallback if live fetch fails
-      const seedModels = [
-        'nemotron-3-super',
-        'nemotron-3-nano:30b',
-        'qwen3.5:397b',
-        'qwen3-next:80b',
-        'deepseek-v3.1:671b',
-        'cogito-2.1:671b',
-        'kimi-k2:1t',
-        'kimi-k2-thinking',
-        'gemma3:12b',
-        'devstral-small-2:24b',
-        'gpt-oss:20b',
-        'minimax-m2.5',
-        'glm-5',
-      ];
-      const discoveryTtlMs = 5 * 60 * 1000;
-      let cachedModels = seedModels.slice();
-      let cacheExpiresAt = 0;
-      let inFlightListModels = null;
-      adapter.getAvailableModels = () => cachedModels.slice();
-
-      // Dynamic discovery: fetch live model list from ollama.com/v1/models
-      adapter.listModels = async () => {
-        const now = Date.now();
-        if (cacheExpiresAt > now && cachedModels.length > 0) {
-          return cachedModels.slice();
-        }
-        if (inFlightListModels) {
-          return inFlightListModels;
-        }
-
-        inFlightListModels = (async () => {
-          try {
-            const OpenAI = require('openai');
-            const client = new OpenAI({
-              apiKey: config.apiKey,
-              baseURL: 'https://ollama.com/v1'
-            });
-            const response = await client.models.list();
-            const ids = (response.data || []).map(m => m.id).filter(Boolean);
-            cachedModels = ids.length > 0 ? ids : seedModels.slice();
-            cacheExpiresAt = Date.now() + discoveryTtlMs;
-            return cachedModels.slice();
-          } catch (err) {
-            const fallbackModels = cachedModels.length > 0 ? cachedModels : seedModels;
-            cacheExpiresAt = Date.now() + discoveryTtlMs;
-            console.warn('[OllamaCloud] Dynamic model fetch failed, using cached/seed list:', err.message);
-            return fallbackModels.slice();
-          } finally {
-            inFlightListModels = null;
-          }
-        })();
-
-        return inFlightListModels;
-      };
 
       return adapter;
     });
@@ -165,9 +150,7 @@ class ProviderRegistry {
     this.providers.set(adapter.id, adapter);
 
     // Auto-register all models from the adapter
-    for (const model of adapter.getAvailableModels()) {
-      this.registerModel(model, adapter.id);
-    }
+    this._registerProviderModels(adapter.id, adapter.getAvailableModels());
   }
 
   /**
@@ -176,7 +159,167 @@ class ProviderRegistry {
    * @param {string} providerId
    */
   registerModel(modelId, providerId) {
-    this.modelMap.set(modelId, providerId);
+    const rawModelId = String(modelId || '').trim();
+    const provider = String(providerId || '').trim();
+    if (!rawModelId || !provider) return;
+
+    this.modelMap.set(qualifyModelSelection(provider, rawModelId), provider);
+    if (!this.modelMap.has(rawModelId)) {
+      this.modelMap.set(rawModelId, provider);
+    }
+
+    if (!this.providerModels.has(provider)) {
+      this.providerModels.set(provider, new Set());
+    }
+    this.providerModels.get(provider).add(rawModelId);
+  }
+
+  _registerProviderModels(providerId, models = []) {
+    const sortedModels = sortDiscoveredModels(providerId, models);
+    for (const model of sortedModels) {
+      this.registerModel(model, providerId);
+    }
+    this._updateAliases(providerId, sortedModels);
+  }
+
+  _getKnownModelsForProvider(providerId) {
+    const known = this.providerModels.get(providerId);
+    if (known && known.size > 0) {
+      return sortDiscoveredModels(providerId, Array.from(known));
+    }
+
+    const adapter = this.providers.get(providerId);
+    if (adapter) {
+      return sortDiscoveredModels(providerId, adapter.getAvailableModels());
+    }
+
+    const models = [];
+    for (const [modelId, mappedProviderId] of this.modelMap.entries()) {
+      if (mappedProviderId !== providerId) continue;
+      if (String(modelId || '').startsWith('latest')) continue;
+      models.push(modelId);
+    }
+    return sortDiscoveredModels(providerId, models);
+  }
+
+  _updateAliases(providerId, models = []) {
+    const aliases = buildModelAliases(providerId, models);
+    const aliasEntries = new Map();
+    for (const alias of aliases) {
+      aliasEntries.set(alias.id, alias);
+    }
+    this.aliasMap.set(providerId, aliasEntries);
+  }
+
+  getAliasesForProvider(providerId) {
+    const existing = this.aliasMap.get(providerId);
+    if (!existing || existing.size === 0) {
+      const knownModels = this._getKnownModelsForProvider(providerId);
+      if (knownModels.length > 0) {
+        this._updateAliases(providerId, knownModels);
+      }
+    }
+    return Array.from(this.aliasMap.get(providerId)?.values() || []);
+  }
+
+  async refreshProviderModels(providerId, options = {}) {
+    const adapter = this.getProviderById(providerId);
+    if (!adapter) return [];
+
+    const models = typeof adapter.listModels === 'function'
+      ? await adapter.listModels(options)
+      : adapter.getAvailableModels();
+
+    if (Array.isArray(models) && models.length > 0) {
+      this._registerProviderModels(providerId, models);
+      return sortDiscoveredModels(providerId, models);
+    }
+
+    const fallbackModels = adapter.getAvailableModels();
+    this._registerProviderModels(providerId, fallbackModels);
+    return sortDiscoveredModels(providerId, fallbackModels);
+  }
+
+  async refreshModelCatalog(options = {}) {
+    for (const providerId of this.getProviderIds()) {
+      await this.refreshProviderModels(providerId, options);
+    }
+  }
+
+  async resolveModelSelection(selection, options = {}) {
+    const parsed = parseModelSelection(selection);
+    let providerId = parsed.providerId || this.parseProviderId(parsed.modelId);
+    if (!providerId) {
+      return {
+        selection: parsed.selection,
+        providerId: null,
+        modelId: parsed.modelId,
+        resolvedModel: parsed.modelId,
+        resolvedSelection: parsed.selection || parsed.modelId,
+        provider: null,
+        aliasId: null
+      };
+    }
+
+    let provider = this.getProviderById(providerId) || this.getProvider(selection);
+    const knownModels = this._getKnownModelsForProvider(providerId);
+    const aliasEntry = this.getAliasesForProvider(providerId).find((alias) => alias.id === parsed.modelId) || null;
+
+    if (!provider && aliasEntry?.target) {
+      return {
+        selection: parsed.selection,
+        providerId,
+        modelId: parsed.modelId,
+        resolvedModel: aliasEntry.target,
+        resolvedSelection: qualifyModelSelection(providerId, aliasEntry.target),
+        provider: null,
+        aliasId: aliasEntry.id
+      };
+    }
+
+    if (!provider) {
+      return {
+        selection: parsed.selection,
+        providerId,
+        modelId: parsed.modelId,
+        resolvedModel: parsed.modelId,
+        resolvedSelection: parsed.qualified ? parsed.selection : qualifyModelSelection(providerId, parsed.modelId),
+        provider: null,
+        aliasId: null
+      };
+    }
+
+    const aliasMap = this.aliasMap.get(providerId);
+    if (aliasMap?.has(parsed.modelId)) {
+      await this.refreshProviderModels(providerId, options);
+      const refreshedAlias = this.aliasMap.get(providerId)?.get(parsed.modelId);
+      if (refreshedAlias?.target) {
+        return {
+          selection: parsed.selection,
+          providerId,
+          modelId: parsed.modelId,
+          resolvedModel: refreshedAlias.target,
+          resolvedSelection: qualifyModelSelection(providerId, refreshedAlias.target),
+          provider,
+          aliasId: refreshedAlias.id
+        };
+      }
+    }
+
+    if (!parsed.qualified && !provider.supportsModel(parsed.modelId) && typeof provider.listModels === 'function') {
+      await this.refreshProviderModels(providerId, options);
+      provider = this.getProviderById(providerId) || provider;
+    }
+
+    return {
+      selection: parsed.selection,
+      providerId,
+      modelId: parsed.modelId,
+      resolvedModel: parsed.modelId,
+      resolvedSelection: parsed.qualified ? parsed.selection : qualifyModelSelection(providerId, parsed.modelId),
+      provider,
+      aliasId: null
+    };
   }
 
   /**
@@ -346,6 +489,7 @@ class ProviderRegistry {
       }
       this.providers.delete(providerId);
     }
+    this.providerModels.delete(providerId);
   }
 
   /**
@@ -377,33 +521,44 @@ class ProviderRegistry {
    * List all available models across all providers
    * @returns {Object[]} Array of { id, provider, value, label }
    */
-  listModels() {
+  listModels(options = {}) {
+    const includeAliases = options.includeAliases !== false;
     const models = [];
     const seen = new Set();
-    for (const [providerId, adapter] of this.providers.entries()) {
-      for (const modelId of adapter.getAvailableModels()) {
-        const selectionValue = qualifyModelSelection(providerId, modelId);
-        models.push({
-          id: modelId,
-          provider: providerId,
-          value: selectionValue,
-          label: this._formatModelLabel(modelId, adapter.name)
-        });
-        seen.add(selectionValue);
+    const providerIds = new Set([
+      ...this.providers.keys(),
+      ...Array.from(this.modelMap.values())
+    ]);
+
+    for (const providerId of providerIds) {
+      const adapter = this.providers.get(providerId);
+      const providerName = adapter ? adapter.name : providerId;
+      const knownModels = this._getKnownModelsForProvider(providerId);
+
+      if (includeAliases) {
+        for (const alias of this.getAliasesForProvider(providerId)) {
+          const aliasValue = qualifyModelSelection(providerId, alias.id);
+          models.push({
+            id: alias.id,
+            provider: providerId,
+            value: aliasValue,
+            label: `${alias.label} → ${alias.target} (${providerName})`,
+            isAlias: true,
+            resolvedModel: alias.target
+          });
+          seen.add(aliasValue);
+        }
       }
-    }
-    // Include models registered via registerModel() that weren't listed by their adapter
-    for (const [modelId, providerId] of this.modelMap.entries()) {
-      const selectionValue = qualifyModelSelection(providerId, modelId);
-      if (!seen.has(selectionValue)) {
-        const adapter = this.providers.get(providerId);
-        const providerName = adapter ? adapter.name : providerId;
+
+      for (const modelId of knownModels) {
+        const selectionValue = qualifyModelSelection(providerId, modelId);
         models.push({
           id: modelId,
           provider: providerId,
           value: selectionValue,
           label: this._formatModelLabel(modelId, providerName)
         });
+        seen.add(selectionValue);
       }
     }
     return models;
@@ -445,12 +600,17 @@ class ProviderRegistry {
       let provider = this.getProviderById(assignment.provider);
       let modelId = assignment.model;
 
+      const aliasTarget = this.aliasMap.get(assignment.provider)?.get(modelId)?.target;
+      if (aliasTarget) {
+        modelId = aliasTarget;
+      }
+
       // Try fallback if primary unavailable or fails health check
       if (!provider && assignment.fallback) {
         console.log(`[Registry] Primary provider unavailable, trying fallback: ${assignment.fallback}`);
         const [fallbackProvider, fallbackModel] = assignment.fallback.split('/');
         provider = this.getProviderById(fallbackProvider);
-        modelId = fallbackModel;
+        modelId = this.aliasMap.get(fallbackProvider)?.get(fallbackModel)?.target || fallbackModel;
       }
 
       if (!provider) {
