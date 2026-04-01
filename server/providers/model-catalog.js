@@ -144,20 +144,29 @@ function buildModelAliases(providerId, models = []) {
     case 'anthropic':
       addAlias('latest-sonnet', 'Latest Sonnet', (model) => /claude-sonnet/i.test(model));
       addAlias('latest-opus', 'Latest Opus', (model) => /claude-opus/i.test(model));
+      addAlias('latest-haiku', 'Latest Haiku', (model) => /claude-haiku/i.test(model));
       break;
     case 'openai':
       addAlias('latest-reasoning', 'Latest Reasoning', (model) => /^o[134]/i.test(model) || /gpt-5/i.test(model));
-      addAlias('latest-codex', 'Latest Codex', (model) => /codex/i.test(model));
+      addAlias('latest-mini', 'Latest Mini', (model) => /mini/i.test(model));
+      addAlias('latest-nano', 'Latest Nano', (model) => /nano/i.test(model));
       break;
     case 'openai-codex':
       addAlias('latest-codex', 'Latest Codex', () => true);
+      addAlias('latest-mini', 'Latest Mini', (model) => /mini/i.test(model));
+      addAlias('latest-nano', 'Latest Nano', (model) => /nano/i.test(model));
       break;
     case 'xai':
       addAlias('latest-fast', 'Latest Fast', (model) => /fast/i.test(model));
       addAlias('latest-reasoning', 'Latest Reasoning', (model) => /reason/i.test(model));
+      addAlias('latest-4-20', 'Latest 4.20', (model) => /4[._-]?20/i.test(model) && !/(multi-agent|reason)/i.test(model));
+      addAlias('latest-4-20-moe', 'Latest 4.20 MoE', (model) => /4[._-]?20/i.test(model) && /(multi-agent|moe)/i.test(model));
       break;
     case 'ollama-cloud':
       addAlias('latest-coder', 'Latest Coder', (model) => /coder/i.test(model));
+      addAlias('latest-kimi', 'Latest Kimi', (model) => /kimi/i.test(model));
+      addAlias('latest-minimax', 'Latest MiniMax', (model) => /minimax/i.test(model));
+      addAlias('latest-nemotron', 'Latest Nemotron', (model) => /nemotron/i.test(model));
       break;
     default:
       break;

@@ -61,9 +61,8 @@ class OpenAIAdapter extends ProviderAdapter {
       ? config.seedModels.slice()
       : [
           'gpt-5.4',
-          'gpt-5.2-codex',
-          'gpt-5.2',
-          'gpt-5.1',
+          'gpt-5.4-mini',
+          'gpt-5.4-nano',
           'gpt-4o',
           'gpt-4o-mini'
         ];
@@ -112,6 +111,10 @@ class OpenAIAdapter extends ProviderAdapter {
   _defaultModelFilter(modelId) {
     const normalized = String(modelId || '').trim().toLowerCase();
     if (!normalized) return false;
+
+    if (this._catalogProviderId === 'openai' && normalized.includes('codex')) {
+      return false;
+    }
 
     const looksLikeChatModel = (
       normalized.startsWith('gpt-') ||

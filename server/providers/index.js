@@ -142,6 +142,9 @@ async function createRegistry(options = {}) {
   // because ChatGPT OAuth tokens often lack OpenAI Platform scopes (api.responses.write).
   // We still register the model IDs so the UI can select them.
   // Codex model IDs registered for routing only; listing handled in /api/providers/models handler
+  registry.registerModel('gpt-5.4', 'openai-codex');
+  registry.registerModel('gpt-5.4-mini', 'openai-codex');
+  registry.registerModel('gpt-5.4-nano', 'openai-codex');
   registry.registerModel('gpt-5.2', 'openai-codex');
   registry.registerModel('gpt-5.3-codex', 'openai-codex');
   registry.registerModel('gpt-5.3-codex-spark', 'openai-codex');
@@ -156,10 +159,11 @@ async function createRegistry(options = {}) {
     });
     // Register Grok models explicitly
     registry.registerModel('grok-code-fast-1', 'xai');
-    registry.registerModel('grok-4-1-fast-reasoning', 'xai');
-    registry.registerModel('grok-4-1-fast-non-reasoning', 'xai');
-    registry.registerModel('grok-2', 'xai');
-    registry.registerModel('grok-beta', 'xai');
+    registry.registerModel('grok-4-latest', 'xai');
+    registry.registerModel('grok-4-fast-reasoning-latest', 'xai');
+    registry.registerModel('grok-4.20-non-reasoning-latest', 'xai');
+    registry.registerModel('grok-4.20-reasoning-latest', 'xai');
+    registry.registerModel('grok-4.20-multi-agent-latest', 'xai');
     console.log('[Providers] ✅ xAI (Grok) registered');
   }
   // Initialize Ollama Cloud

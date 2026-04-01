@@ -8,6 +8,17 @@ let lastQueryResult = null;
 let queryHistory = [];
 let _queryTabInitialized = false;
 
+const QUERY_STARTER_PROMPTS = [
+  { icon: '📋', label: 'Summary', prompt: 'summarize the main findings from this research', featured: true },
+  { icon: '⚡', label: 'Actionable', prompt: "what insights are most actionable - things we can test and build on?", featured: true },
+  { icon: '🎯', label: 'Strategic', prompt: 'what are the strategic recommendations from the latest coordinator review?', featured: true },
+  { icon: '🔬', label: 'Novel Concepts', prompt: "we are looking for novelty. concepts that aren't out in the mainstream that we can test and build on", featured: true },
+  { icon: '🔗', label: 'Synthesis', prompt: 'what did the synthesis agents discover?', featured: false },
+  { icon: '🛡️', label: 'Defensible', prompt: 'identify the top 3-5 ideas with the strongest competitive moat or defensibility', featured: false },
+  { icon: '💵', label: 'Quick Wins', prompt: 'which findings have immediate monetization potential with existing customers?', featured: false },
+  { icon: '💰', label: 'Market Fit', prompt: 'we are looking for valuable opportunities that are within reach and not too novel. find those with TAM, SAM, and typical budget size', featured: false }
+];
+
 /* ═══════════════════════════════════════════════════════
    Init — builds HTML, injects CSS, binds events
    ═══════════════════════════════════════════════════════ */
@@ -29,7 +40,24 @@ function initQueryTab() {
     <div class="qt-container">
       <!-- Query Input Section -->
       <div class="qt-input-section">
+        <div class="qt-starter-header">
+          <div>
+            <div class="qt-starter-eyebrow">Research</div>
+            <div class="qt-starter-title">Start with one strong question</div>
+          </div>
+          <button id="qt-more-prompts" class="qt-btn qt-btn-outline qt-btn-sm" type="button" aria-expanded="false">More starters</button>
+        </div>
         <textarea id="qt-input" class="qt-textarea" placeholder="Ask a question about this brain's knowledge..."></textarea>
+
+        <div class="qt-starter-prompt-bar">
+          <div class="qt-quick-label">Starter prompts</div>
+          <div class="qt-quick-grid qt-quick-grid--featured">
+            ${renderQuickPromptButtons(true)}
+          </div>
+          <div class="qt-quick-grid qt-quick-grid--more qt-hidden" id="qt-more-prompts-panel">
+            ${renderQuickPromptButtons(false)}
+          </div>
+        </div>
 
         <div class="qt-actions-compact">
           <button id="qt-submit" class="qt-btn qt-btn-primary">Execute Query</button>
@@ -43,27 +71,15 @@ function initQueryTab() {
       </div>
 
       <!-- Collapsible Options -->
-      <details class="qt-options-section">
+      <details class="qt-options-section" id="qt-options-section">
         <summary class="qt-options-toggle">
           <span class="qt-toggle-icon">▶</span>
-          <span>Query Options</span>
+          <span>Advanced</span>
           <span class="qt-options-summary" id="qt-options-summary">Full mode · Loading models...</span>
         </summary>
         <div class="qt-options-content">
-
-          <!-- Quick Prompts -->
-          <div class="qt-quick-prompts">
-            <div class="qt-quick-label">Quick Prompts:</div>
-            <div class="qt-quick-grid">
-              <button class="qt-quick-btn" data-prompt="summarize the main findings from this research">📋 Summary</button>
-              <button class="qt-quick-btn" data-prompt="we are looking for novelty. concepts that aren't out in the mainstream that we can test and build on">🔬 Novel Concepts</button>
-              <button class="qt-quick-btn" data-prompt="what insights are most actionable - things we can test and build on?">⚡ Actionable</button>
-              <button class="qt-quick-btn" data-prompt="what are the strategic recommendations from the latest coordinator review?">🎯 Strategic</button>
-              <button class="qt-quick-btn" data-prompt="what did the synthesis agents discover?">🔗 Synthesis</button>
-              <button class="qt-quick-btn" data-prompt="identify the top 3-5 ideas with the strongest competitive moat or defensibility">🛡️ Defensible</button>
-              <button class="qt-quick-btn" data-prompt="which findings have immediate monetization potential with existing customers?">💵 Quick Wins</button>
-              <button class="qt-quick-btn" data-prompt="we are looking for valuable opportunities that are within reach and not too novel. find those with TAM, SAM, and typical budget size">💰 Market Fit</button>
-            </div>
+          <div class="qt-advanced-intro">
+            Tune models, depth, streaming, evidence controls, and PGS when you need more control.
           </div>
 
           <!-- Options Grid -->
@@ -159,15 +175,7 @@ function initQueryTab() {
 
         <!-- Results — always visible -->
         <div id="qt-result" class="qt-result">
-          <div class="qt-result-placeholder">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="40" height="40">
-              <circle cx="12" cy="12" r="10"/>
-              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
-              <path d="M12 17h.01"/>
-            </svg>
-            <p>Ask a question above to query this brain's knowledge</p>
-            <p class="qt-hint">Responses will appear here with full context and citations</p>
-          </div>
+          ${renderQueryPlaceholder(true)}
         </div>
 
         <!-- History -->
@@ -184,9 +192,70 @@ function initQueryTab() {
 
   // Bind events
   bindQueryTabEvents();
-  populateModels();
+  seedQueryModelSelects();
+  refreshQueryOptionsSummary();
+  populateModels({ useCached: true, backgroundRefresh: true });
+
+  if (!window.__queryTabModelCatalogBound) {
+    window.addEventListener('evobrew:model-catalog-updated', (event) => {
+      if (!_queryTabInitialized || !event.detail?.models?.length) return;
+      applyQueryModelCatalog(event.detail);
+    });
+    window.addEventListener('evobrew:runtime-prefs-changed', () => {
+      if (!_queryTabInitialized) return;
+      populateModels({ useCached: true, backgroundRefresh: false });
+    });
+    window.__queryTabModelCatalogBound = true;
+  }
+
   loadQueryHistory();
   checkBrainStatus();
+  window.addEventListener('cosmo:brainLoaded', checkBrainStatus);
+  window.addEventListener('cosmo:brainUnloaded', checkBrainStatus);
+}
+
+function renderQuickPromptButtons(featuredOnly) {
+  return QUERY_STARTER_PROMPTS
+    .filter((prompt) => featuredOnly ? prompt.featured : !prompt.featured)
+    .map((prompt) => `<button class="qt-quick-btn" data-prompt="${escapeHtml(prompt.prompt)}">${prompt.icon} ${prompt.label}</button>`)
+    .join('');
+}
+
+function renderQueryPlaceholder(hasBrain) {
+  if (!hasBrain) {
+    return `
+      <div class="qt-result-placeholder">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="40" height="40">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M12 8v4"/>
+          <path d="M12 16h.01"/>
+        </svg>
+        <p>Connect a brain to start research.</p>
+        <p class="qt-hint">That unlocks memory-backed answers, citations, and graph-aware retrieval.</p>
+        <div class="qt-placeholder-actions">
+          <button class="qt-btn qt-btn-primary qt-btn-sm" data-action="toggleBrainPicker()">Connect Brain</button>
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="qt-result-placeholder">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="40" height="40">
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+        <path d="M12 17h.01"/>
+      </svg>
+      <p>Ask a question above to query this brain's knowledge</p>
+      <p class="qt-hint">Responses will appear here with full context and citations</p>
+    </div>
+  `;
+}
+
+function updateQueryPlaceholder(hasBrain) {
+  const resultDiv = document.getElementById('qt-result');
+  if (!resultDiv) return;
+  resultDiv.innerHTML = renderQueryPlaceholder(hasBrain);
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -201,6 +270,9 @@ function bindQueryTabEvents() {
   const modeSelect = document.getElementById('qt-mode');
   const modelSelect = document.getElementById('qt-model');
   const clearHistoryBtn = document.getElementById('qt-clear-history');
+  const morePromptsBtn = document.getElementById('qt-more-prompts');
+  const morePromptsPanel = document.getElementById('qt-more-prompts-panel');
+  const optionsSection = document.getElementById('qt-options-section');
 
   submitBtn?.addEventListener('click', () => executeQuery());
 
@@ -223,43 +295,32 @@ function bindQueryTabEvents() {
     }
   });
 
-  if (modelSelect && !modelSelect.dataset.catalogHydrationBound) {
-    modelSelect.addEventListener('focus', ensureQueryModelCatalogLoaded);
-    modelSelect.addEventListener('mousedown', ensureQueryModelCatalogLoaded);
-    modelSelect.dataset.catalogHydrationBound = 'true';
-  }
+  morePromptsBtn?.addEventListener('click', () => {
+    const willOpen = morePromptsPanel?.classList.contains('qt-hidden');
+    morePromptsPanel?.classList.toggle('qt-hidden', !willOpen);
+    morePromptsBtn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+    morePromptsBtn.textContent = willOpen ? 'Fewer starters' : 'More starters';
+  });
 
   // Update options summary
-  const updateSummary = () => {
-    const summary = document.getElementById('qt-options-summary');
-    if (summary) {
-      const mode = modeSelect?.value || 'full';
-      const model = modelSelect?.selectedOptions?.[0]?.textContent || modelSelect?.value || '...';
-      const pgsOn = document.getElementById('qt-pgs')?.checked;
-      const pgsDepthVal = parseFloat(document.getElementById('qt-pgs-depth')?.value || '0.25');
-      const depthName = {0.1: 'Skim', 0.25: 'Sample', 0.5: 'Deep', 1.0: 'Full'}[pgsDepthVal] || `${Math.round(pgsDepthVal * 100)}%`;
-      const pgs = pgsOn ? ` · 🧬 PGS ${depthName} (${Math.round(pgsDepthVal * 100)}%)` : '';
-      summary.textContent = `${mode.charAt(0).toUpperCase() + mode.slice(1)} mode · ${model}${pgs}`;
-    }
-  };
-  modeSelect?.addEventListener('change', updateSummary);
+  modeSelect?.addEventListener('change', refreshQueryOptionsSummary);
   modelSelect?.addEventListener('change', () => {
     const synthSelect = document.getElementById('qt-pgs-synth-model');
     if (synthSelect && !synthSelect.dataset.userChanged) {
       synthSelect.value = modelSelect.value;
     }
-    updateSummary();
+    refreshQueryOptionsSummary();
   });
   document.getElementById('qt-pgs-synth-model')?.addEventListener('change', (e) => {
     e.target.dataset.userChanged = '1';
   });
-  document.getElementById('qt-pgs-mode')?.addEventListener('change', updateSummary);
+  document.getElementById('qt-pgs-mode')?.addEventListener('change', refreshQueryOptionsSummary);
 
   const pgsToggle = document.getElementById('qt-pgs');
   pgsToggle?.addEventListener('change', () => {
     const controls = document.getElementById('qt-pgs-controls');
     if (controls) controls.classList.toggle('qt-hidden', !pgsToggle.checked);
-    updateSummary();
+    refreshQueryOptionsSummary();
   });
 
   // PGS depth chip selection
@@ -268,7 +329,7 @@ function bindQueryTabEvents() {
       document.querySelectorAll('.qt-depth-chip').forEach(c => c.classList.remove('qt-depth-active'));
       chip.classList.add('qt-depth-active');
       document.getElementById('qt-pgs-depth').value = chip.dataset.depth;
-      updateSummary();
+      refreshQueryOptionsSummary();
     });
   });
 
@@ -305,6 +366,38 @@ function bindQueryTabEvents() {
     const icon = this.querySelector('.qt-toggle-icon');
     if (icon) icon.textContent = this.open ? '▼' : '▶';
   });
+
+  optionsSection?.addEventListener('toggle', () => {
+    if (optionsSection.open) {
+      ensureQueryModelCatalogLoaded();
+    }
+    const hint = document.getElementById('qt-mode-hint');
+    if (hint) {
+      hint.style.display = optionsSection.open ? '' : 'none';
+    }
+  });
+}
+
+function compactModelLabel(label) {
+  const raw = String(label || '').trim();
+  if (!raw) return 'Loading models...';
+  if (raw.length <= 28) return raw;
+  return `${raw.slice(0, 25)}…`;
+}
+
+function refreshQueryOptionsSummary() {
+  const summary = document.getElementById('qt-options-summary');
+  if (!summary) return;
+
+  const mode = document.getElementById('qt-mode')?.value || 'full';
+  const modelSelect = document.getElementById('qt-model');
+  const model = compactModelLabel(modelSelect?.selectedOptions?.[0]?.textContent || modelSelect?.value || 'Starter model');
+  const pgsOn = document.getElementById('qt-pgs')?.checked;
+  const pgsDepthVal = parseFloat(document.getElementById('qt-pgs-depth')?.value || '0.25');
+  const depthName = {0.1: 'Skim', 0.25: 'Sample', 0.5: 'Deep', 1.0: 'Full'}[pgsDepthVal] || `${Math.round(pgsDepthVal * 100)}%`;
+  const pgs = pgsOn ? ` · 🧬 PGS ${depthName} (${Math.round(pgsDepthVal * 100)}%)` : '';
+
+  summary.textContent = `${mode.charAt(0).toUpperCase() + mode.slice(1)} mode · ${model}${pgs}`;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -332,51 +425,106 @@ function buildQueryModelOptions(byProvider, selectedValue) {
   return fragment;
 }
 
-async function populateModels() {
+function getQueryFallbackModelHtml() {
+  return `
+    <option value="anthropic/latest-sonnet" data-provider="anthropic">Claude Sonnet 4.6</option>
+    <option value="anthropic/latest-opus" data-provider="anthropic">Claude Opus 4.6</option>
+    <option value="anthropic/latest-haiku" data-provider="anthropic">Claude Haiku 4.5</option>
+    <option value="openai-codex/latest-codex" data-provider="openai-codex">GPT-5.4</option>
+    <option value="openai-codex/latest-mini" data-provider="openai-codex">GPT-5.4 Mini</option>
+    <option value="openai-codex/latest-nano" data-provider="openai-codex">GPT-5.4 Nano</option>
+    <option value="xai/latest-4-20" data-provider="xai">Grok 4.20</option>
+    <option value="xai/latest-4-20-moe" data-provider="xai">Grok 4.20 Multi-Agent</option>
+    <option value="ollama-cloud/latest-kimi" data-provider="ollama-cloud">Kimi K2.5</option>
+    <option value="ollama-cloud/latest-minimax" data-provider="ollama-cloud">MiniMax M2.7</option>
+    <option value="ollama-cloud/latest-nemotron" data-provider="ollama-cloud">Nemotron 3 Super</option>
+    <option value="openclaw/openclaw:coz" data-provider="openclaw">COZ — Agent with Memory</option>
+  `;
+}
+
+function seedQueryModelSelects() {
   const select = document.getElementById('qt-model');
   if (!select) return;
 
   const sweepSelect = document.getElementById('qt-pgs-sweep-model');
   const synthSelect = document.getElementById('qt-pgs-synth-model');
+  const fallbackHtml = getQueryFallbackModelHtml();
+  const runtimePrefs = window.EvobrewRuntimePrefs;
+  const defaultQuery = runtimePrefs?.getDefaultSelection?.('query', 'anthropic/latest-sonnet') || 'anthropic/latest-sonnet';
+  const defaultSweep = runtimePrefs?.getDefaultSelection?.('pgsSweep', 'anthropic/latest-sonnet') || 'anthropic/latest-sonnet';
+  const defaultSynth = runtimePrefs?.getDefaultSelection?.('pgsSynth', defaultQuery) || defaultQuery;
 
-  // Default fallback
-  const fallbackHtml = `
-    <option value="openai/latest-stable" data-provider="openai">Latest OpenAI Stable</option>
-    <option value="anthropic/latest-sonnet" data-provider="anthropic">Latest Sonnet</option>
-    <option value="anthropic/latest-opus" data-provider="anthropic">Latest Opus</option>
-    <option value="openai-codex/latest-codex" data-provider="openai-codex">Latest Codex</option>
-    <option value="xai/latest-fast" data-provider="xai">Latest xAI Fast</option>
-    <option value="ollama-cloud/latest-coder" data-provider="ollama-cloud">Latest Ollama Cloud Coder</option>
-    <option value="openai/o4-mini" data-provider="openai">o4-mini</option>
-    <option value="anthropic/claude-sonnet-4-20250514" data-provider="anthropic">Claude Sonnet 4</option>
-  `;
   select.innerHTML = fallbackHtml;
+  select.dataset.catalogLoaded = 'false';
+  if ([...select.options].some((option) => option.value === defaultQuery)) {
+    select.value = defaultQuery;
+  }
+
   if (sweepSelect) {
     sweepSelect.innerHTML = fallbackHtml;
-    if ([...sweepSelect.options].some((option) => option.value === 'anthropic/claude-sonnet-4-6')) {
+    sweepSelect.dataset.catalogLoaded = 'false';
+    if ([...sweepSelect.options].some((option) => option.value === defaultSweep)) {
+      sweepSelect.value = defaultSweep;
+    } else if ([...sweepSelect.options].some((option) => option.value === 'anthropic/claude-sonnet-4-6')) {
       sweepSelect.value = 'anthropic/claude-sonnet-4-6';
     } else {
       sweepSelect.value = 'anthropic/latest-sonnet';
     }
   }
+
   if (synthSelect) {
     synthSelect.innerHTML = fallbackHtml;
-    synthSelect.value = select.value || 'openai/latest-stable';
+    synthSelect.dataset.catalogLoaded = 'false';
+    if ([...synthSelect.options].some((option) => option.value === defaultSynth)) {
+      synthSelect.value = defaultSynth;
+    } else {
+      synthSelect.value = select.value || 'openai/latest-stable';
+    }
   }
+}
 
-  try {
-    const res = await fetch('/api/providers/models');
-    const data = await res.json();
-    if (!data.success || !data.models?.length) return;
+function getSharedModelCatalog() {
+  return window.EvobrewModelCatalog || null;
+}
 
-    const currentValue = select.value || 'openai/latest-stable';
-    const currentSweepValue = sweepSelect?.value || 'anthropic/latest-sonnet';
-    const currentSynthValue = synthSelect?.value || currentValue;
+function applyQueryModelCatalog(data) {
+  const select = document.getElementById('qt-model');
+  if (!select || !data?.models?.length) return false;
 
+  const sweepSelect = document.getElementById('qt-pgs-sweep-model');
+  const synthSelect = document.getElementById('qt-pgs-synth-model');
+  const runtimePrefs = window.EvobrewRuntimePrefs;
+
+  const currentValue = select.value || 'openai/latest-stable';
+  const currentSweepValue = sweepSelect?.value || 'anthropic/latest-sonnet';
+  const currentSynthValue = synthSelect?.value || currentValue;
+
+  const renderedMain = runtimePrefs?.renderSelect
+    ? runtimePrefs.renderSelect(select, data, {
+        context: 'query',
+        currentValue
+      })
+    : false;
+
+  if (renderedMain) {
+    if (sweepSelect) {
+      runtimePrefs.renderSelect(sweepSelect, data, {
+        context: 'pgsSweep',
+        currentValue: currentSweepValue
+      });
+    }
+
+    if (synthSelect) {
+      runtimePrefs.renderSelect(synthSelect, data, {
+        context: 'pgsSynth',
+        currentValue: currentSynthValue
+      });
+    }
+  } else {
     const byProvider = {};
-    data.models.forEach(m => {
-      if (!byProvider[m.provider]) byProvider[m.provider] = [];
-      byProvider[m.provider].push(m);
+    data.models.forEach((model) => {
+      if (!byProvider[model.provider]) byProvider[model.provider] = [];
+      byProvider[model.provider].push(model);
     });
 
     select.innerHTML = '';
@@ -405,16 +553,45 @@ async function populateModels() {
         if (fallbackSynth) fallbackSynth.selected = true;
       }
     }
+  }
 
-    select.dataset.catalogLoaded = 'true';
-    if (sweepSelect) sweepSelect.dataset.catalogLoaded = 'true';
-    if (synthSelect) synthSelect.dataset.catalogLoaded = 'true';
+  select.dataset.catalogLoaded = 'true';
+  if (sweepSelect) sweepSelect.dataset.catalogLoaded = 'true';
+  if (synthSelect) synthSelect.dataset.catalogLoaded = 'true';
 
-    // Update summary
-    const summary = document.getElementById('qt-options-summary');
-    const mode = document.getElementById('qt-mode')?.value || 'full';
-    const modelLabel = select.selectedOptions?.[0]?.textContent || select.value;
-    if (summary) summary.textContent = `${mode.charAt(0).toUpperCase() + mode.slice(1)} mode · ${modelLabel}`;
+  refreshQueryOptionsSummary();
+  return true;
+}
+
+async function populateModels(options = {}) {
+  const select = document.getElementById('qt-model');
+  if (!select) return;
+
+  if (!select.options.length) {
+    seedQueryModelSelects();
+  }
+
+  const catalog = getSharedModelCatalog();
+
+  if (options.useCached !== false) {
+    const cached = catalog?.getCached?.();
+    if (cached?.models?.length) {
+      applyQueryModelCatalog(cached);
+    }
+  }
+
+  try {
+    const data = catalog?.fetch
+      ? await catalog.fetch({ refresh: options.refresh === true })
+      : await fetch(options.refresh ? '/api/providers/models?refresh=1' : '/api/providers/models').then((res) => res.json());
+
+    if (!data?.success || !data.models?.length) return;
+
+    applyQueryModelCatalog(data);
+
+    if (options.backgroundRefresh !== false && options.refresh !== true) {
+      catalog?.refreshInBackground?.();
+    }
   } catch (e) {
     console.warn('[QueryTab] Could not load models:', e);
   }
@@ -424,7 +601,7 @@ function ensureQueryModelCatalogLoaded() {
   const select = document.getElementById('qt-model');
   if (!select) return;
   const optionCount = select.querySelectorAll('option').length;
-  if (select.dataset.catalogLoaded === 'true' && optionCount > 20) return;
+  if (select.dataset.catalogLoaded === 'true' && optionCount > 0) return;
   populateModels();
 }
 
@@ -436,9 +613,17 @@ async function checkBrainStatus() {
   try {
     const res = await fetch('/api/brain/info');
     const data = await res.json();
-    if (!data.hasBrain) {
-      const ph = document.querySelector('.qt-result-placeholder p');
-      if (ph) ph.textContent = '🧠 No brain loaded. Use the Brain Picker to connect one first.';
+    const hasBrain = Boolean(data.hasBrain);
+    const input = document.getElementById('qt-input');
+    if (input) {
+      input.placeholder = hasBrain
+        ? "Ask a question about this brain's knowledge..."
+        : 'Connect a brain to start research...';
+    }
+
+    const resultDiv = document.getElementById('qt-result');
+    if (resultDiv?.querySelector('.qt-result-placeholder')) {
+      updateQueryPlaceholder(hasBrain);
     }
   } catch {}
 }
@@ -1153,21 +1338,16 @@ function loadHistoryItem(index) {
 
 function clearQuery() {
   const input = document.getElementById('qt-input');
-  if (input) { input.value = ''; input.placeholder = "Ask a question about this brain's knowledge..."; }
+  if (input) {
+    input.value = '';
+    input.placeholder = window.currentBrainInfo?.brainPath
+      ? "Ask a question about this brain's knowledge..."
+      : 'Connect a brain to start research...';
+  }
 
   const resultDiv = document.getElementById('qt-result');
   if (resultDiv) {
-    resultDiv.innerHTML = `
-      <div class="qt-result-placeholder">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="40" height="40">
-          <circle cx="12" cy="12" r="10"/>
-          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
-          <path d="M12 17h.01"/>
-        </svg>
-        <p>Ask a question above to query this brain's knowledge</p>
-        <p class="qt-hint">Responses will appear here with full context and citations</p>
-      </div>
-    `;
+    resultDiv.innerHTML = renderQueryPlaceholder(Boolean(window.currentBrainInfo?.brainPath));
   }
 
   lastQueryResult = null;
@@ -1265,6 +1445,35 @@ function getQueryTabStyles() {
     flex-wrap: wrap;
   }
 
+  .qt-starter-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+  .qt-starter-eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    font-weight: 700;
+  }
+  .qt-starter-title {
+    margin-top: 4px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .qt-starter-prompt-bar {
+    padding: 12px 14px;
+    margin-top: 12px;
+    background: color-mix(in srgb, var(--bg-secondary) 94%, var(--accent-primary) 6%);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+  }
+
   /* ── Buttons ── */
   .qt-btn {
     border: none;
@@ -1328,6 +1537,10 @@ function getQueryTabStyles() {
     user-select: none;
     list-style: none;
   }
+  .qt-options-section[open] .qt-options-toggle {
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-primary);
+  }
   .qt-options-toggle::-webkit-details-marker { display: none; }
   .qt-toggle-icon { font-size: 10px; opacity: 0.6; transition: transform 0.2s; }
   .qt-options-summary { margin-left: auto; font-size: 12px; opacity: 0.7; }
@@ -1339,6 +1552,13 @@ function getQueryTabStyles() {
     gap: 14px;
   }
 
+  .qt-advanced-intro {
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--text-secondary);
+    padding-top: 2px;
+  }
+
   /* ── Quick Prompts ── */
   .qt-quick-prompts { }
   .qt-quick-label { font-size: 12px; color: var(--text-secondary); font-weight: 500; margin-bottom: 8px; }
@@ -1346,6 +1566,14 @@ function getQueryTabStyles() {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
+  }
+  .qt-quick-grid--featured {
+    margin-bottom: 0;
+  }
+  .qt-quick-grid--more {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed color-mix(in srgb, var(--border-color) 80%, transparent);
   }
   .qt-quick-btn {
     padding: 6px 12px;
@@ -1509,6 +1737,11 @@ function getQueryTabStyles() {
   .qt-result-placeholder svg { opacity: 0.3; margin-bottom: 12px; }
   .qt-result-placeholder p { margin: 4px 0; }
   .qt-hint { font-size: 12px; opacity: 0.6; }
+  .qt-placeholder-actions {
+    display: flex;
+    justify-content: center;
+    margin-top: 14px;
+  }
 
   /* ── Streaming ── */
   .qt-streaming-progress {
@@ -1711,6 +1944,8 @@ function getQueryTabStyles() {
   /* ── Mobile ── */
   @media (max-width: 900px) {
     .qt-container { padding: 12px; gap: 10px; }
+    .qt-starter-title { font-size: 15px; }
+    .qt-starter-prompt-bar { padding: 10px 12px; }
     .qt-options-grid { grid-template-columns: 1fr; }
     .qt-quick-grid { gap: 4px; }
     .qt-quick-btn { font-size: 11px; padding: 5px 10px; }

@@ -748,7 +748,7 @@
         /* AI Chat Panel - Professional resizable panel */
         /* Modern AI Panel Overhaul */
         .ai-panel {
-            width: 400px;
+            width: 360px;
             flex: 0 0 auto;
             min-width: 250px;
             max-width: 1600px;
@@ -2402,8 +2402,26 @@
             border-left-color: var(--accent-primary);
         }
 
+        .command-item.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .command-item.disabled:hover,
+        .command-item.disabled.selected {
+            background: transparent;
+            border-left-color: transparent;
+        }
+
         .command-label {
             font-size: 13px;
+        }
+
+        .command-meta {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-left: 10px;
+            text-align: right;
         }
 
         .command-keys {
@@ -4573,8 +4591,8 @@
             </div>
 
             <!-- Brain Picker Button -->
-            <button id="brainPickerBtn" data-action="toggleBrainPicker()" style="margin-left: 12px; padding: 4px 10px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-secondary); cursor: pointer; font-size: 11px; display: flex; align-items: center; gap: 5px; white-space: nowrap;" data-tooltip="Connect or switch brain" aria-label="Connect or switch brain">
-                🧠 <span id="brainPickerLabel">No Brain</span>
+            <button id="brainPickerBtn" data-action="toggleBrainPicker()" style="margin-left: 12px; padding: 4px 10px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-secondary); cursor: pointer; font-size: 11px; display: flex; align-items: center; gap: 5px; white-space: nowrap;" data-tooltip="Connect Brain" aria-label="Connect Brain">
+                🧠 <span id="brainPickerLabel">Connect Brain</span>
             </button>
 
             <!-- BRAIN STUDIO TABS (Main App Modes) -->
@@ -4608,13 +4626,13 @@
                     <button class="btn btn-icon" data-action="createNewFile()" data-tooltip="New File (Cmd+N)" title="Create new file">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
                     </button>
-                    <button class="btn btn-icon" data-action="createNewFolder()" data-tooltip="New Folder" title="Create new folder">
+                    <button class="btn btn-icon low-frequency-action" data-action="createNewFolder()" data-tooltip="New Folder" title="Create new folder">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
                     </button>
                     <button class="btn btn-icon low-frequency-action" data-action="showCSVBuilder()" data-tooltip="New CSV Table" title="Create CSV spreadsheet">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
                     </button>
-                    <button class="btn btn-icon" data-action="downloadCurrentFile()" id="download-btn" disabled data-tooltip="Download File">
+                    <button class="btn btn-icon low-frequency-action" data-action="downloadCurrentFile()" id="download-btn" disabled data-tooltip="Download File">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                     </button>
                     <button class="btn btn-icon low-frequency-action" data-action="uploadReplacementFile()" id="upload-replace-btn" disabled data-tooltip="Upload Replacement (Re-upload edited file)" title="Upload an edited version to replace this file" style="display: none;">
@@ -4632,17 +4650,17 @@
                     <button class="btn btn-icon" data-action="toggleSearch()" data-tooltip="Search (Cmd+F)">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                     </button>
-                    <button class="btn btn-icon" data-action="togglePreview()" id="preview-btn" data-tooltip="Toggle Preview" style="display: none;">
+                    <button class="btn btn-icon low-frequency-action" data-action="togglePreview()" id="preview-btn" data-tooltip="Toggle Preview" style="display: none;">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                     </button>
                     <button class="btn btn-icon low-frequency-action" data-action="toggleSnapshotHistory()" data-tooltip="File History" id="snapshot-btn" disabled>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                     </button>
-                    <button class="btn active" data-action="toggleAI()" id="ai-btn" data-tooltip="AI Assistant (Cmd+K A)" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); margin-left: 4px; border-radius: 16px; padding: 4px 12px; height: 28px; display: flex; align-items: center; gap: 4px;">
+                    <button class="btn" data-action="toggleAI()" id="ai-btn" data-tooltip="AI Assistant (Cmd+K A)" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); margin-left: 2px; border-radius: 16px; padding: 4px 10px; height: 28px; display: flex; align-items: center; gap: 4px;">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2z"/></svg>
-                        AI
+                        <span class="header-ai-label">AI</span>
                     </button>
-                    <button class="btn" data-action="toggleTerminalDock()" data-tooltip="Terminal (Cmd+J)" title="Toggle Terminal (Cmd+J)" style="display: flex; align-items: center; gap: 4px;">
+                    <button class="btn low-frequency-action" data-action="toggleTerminalDock()" data-tooltip="Terminal (Cmd+J)" title="Toggle Terminal (Cmd+J)" style="display: flex; align-items: center; gap: 4px;">
                         <span aria-hidden="true">⌨</span>
                         Terminal
                     </button>
@@ -4654,7 +4672,7 @@
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
                         Save
                     </button>
-                    <button class="btn btn-secondary" data-action="saveAllFiles()" id="save-all-btn" disabled data-tooltip="Save All (Cmd+Shift+S)">Save All</button>
+                    <button class="btn btn-secondary low-frequency-action" data-action="saveAllFiles()" id="save-all-btn" disabled data-tooltip="Save All (Cmd+Shift+S)">Save All</button>
                 </div>
 
                 <!-- Group 4: System -->
@@ -4684,9 +4702,17 @@
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>
                                 Download File
                             </button>
+                            <button class="overflow-item" data-action="saveCurrentFile()" role="menuitem">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M7 3v5h8"/><path d="M17 21v-8H7v8"/></svg>
+                                Save File
+                            </button>
                             <button class="overflow-item" data-action="toggleSearch()" role="menuitem">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
                                 Search
+                            </button>
+                            <button class="overflow-item" data-action="togglePreview()" role="menuitem">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                Preview
                             </button>
                             <button class="overflow-item" data-action="saveAllFiles()" role="menuitem">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5z"/><path d="M7 3v5h8"/><path d="M17 21v-8H7v8"/></svg>
@@ -4713,9 +4739,17 @@
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.001M10 8h.001M14 8h.001M18 8h.001M6 12h.001M10 12h.001M14 12h.001M18 12h.001M8 16h8"/></svg>
                                 Keyboard Shortcuts
                             </button>
+                            <button class="overflow-item" data-action="toggleAI()" role="menuitem">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2z"/></svg>
+                                Toggle AI Assistant
+                            </button>
                             <button class="overflow-item" data-action="toggleTerminalDock()" role="menuitem">
                                 <span style="font-size: 14px; line-height: 1;">⌨</span>
                                 Terminal (toggle)
+                            </button>
+                            <button class="overflow-item" data-action="toggleSettings()" role="menuitem">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                                Settings
                             </button>
                         </div>
                     </div>
@@ -4736,6 +4770,10 @@
             </button>
 
             <div class="runtime-context-pills" id="runtime-context-pills" role="list">
+                <button class="runtime-context-pill runtime-context-pill--setup" id="runtime-setup-chip" type="button">
+                    <span class="runtime-context-pill__label">Setup</span>
+                    <span class="runtime-context-pill__value" id="runtime-setup-chip-value">0/4 · Choose Folder</span>
+                </button>
                 <button class="runtime-context-pill runtime-context-pill--folder" id="runtime-folder-chip" data-action="showFolderBrowser()" type="button">
                     <span class="runtime-context-pill__label">Folder</span>
                     <span class="runtime-context-pill__value" id="runtime-folder-chip-value">Choose Folder</span>
@@ -4746,7 +4784,7 @@
                 </button>
                 <button class="runtime-context-pill runtime-context-pill--brain" id="runtime-brain-chip" data-action="toggleBrainPicker()" type="button">
                     <span class="runtime-context-pill__label">Brain</span>
-                    <span class="runtime-context-pill__value" id="runtime-brain-chip-value">No Brain</span>
+                    <span class="runtime-context-pill__value" id="runtime-brain-chip-value">Connect Brain</span>
                 </button>
                 <button class="runtime-context-pill runtime-context-pill--model" id="runtime-model-chip" type="button">
                     <span class="runtime-context-pill__label">Model</span>
@@ -4784,7 +4822,7 @@
                     </button>
                     <button class="runtime-context-row" id="runtime-sheet-brain" data-action="toggleBrainPicker()" type="button">
                         <span class="runtime-context-row__label">Brain</span>
-                        <span class="runtime-context-row__value" id="runtime-sheet-brain-value">No Brain</span>
+                        <span class="runtime-context-row__value" id="runtime-sheet-brain-value">Connect Brain</span>
                     </button>
                     <button class="runtime-context-row" id="runtime-sheet-model" type="button">
                         <span class="runtime-context-row__label">Model</span>
@@ -4924,7 +4962,7 @@
                     </div>
                     
                         <!-- AI Chat Panel -->
-                        <div class="ai-panel" id="ai-panel">
+                        <div class="ai-panel hidden" id="ai-panel">
                             <div class="resize-handle resize-handle-vertical" data-target="ai-panel"></div>
                             <div class="ai-header">
                                 <div style="display: flex; align-items: center; gap: 8px;">
@@ -4936,7 +4974,7 @@
                                     <!-- Brain Indicator: click dot to toggle on/off, click name to open drawer -->
                                     <div class="brain-indicator" id="brain-indicator" title="Brain context">
                                         <span class="brain-dot brain-dot--none" id="brain-dot" onclick="toggleBrainEnabled()" title="Toggle brain context on/off" style="cursor:pointer;"></span>
-                                        <span class="brain-name" id="brain-name" onclick="toggleBrainDrawer()" style="cursor:pointer;" title="View brain context">No brain</span>
+                                        <span class="brain-name" id="brain-name" onclick="toggleBrainDrawer()" style="cursor:pointer;" title="View brain context">No brain connected</span>
                                         <span class="brain-meta" id="brain-meta" onclick="toggleBrainDrawer()" style="cursor:pointer;"></span>
                                     </div>
                                     <label class="brain-toggle" id="pgsToggleLabel" title="Use PGS (deeper brain search — slower but more thorough). Brain must be enabled.">
@@ -4969,7 +5007,7 @@
                                 </div>
                             </div>
                             <div id="ai-context-hint" style="padding: 6px 12px; border-bottom: 1px solid var(--border-color); background: var(--bg-secondary); font-size: 10px; color: var(--text-secondary);">
-                                Load/Switch brain from the top <strong>Load Brain</strong> button. Click the brain indicator to see retrieved context.
+                                Choose a working folder to start coding. Then connect a brain when you want memory context and retrieval.
                             </div>
                             <!-- Brain Context Drawer — slides from right over chat -->
                             <div class="brain-drawer" id="brain-drawer" data-open="false">
@@ -4991,23 +5029,23 @@
                             <!-- Model Selector (Inline Style) -->
                             <div style="padding: 10px 12px; border-bottom: 1px solid var(--border-color); background: var(--bg-secondary); display: flex; align-items: center; justify-content: space-between;">
                                 <span style="font-size: 10px; color: var(--text-secondary); font-weight: 700;">MODEL</span>
-                                <select id="ai-model-select" style="background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 3px 8px; font-size: 11px; outline: none; cursor: pointer;">
-                                    <option value="anthropic/latest-sonnet" data-provider="anthropic" selected>Latest Sonnet</option>
-                                    <option value="anthropic/latest-opus" data-provider="anthropic">Latest Opus</option>
-                                    <option value="openai/latest-stable" data-provider="openai">Latest OpenAI Stable</option>
-                                    <option value="openai-codex/latest-codex" data-provider="openai-codex">Latest Codex</option>
-                                    <option value="xai/latest-fast" data-provider="xai">Latest xAI Fast</option>
-                                    <option value="anthropic/claude-sonnet-4-20250514" data-provider="anthropic">Claude Sonnet 4</option>
-                                    <option value="anthropic/claude-opus-4-20250514" data-provider="anthropic">Claude Opus 4</option>
-                                    <option value="openai/o4-mini" data-provider="openai">o4-mini</option>
-                                    <option value="openai/o3-pro" data-provider="openai">o3-pro</option>
-                                    <option value="openai/gpt-5.3-codex" data-provider="openai">GPT-5.3 Codex</option>
-                                    <option value="openai-codex/gpt-5.3-codex-spark" data-provider="openai-codex">GPT-5.3 Codex Spark</option>
-                                    <option value="xai/grok-code-fast-1" data-provider="xai">Grok Code Fast 1</option>
-                                    <option value="xai/grok-4-fast-reasoning" data-provider="xai">Grok 4 Fast Reasoning</option>
-                                    <option value="ollama-cloud/latest-coder" data-provider="ollama-cloud">Latest Ollama Cloud Coder</option>
-                                    <option value="ollama/qwen2.5-coder:7b" data-provider="ollama">Ollama Qwen2.5 Coder 7B</option>
-                                </select>
+                                <div style="display: flex; align-items: center; gap: 6px;">
+                                    <select id="ai-model-select" style="background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 3px 8px; font-size: 11px; outline: none; cursor: pointer; min-width: 220px;">
+                                        <option value="anthropic/latest-sonnet" data-provider="anthropic" selected>Claude Sonnet 4.6</option>
+                                        <option value="anthropic/latest-opus" data-provider="anthropic">Claude Opus 4.6</option>
+                                        <option value="anthropic/latest-haiku" data-provider="anthropic">Claude Haiku 4.5</option>
+                                        <option value="openai-codex/latest-codex" data-provider="openai-codex">GPT-5.4</option>
+                                        <option value="openai-codex/latest-mini" data-provider="openai-codex">GPT-5.4 Mini</option>
+                                        <option value="openai-codex/latest-nano" data-provider="openai-codex">GPT-5.4 Nano</option>
+                                        <option value="xai/latest-4-20" data-provider="xai">Grok 4.20</option>
+                                        <option value="xai/latest-4-20-moe" data-provider="xai">Grok 4.20 Multi-Agent</option>
+                                        <option value="ollama-cloud/latest-kimi" data-provider="ollama-cloud">Kimi K2.5</option>
+                                        <option value="ollama-cloud/latest-minimax" data-provider="ollama-cloud">MiniMax M2.7</option>
+                                        <option value="ollama-cloud/latest-nemotron" data-provider="ollama-cloud">Nemotron 3 Super</option>
+                                        <option value="openclaw/openclaw:coz" data-provider="openclaw">COZ — Agent with Memory</option>
+                                    </select>
+                                    <button id="manage-runtimes-btn" onclick="openRuntimeManager()" title="Manage runtimes" style="background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border-color); border-radius: 4px; padding: 3px 8px; font-size: 11px; cursor: pointer;">Manage</button>
+                                </div>
                             </div>
                             
                             <!-- Chat History Panel (Drawer-style) -->
@@ -5106,7 +5144,7 @@
                 </div>
                 <div class="terminal-body" id="terminal-body">
                     <div class="terminal-empty" id="terminal-empty">
-                        No terminal session. Create one with + or Cmd+Shift+`
+                        No terminal session yet. Open one with + or the terminal shortcut.
                     </div>
                 </div>
             </div>
@@ -5152,18 +5190,31 @@
           
           <!-- OpenClaw Chat Panel (hidden by default) -->
           <div id="openclaw-tab-panel" class="brain-tab-panel" style="display: none; flex-direction: column; width: 100%; height: 100%; background: var(--bg-primary);">
+            <div id="openclaw-connection-banner" style="display: none; margin: 16px 16px 0; padding: 14px 16px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-secondary);">
+              <div style="display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap;">
+                <div style="min-width: 240px; flex: 1;">
+                  <div id="openclaw-connection-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary);">Connecting to OpenClaw</div>
+                  <div id="openclaw-connection-body" style="margin-top: 4px; font-size: 12px; color: var(--text-secondary); line-height: 1.5;">Trying to reach the OpenClaw Gateway through Evobrew.</div>
+                </div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                  <button id="openclaw-retry-btn" onclick="retryOpenclawConnection()" style="padding: 8px 12px; border-radius: 8px; background: var(--accent-primary); color: white; border: none; cursor: pointer; font-size: 12px; font-weight: 600;">Retry Connection</button>
+                  <button id="openclaw-terminal-btn" onclick="openclawOpenTerminalHelp()" style="padding: 8px 12px; border-radius: 8px; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); cursor: pointer; font-size: 12px; font-weight: 600;">Open Terminal</button>
+                  <button id="openclaw-settings-btn" onclick="toggleSettings()" style="padding: 8px 12px; border-radius: 8px; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); cursor: pointer; font-size: 12px; font-weight: 600;">Settings</button>
+                </div>
+              </div>
+            </div>
             <div id="openclaw-messages" style="flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px;">
               <div style="color: var(--text-secondary); text-align: center; padding: 40px;">
                 <span style="font-size: 48px;">🐾</span>
                 <p style="margin-top: 16px;" id="openclaw-welcome-title">OpenClaw Agent</p>
-                <p style="font-size: 12px; opacity: 0.7;">AI assistant with memory and tools</p>
+                <p style="font-size: 12px; opacity: 0.7;">Memory-backed agent chat. Connect the gateway to begin.</p>
               </div>
             </div>
             <div style="border-top: 1px solid var(--border-color); padding: 12px; display: flex; gap: 8px; background: var(--bg-secondary);">
               <input type="text" id="openclaw-input" placeholder="Ask OpenClaw..." 
                 style="flex: 1; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary); font-size: 14px;"
                 onkeydown="if(event.key==='Enter' && !event.shiftKey) { event.preventDefault(); sendOpenclawMessage(); }">
-              <button onclick="sendOpenclawMessage()" 
+              <button id="openclaw-send-btn" onclick="sendOpenclawMessage()" 
                 style="padding: 10px 20px; border-radius: 8px; background: var(--accent-primary); color: white; border: none; cursor: pointer; font-weight: 500;">
                 Send
               </button>
@@ -5552,7 +5603,8 @@
             settings: 'evobrew-settings',
             layoutV2: 'evobrew.ui.layout.v2',
             shortcutsV2: 'evobrew.ui.shortcuts.v2',
-            themeV2: 'evobrew.ui.theme.v2'
+            themeV2: 'evobrew.ui.theme.v2',
+            runtimePrefsV1: 'evobrew.ui.runtime-prefs.v1'
         };
 
         // Theme detection - supports ?theme=light or defaults based on preference
@@ -6631,8 +6683,6 @@
         
         if (IDE_MODE === 'picker') {
             showSystemPickerModal();
-        } else {
-            initializeMonaco();
         }
 
         // ============================================================================
@@ -6727,14 +6777,21 @@
         // MONACO EDITOR INITIALIZATION
         // ============================================================================
         
-        function initializeMonaco() {
-            loadAvailableSystems();
-            
-            require.config({ 
-                paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } 
-            });
+        let monacoInitializationPromise = null;
 
-            require(['vs/editor/editor.main'], async function() {
+        function initializeMonaco() {
+            if (monacoInitializationPromise) {
+                return monacoInitializationPromise;
+            }
+
+            loadAvailableSystems();
+
+            monacoInitializationPromise = new Promise((resolve, reject) => {
+                require.config({ 
+                    paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } 
+                });
+
+                require(['vs/editor/editor.main'], async function() {
                 console.log('Monaco Editor loaded');
 
                 // Create editor instance
@@ -6846,7 +6903,21 @@
                 
                 // Restore workspace state
                 restoreWorkspaceState();
+                resolve(editor);
+            }, function(error) {
+                console.error('Failed to load Monaco Editor:', error);
+                monacoInitializationPromise = null;
+                try {
+                    document.getElementById('loading-overlay').classList.add('hidden');
+                } catch (_) {}
+                if (typeof showToast === 'function') {
+                    showToast('Failed to initialize editor. Reload the page to retry.', 'error');
+                }
+                reject(error);
             });
+            });
+
+            return monacoInitializationPromise;
         }
 
         // ============================================================================
@@ -6973,7 +7044,7 @@
                 const tree = document.getElementById('file-tree');
                 if (!folderPath) {
                     if (tree) {
-                        tree.innerHTML = '<div class="browse-empty">No folder selected. Use <strong>Choose Folder</strong> to start.</div>';
+                        tree.innerHTML = '<div class="browse-empty">No folder selected. Use <strong>Choose Folder</strong> to start browsing and coding.</div>';
                     }
                     if (window.UIRefreshOnboarding?.updateVisibility) {
                         window.UIRefreshOnboarding.updateVisibility();
@@ -7983,12 +8054,17 @@ ${result.content}`;
                 );
             }
             
-            results.innerHTML = filtered.map((cmd, idx) => `
-                <div class="command-item ${idx === 0 ? 'selected' : ''}" data-index="${idx}" onclick="executeCommand('${cmd.id}')">
+            results.innerHTML = filtered.map((cmd, idx) => {
+                const disabled = typeof cmd.disabled === 'function' ? cmd.disabled() : Boolean(cmd.disabled);
+                const meta = typeof cmd.meta === 'function' ? cmd.meta() : cmd.meta;
+
+                return `
+                <div class="command-item ${idx === 0 ? 'selected' : ''} ${disabled ? 'disabled' : ''}" data-index="${idx}" onclick="executeCommand('${cmd.id}')" ${meta ? `title="${meta.replace(/"/g, '&quot;')}"` : ''}>
                     <span class="command-label">${cmd.label}</span>
-                    ${cmd.keys ? `<span class="command-keys">${cmd.keys}</span>` : ''}
+                    ${meta ? `<span class="command-meta">${meta}</span>` : (cmd.keys ? `<span class="command-keys">${cmd.keys}</span>` : '')}
                 </div>
-            `).join('');
+            `;
+            }).join('');
         }
 
         function getCommandRegistry() {
@@ -8057,6 +8133,13 @@ ${result.content}`;
 
         function executeCommand(commandId) {
             const cmd = commands.find(c => c.id === commandId);
+            const disabled = cmd ? (typeof cmd.disabled === 'function' ? cmd.disabled() : Boolean(cmd.disabled)) : false;
+
+            if (cmd && disabled) {
+                showToast((typeof cmd.meta === 'function' ? cmd.meta() : cmd.meta) || 'This action is not available right now.', 'info');
+                return;
+            }
+
             if (cmd && cmd.action) {
                 cmd.action();
                 toggleCommandPalette();
@@ -8065,6 +8148,13 @@ ${result.content}`;
 
         function executeCommandById(commandId) {
             const cmd = commands.find(c => c.id === commandId);
+            const disabled = cmd ? (typeof cmd.disabled === 'function' ? cmd.disabled() : Boolean(cmd.disabled)) : false;
+
+            if (cmd && disabled) {
+                showToast((typeof cmd.meta === 'function' ? cmd.meta() : cmd.meta) || 'This action is not available right now.', 'info');
+                return;
+            }
+
             if (cmd && cmd.action) {
                 cmd.action();
             }
@@ -8785,6 +8875,10 @@ ${result.content}`;
             
             settings = { ...defaultSettings };
             saveSettings();
+            localStorage.removeItem(STORAGE_KEYS.runtimePrefsV1);
+            if (window.EvobrewRuntimePrefs?.reset) {
+                window.EvobrewRuntimePrefs.reset();
+            }
             toggleSettings();
             
             // Reload to apply all defaults
@@ -9243,37 +9337,66 @@ ${result.content}`;
         }
         
         function showNewFileDialog() {
-            showToast('File creation requires backend API support', 'error');
-            // TODO: Implement file creation via API
-            // const fileName = prompt('Enter new file name:');
-            // if (fileName) {
-            //     createNewFile(fileName);
-            // }
+            return createNewFile();
+        }
+
+        function isFileActionSupported(action) {
+            return action === 'create';
+        }
+
+        function getFileActionAvailability(action) {
+            if (action === 'rename') {
+                return {
+                    supported: false,
+                    label: 'Rename (coming soon)',
+                    reason: 'Rename is not available yet in this UI.'
+                };
+            }
+
+            if (action === 'delete') {
+                return {
+                    supported: false,
+                    label: 'Delete (coming soon)',
+                    reason: 'Delete is not available yet in this UI.'
+                };
+            }
+
+            return {
+                supported: true,
+                label: action,
+                reason: ''
+            };
+        }
+
+        function showUnavailableFileAction(action) {
+            const availability = getFileActionAvailability(action);
+            showToast(availability.reason || 'This file action is not available yet.', 'info');
+        }
+
+        function ensureFolderSelectedForCreation(kind) {
+            const hasFolder = IDE_MODE === 'filesystem' ? Boolean(folderPath) : Boolean(currentBrowsePath);
+
+            if (hasFolder) return true;
+
+            showToast(`Choose a folder before creating a ${kind}.`, 'info');
+            if (typeof showFolderBrowser === 'function') {
+                showFolderBrowser();
+            }
+            return false;
         }
         
         function renameFileDialog(filePath) {
             const fileData = openFiles.get(filePath);
             if (!fileData) return;
-            
-            showToast('File rename requires backend API support', 'error');
-            // TODO: Implement file rename via API
-            // const newName = prompt('Enter new file name:', fileData.name);
-            // if (newName && newName !== fileData.name) {
-            //     renameFile(filePath, newName);
-            // }
+
+            showUnavailableFileAction('rename');
         }
         
         function deleteFileDialog(filePath) {
             const fileData = openFiles.get(filePath);
             if (!fileData) return;
-            
-            if (!confirm(`Delete ${fileData.name}? This action cannot be undone.`)) {
-                return;
-            }
-            
-            showToast('File deletion requires backend API support', 'error');
-            // TODO: Implement file deletion via API
-            // deleteFile(filePath);
+
+            showUnavailableFileAction('delete');
         }
         
         function showFindInFiles() {
@@ -9699,7 +9822,7 @@ ${result.content}`;
             switch (state) {
                 case 'none':
                     dot.classList.add('brain-dot--none');
-                    name.textContent = 'No brain';
+                    name.textContent = 'No brain connected';
                     meta.textContent = '';
                     document.getElementById('brainEnabled').checked = false;
                     break;
@@ -10484,9 +10607,11 @@ ${result.content}`;
             const language = fileData ? fileData.model.getLanguageId() : 'text';
             
             // Get selected text if any
-            const selection = editor.getSelection();
-            const selectedText = selection && !selection.isEmpty() ? 
-                editor.getModel().getValueInRange(selection) : null;
+            const activeEditor = editor && typeof editor.getSelection === 'function' ? editor : null;
+            const selection = activeEditor ? activeEditor.getSelection() : null;
+            const selectedText = activeEditor && selection && !selection.isEmpty() && activeEditor.getModel()
+                ? activeEditor.getModel().getValueInRange(selection)
+                : null;
             
             // Add user message to chat
             addChatMessage('user', message);
@@ -12589,6 +12714,8 @@ ${html}
             const menu = document.getElementById('context-menu');
             const fileData = openFiles.get(filePath);
             const fileName = filePath.split('/').pop();
+            const renameAvailability = getFileActionAvailability('rename');
+            const deleteAvailability = getFileActionAvailability('delete');
             
             const menuItems = [
                 { icon: '👁️', label: 'Open in Browser', action: () => openInBrowser(filePath) },
@@ -12597,8 +12724,8 @@ ${html}
                 { icon: '📋', label: 'Copy Path', action: () => copyFilePath(filePath) },
                 { icon: '📋', label: 'Copy Relative Path', action: () => copyRelativePath(filePath) },
                 { separator: true },
-                { icon: '✏️', label: 'Rename...', action: () => renameFileDialog(filePath) },
-                { icon: '🗑️', label: 'Delete...', action: () => deleteFileDialog(filePath), danger: true },
+                { icon: '✏️', label: renameAvailability.label, action: () => renameFileDialog(filePath), disabled: !renameAvailability.supported, title: renameAvailability.reason },
+                { icon: '🗑️', label: deleteAvailability.label, action: () => deleteFileDialog(filePath), disabled: !deleteAvailability.supported, danger: true, title: deleteAvailability.reason },
                 { separator: true },
                 { icon: '📌', label: fileData && pinnedTabs.has(filePath) ? 'Unpin Tab' : 'Pin Tab', action: () => togglePinTab(filePath) },
                 { icon: '💾', label: 'Save', action: () => saveFile(filePath), disabled: !fileData || !fileData.dirty },
@@ -12619,6 +12746,7 @@ ${html}
                     menuItem.className = 'context-menu-item';
                     if (item.disabled) menuItem.classList.add('disabled');
                     if (item.danger) menuItem.classList.add('danger');
+                    if (item.title) menuItem.title = item.title;
                     
                     menuItem.innerHTML = `
                         <span>${item.icon}</span>
@@ -12712,6 +12840,8 @@ ${html}
          * Prompts for filename and creates in current folder
          */
         async function createNewFile() {
+            if (!ensureFolderSelectedForCreation('file')) return;
+
             const currentFolder = IDE_MODE === 'filesystem' ? folderPath : (currentBrowsePath || '.');
             const fileName = prompt('Enter new file name:', 'untitled.md');
             
@@ -12733,6 +12863,8 @@ ${html}
          * Prompts for folder name and creates in current folder
          */
         async function createNewFolder() {
+            if (!ensureFolderSelectedForCreation('folder')) return;
+
             const currentFolder = IDE_MODE === 'filesystem' ? folderPath : (currentBrowsePath || '.');
             const folderName = prompt('Enter new folder name:', 'new-folder');
             
@@ -13091,9 +13223,9 @@ ${html}
                 { id: 'file.download', label: 'Download Current File', action: downloadCurrentFile },
                 { id: 'file.downloadAll', label: 'Download All Files', action: downloadAllFiles },
                 { id: 'file.recent', label: 'Recent Files', action: showRecentFiles, keys: 'Cmd+E' },
-                { id: 'file.new', label: 'New File', action: showNewFileDialog },
-                { id: 'file.rename', label: 'Rename File', action: () => { if (activeFile) renameFileDialog(activeFile); } },
-                { id: 'file.delete', label: 'Delete File', action: () => { if (activeFile) deleteFileDialog(activeFile); } },
+                { id: 'file.new', label: 'New File', action: createNewFile },
+                { id: 'file.rename', label: 'Rename File', action: () => { if (activeFile) renameFileDialog(activeFile); }, disabled: () => !isFileActionSupported('rename'), meta: () => getFileActionAvailability('rename').reason },
+                { id: 'file.delete', label: 'Delete File', action: () => { if (activeFile) deleteFileDialog(activeFile); }, disabled: () => !isFileActionSupported('delete'), meta: () => getFileActionAvailability('delete').reason },
                 { id: 'workspace.startFresh', label: 'Start Fresh', action: startFreshApp },
                 { id: 'export.html', label: 'Export Markdown to HTML', action: exportMarkdownToHTML },
                 { id: 'export.pdf', label: 'Export Markdown to PDF', action: exportMarkdownToPDF },
@@ -13134,11 +13266,11 @@ ${html}
                 if (typeof hljs !== 'undefined') hljs.highlightElement(block);
               });
             } else {
-              contentEl.innerHTML = `<div style="color: var(--error-color); padding: 20px;">Failed to load documentation.</div>`;
+              contentEl.innerHTML = `<div style="color: var(--text-secondary); padding: 24px; line-height: 1.6;"><div style="color: var(--text-primary); font-weight: 600; margin-bottom: 6px;">Documentation is not available right now.</div><div>Evobrew could not load <code>README.md</code> from this checkout. Refresh after pulling the latest changes, or open a working folder and continue in Agent IDE.</div></div>`;
             }
           } catch (e) {
             console.error('Failed to load README:', e);
-            contentEl.innerHTML = `<div style="color: var(--error-color); padding: 20px;">Error loading documentation.</div>`;
+            contentEl.innerHTML = `<div style="color: var(--text-secondary); padding: 24px; line-height: 1.6;"><div style="color: var(--text-primary); font-weight: 600; margin-bottom: 6px;">Documentation could not be loaded.</div><div>Check your local checkout, then refresh this page. You can still choose a folder and start working in Agent IDE.</div></div>`;
           }
         }
 
@@ -13153,19 +13285,26 @@ ${html}
           return false;
         }
 
+        function refreshModeDescription(activeTabName) {
+          const tabName = activeTabName || document.querySelector('.tab-btn.active')?.dataset?.tab || 'files';
+          const modeDesc = document.getElementById('modeDescription');
+          if (!modeDesc) return;
+
+          const hasFolder = Boolean(folderPath);
+          const hasBrain = Boolean(window.currentBrainInfo?.brainPath);
+
+          if (tabName === 'readme') modeDesc.textContent = 'Quick product guide & setup notes';
+          else if (tabName === 'query') modeDesc.textContent = hasBrain ? 'Research, retrieval, and synthesis' : 'Connect a brain to start research';
+          else if (tabName === 'files') modeDesc.textContent = hasFolder ? 'Code, edit, and review changes' : 'Choose a folder to start coding';
+          else if (tabName === 'explore') modeDesc.textContent = hasBrain ? 'Knowledge graph exploration' : 'Connect a brain to explore memory';
+          else if (tabName === 'hub') modeDesc.textContent = 'Brain package management';
+          else if (tabName === 'openclaw') modeDesc.textContent = 'Gateway-backed agent chat';
+        }
+
         function switchBrainTab(tabName) {
           console.log('[EVOBREW] Switching to tab:', tabName);
           
-          // Update mode description
-          const modeDesc = document.getElementById('modeDescription');
-          if (modeDesc) {
-            if (tabName === 'readme') modeDesc.textContent = 'Platform documentation & guides';
-            else if (tabName === 'query') modeDesc.textContent = 'Knowledge retrieval & synthesis';
-            else if (tabName === 'files') modeDesc.textContent = 'Action-oriented workspace';
-            else if (tabName === 'explore') modeDesc.textContent = 'Knowledge graph exploration';
-            else if (tabName === 'hub') modeDesc.textContent = 'Brain package management';
-            else if (tabName === 'openclaw') modeDesc.textContent = 'AI agent with memory & tools';
-          }
+          refreshModeDescription(tabName);
           
           // Update tab buttons
           document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -13178,15 +13317,7 @@ ${html}
             panel.style.display = panel.id === (tabName + '-tab-panel') ? 'flex' : 'none';
           });
           
-          // AUTO-OPEN AI PANEL in Agent IDE
-          if (tabName === 'files') {
-            const aiPanel = document.getElementById('ai-panel');
-            const aiBtn = document.getElementById('ai-btn');
-            if (aiPanel) {
-              aiPanel.classList.remove('hidden');
-              if (aiBtn) aiBtn.classList.add('active');
-            }
-          } else if (tabName === 'readme' || tabName === 'explore' || tabName === 'hub' || tabName === 'openclaw') {
+          if (tabName === 'readme' || tabName === 'explore' || tabName === 'hub' || tabName === 'openclaw') {
             // Auto-hide AI panel in documentation, explore, hub, openclaw modes to maximize space
             const aiPanel = document.getElementById('ai-panel');
             const aiBtn = document.getElementById('ai-btn');
@@ -13204,7 +13335,7 @@ ${html}
             if (typeof initQueryTab === 'function') initQueryTab();
             window.queryTabInitialized = true;
           }
-          if (tabName === 'explore' && !window.exploreTabInitialized) {
+          if (tabName === 'explore') {
             if (typeof initExploreTab === 'function') initExploreTab();
             window.exploreTabInitialized = true;
           }
@@ -13245,57 +13376,256 @@ ${html}
         let openclawPendingRequests = new Map();
         let openclawAuthenticated = false;
         let openclawConnectSent = false;
+
+        const MODEL_CATALOG_CACHE_KEY = 'evobrew:model-catalog:v1';
+        const MODEL_CATALOG_STALE_MS = 5 * 60 * 1000;
+        const MODEL_CATALOG_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+        let modelCatalogData = null;
+        let modelCatalogPromise = null;
+        let modelCatalogBackgroundQueued = false;
+
+        function normalizeModelCatalog(data) {
+          if (!data?.success || !Array.isArray(data.models) || data.models.length === 0) {
+            return null;
+          }
+
+          return {
+            ...data,
+            fetchedAt: Number(data.fetchedAt || Date.now())
+          };
+        }
+
+        function readStoredModelCatalog() {
+          try {
+            const raw = window.localStorage?.getItem(MODEL_CATALOG_CACHE_KEY);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            const fetchedAt = Number(parsed?.fetchedAt || 0);
+            if (!fetchedAt || (Date.now() - fetchedAt) > MODEL_CATALOG_MAX_AGE_MS) {
+              return null;
+            }
+            return normalizeModelCatalog(parsed);
+          } catch (error) {
+            console.warn('[Models] Could not read cached catalog:', error.message);
+            return null;
+          }
+        }
+
+        function writeStoredModelCatalog(data) {
+          try {
+            window.localStorage?.setItem(MODEL_CATALOG_CACHE_KEY, JSON.stringify(data));
+          } catch (error) {
+            console.warn('[Models] Could not cache catalog:', error.message);
+          }
+        }
+
+        function getCachedModelCatalog() {
+          if (modelCatalogData) return modelCatalogData;
+          const cached = readStoredModelCatalog();
+          if (!cached) return null;
+          modelCatalogData = cached;
+          return cached;
+        }
+
+        async function fetchModelCatalog(options = {}) {
+          const refresh = options.refresh === true;
+          const cached = refresh ? null : getCachedModelCatalog();
+          const cacheFresh = cached && (Date.now() - Number(cached.fetchedAt || 0)) < MODEL_CATALOG_STALE_MS;
+
+          if (!refresh && cacheFresh) {
+            return cached;
+          }
+
+          if (modelCatalogPromise) {
+            return modelCatalogPromise;
+          }
+
+          const url = refresh ? '/api/providers/models?refresh=1' : '/api/providers/models';
+          modelCatalogPromise = fetch(url)
+            .then((res) => res.json())
+            .then((data) => {
+              const normalized = normalizeModelCatalog(data);
+              if (!normalized) {
+                return cached;
+              }
+
+              const previousSignature = getModelCatalogSignature(modelCatalogData?.models || []);
+              const nextSignature = getModelCatalogSignature(normalized.models || []);
+              modelCatalogData = normalized;
+              writeStoredModelCatalog(normalized);
+
+              if (previousSignature !== nextSignature) {
+                window.dispatchEvent(new CustomEvent('evobrew:model-catalog-updated', {
+                  detail: normalized
+                }));
+              }
+
+              return normalized;
+            })
+            .catch((error) => {
+              if (cached) {
+                return cached;
+              }
+              throw error;
+            })
+            .finally(() => {
+              modelCatalogPromise = null;
+            });
+
+          return modelCatalogPromise;
+        }
+
+        function refreshModelCatalogInBackground() {
+          if (modelCatalogBackgroundQueued) return;
+          modelCatalogBackgroundQueued = true;
+
+          const runRefresh = () => {
+            fetchModelCatalog({ refresh: true })
+              .catch((error) => {
+                console.warn('[Models] Background refresh failed:', error.message);
+              })
+              .finally(() => {
+                modelCatalogBackgroundQueued = false;
+              });
+          };
+
+          if (typeof window.requestIdleCallback === 'function') {
+            window.requestIdleCallback(runRefresh, { timeout: 1500 });
+            return;
+          }
+
+          setTimeout(runRefresh, 600);
+        }
+
+        window.EvobrewModelCatalog = {
+          getCached: getCachedModelCatalog,
+          fetch: fetchModelCatalog,
+          refreshInBackground: refreshModelCatalogInBackground
+        };
         
         // ===== Dynamic Model Selector =====
-        async function populateModelSelector() {
+        function getModelCatalogSignature(models = []) {
+          return models
+            .map((model) => `${model.provider}:${model.value || model.id}:${model.label || model.id}`)
+            .join('|');
+        }
+
+        if (!window.__evobrewModelCatalogUiBound) {
+          window.addEventListener('evobrew:model-catalog-updated', (event) => {
+            const select = document.getElementById('ai-model-select');
+            if (!select || !event.detail?.models?.length) return;
+            applyModelSelectorData(select, event.detail, select.value);
+          });
+          window.addEventListener('evobrew:runtime-prefs-changed', () => {
+            const select = document.getElementById('ai-model-select');
+            const cached = window.EvobrewModelCatalog?.getCached?.();
+            if (!select || !cached?.models?.length) return;
+            delete select.dataset.catalogSignature;
+            applyModelSelectorData(select, cached, select.value);
+          });
+          window.__evobrewModelCatalogUiBound = true;
+        }
+
+        function applyModelSelectorData(select, data, preferredValue) {
+          if (!select || !data?.models?.length) return false;
+
+          const signature = getModelCatalogSignature(data.models);
+          const fallbackValue = preferredValue || select.value;
+
+          const render = () => {
+            const desiredValue = select.value || fallbackValue;
+
+            if (select.dataset.catalogSignature !== signature) {
+              const rendered = window.EvobrewRuntimePrefs?.renderSelect
+                ? window.EvobrewRuntimePrefs.renderSelect(select, data, {
+                    context: 'chat',
+                    currentValue: desiredValue
+                  })
+                : false;
+
+              if (!rendered) {
+                const byProvider = {};
+                data.models.forEach((model) => {
+                  if (!byProvider[model.provider]) byProvider[model.provider] = [];
+                  byProvider[model.provider].push(model);
+                });
+
+                select.innerHTML = '';
+
+                for (const [provider, models] of Object.entries(byProvider)) {
+                  const group = document.createElement('optgroup');
+                  group.label = provider.charAt(0).toUpperCase() + provider.slice(1);
+                  models.forEach((model) => {
+                    const opt = document.createElement('option');
+                    opt.value = model.value || model.id;
+                    opt.dataset.provider = model.provider;
+                    opt.dataset.modelId = model.id;
+                    opt.textContent = model.label || model.id;
+                    group.appendChild(opt);
+                  });
+                  select.appendChild(group);
+                }
+              }
+
+              select.dataset.catalogSignature = signature;
+            }
+
+            if (desiredValue && [...select.options].some((option) => option.value === desiredValue)) {
+              select.value = desiredValue;
+            }
+
+            select.dataset.catalogLoaded = 'true';
+            updateProviderStatus(data.providerCount);
+            return true;
+          };
+
+          if (document.activeElement === select) {
+            if (select.dataset.pendingCatalogSignature === signature) {
+              return false;
+            }
+
+            select.dataset.pendingCatalogSignature = signature;
+            select.addEventListener('blur', function onBlur() {
+              delete select.dataset.pendingCatalogSignature;
+              render();
+            }, { once: true });
+            return false;
+          }
+
+          return render();
+        }
+
+        async function populateModelSelector(options = {}) {
           const select = document.getElementById('ai-model-select');
           if (!select) return;
+
+          const catalog = window.EvobrewModelCatalog;
+          const currentValue = select.value;
+
+          if (options.useCached !== false) {
+            const cached = catalog?.getCached?.();
+            if (cached?.models?.length) {
+              applyModelSelectorData(select, cached, currentValue);
+            }
+          }
           
           try {
-            const res = await fetch('/api/providers/models');
-            const data = await res.json();
+            const data = catalog?.fetch
+              ? await catalog.fetch({ refresh: options.refresh === true })
+              : await fetch(options.refresh ? '/api/providers/models?refresh=1' : '/api/providers/models').then((res) => res.json());
             
-            if (!data.success || !data.models?.length) {
+            if (!data?.success || !data.models?.length) {
               console.warn('[Models] No models returned, keeping defaults');
               return;
             }
-            
-            // Remember current selection
-            const currentValue = select.value;
-            
-            // Group by provider
-            const byProvider = {};
-            data.models.forEach(m => {
-              if (!byProvider[m.provider]) byProvider[m.provider] = [];
-              byProvider[m.provider].push(m);
-            });
-            
-            // Build options with optgroups
-            select.innerHTML = '';
-            for (const [provider, models] of Object.entries(byProvider)) {
-              const group = document.createElement('optgroup');
-              group.label = provider.charAt(0).toUpperCase() + provider.slice(1);
-              models.forEach(m => {
-                const opt = document.createElement('option');
-                opt.value = m.value || m.id;
-                opt.dataset.provider = m.provider;
-                opt.dataset.modelId = m.id;
-                opt.textContent = m.label || m.id;
-                group.appendChild(opt);
-              });
-              select.appendChild(group);
-            }
-            
-            // Restore selection if still available
-            if ([...select.options].some(o => o.value === currentValue)) {
-              select.value = currentValue;
-            }
-            
-            // Update provider status indicator
-            updateProviderStatus(data.providerCount);
+
+            applyModelSelectorData(select, data, currentValue);
             
             console.log(`[Models] Loaded ${data.models.length} models from ${data.providerCount} providers`);
-            select.dataset.catalogLoaded = 'true';
+
+            if (options.backgroundRefresh !== false && options.refresh !== true) {
+              catalog?.refreshInBackground?.();
+            }
           } catch (err) {
             console.error('[Models] Failed to load models:', err);
             // Keep existing hardcoded options as fallback
@@ -13306,8 +13636,8 @@ ${html}
           const select = document.getElementById('ai-model-select');
           if (!select) return;
           const optionCount = select.querySelectorAll('option').length;
-          if (select.dataset.catalogLoaded === 'true' && optionCount > 20) return;
-          populateModelSelector();
+          if (select.dataset.catalogLoaded === 'true' && optionCount > 0) return;
+          populateModelSelector({ useCached: true, backgroundRefresh: true });
         }
         
         function updateProviderStatus(count) {
@@ -13332,12 +13662,6 @@ ${html}
           const select = document.getElementById('ai-model-select');
           if (!select) return;
 
-          if (!select.dataset.catalogHydrationBound) {
-            select.addEventListener('focus', ensureModelSelectorHydrated);
-            select.addEventListener('mousedown', ensureModelSelectorHydrated);
-            select.dataset.catalogHydrationBound = 'true';
-          }
-
           select.addEventListener('change', () => {
             if (select.selectedOptions?.[0]?.dataset?.provider === 'openclaw') {
               // Auto-connect to Gateway if not connected
@@ -13354,6 +13678,8 @@ ${html}
         }
 
         function updateOpenClawStatus() {
+          refreshOpenclawConnectionUI();
+
           const select = document.getElementById('ai-model-select');
           if (!select || select.selectedOptions?.[0]?.dataset?.provider !== 'openclaw') return;
 
@@ -13383,13 +13709,91 @@ ${html}
         }
         // ===== End Dynamic Model Selector =====
 
+        function setOpenclawComposerEnabled(enabled, placeholder, title) {
+          const input = document.getElementById('openclaw-input');
+          const button = document.getElementById('openclaw-send-btn');
+          if (input) {
+            input.disabled = !enabled;
+            input.placeholder = placeholder || 'Ask OpenClaw...';
+            input.title = title || '';
+            input.style.opacity = enabled ? '1' : '0.6';
+          }
+          if (button) {
+            button.disabled = !enabled;
+            button.title = title || '';
+            button.style.opacity = enabled ? '1' : '0.6';
+            button.style.cursor = enabled ? 'pointer' : 'not-allowed';
+          }
+        }
+
+        function refreshOpenclawConnectionUI(override = {}) {
+          const banner = document.getElementById('openclaw-connection-banner');
+          const titleEl = document.getElementById('openclaw-connection-title');
+          const bodyEl = document.getElementById('openclaw-connection-body');
+          const retryBtn = document.getElementById('openclaw-retry-btn');
+
+          if (!banner || !titleEl || !bodyEl) return;
+
+          const derivedStatus = override.status || (
+            openclawAuthenticated && openclawWebSocket?.readyState === WebSocket.OPEN
+              ? 'connected'
+              : (openclawWebSocket?.readyState === WebSocket.CONNECTING || (openclawWebSocket?.readyState === WebSocket.OPEN && !openclawAuthenticated))
+                ? 'connecting'
+                : 'offline'
+          );
+
+          if (derivedStatus === 'connected') {
+            banner.style.display = 'none';
+            setOpenclawComposerEnabled(true, 'Ask OpenClaw...', '');
+            return;
+          }
+
+          banner.style.display = 'block';
+
+          if (derivedStatus === 'connecting') {
+            banner.style.borderColor = 'rgba(240, 160, 48, 0.4)';
+            banner.style.background = 'rgba(240, 160, 48, 0.08)';
+            titleEl.textContent = 'Connecting to OpenClaw';
+            bodyEl.textContent = override.message || 'Waiting for the OpenClaw Gateway to connect and authenticate.';
+            if (retryBtn) retryBtn.textContent = 'Retry Connection';
+            setOpenclawComposerEnabled(false, 'Connecting to OpenClaw...', 'Waiting for OpenClaw Gateway connection');
+            return;
+          }
+
+          banner.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+          banner.style.background = 'rgba(239, 68, 68, 0.08)';
+          titleEl.textContent = 'OpenClaw Gateway offline';
+          bodyEl.textContent = override.message || 'The gateway is not connected yet. Start or restart it, then retry the connection here.';
+          if (retryBtn) retryBtn.textContent = 'Retry Connection';
+          setOpenclawComposerEnabled(false, 'Connect OpenClaw to start chatting...', 'OpenClaw Gateway is offline');
+        }
+
+        function retryOpenclawConnection() {
+          refreshOpenclawConnectionUI({ status: 'connecting', message: 'Retrying the OpenClaw Gateway connection…' });
+          connectOpenclawWebSocket();
+        }
+
+        function openclawOpenTerminalHelp() {
+          if (typeof window.toggleTerminalDock === 'function') {
+            window.toggleTerminalDock();
+          }
+          if (typeof window.newTerminalSession === 'function') {
+            window.newTerminalSession();
+          }
+          showToast('Start the OpenClaw Gateway in the terminal, then click Retry Connection.', 'info');
+        }
+
         function initOpenclawChat() {
           console.log('[OpenClaw] Initializing chat connection...');
+          refreshOpenclawConnectionUI({ status: 'connecting', message: 'Trying to reach the OpenClaw Gateway through Evobrew.' });
           connectOpenclawWebSocket();
         }
         
         function connectOpenclawWebSocket() {
-          if (openclawWebSocket && openclawWebSocket.readyState === WebSocket.OPEN) return;
+          if (openclawWebSocket && (openclawWebSocket.readyState === WebSocket.OPEN || openclawWebSocket.readyState === WebSocket.CONNECTING)) {
+            refreshOpenclawConnectionUI();
+            return;
+          }
           
           // Reset authentication state
           openclawAuthenticated = false;
@@ -13412,6 +13816,7 @@ ${html}
             openclawWebSocket.onopen = () => {
               console.log('[OpenClaw] WebSocket opened, waiting for authentication challenge...');
               addOpenclawMessage('system', 'Connecting to OpenClaw Gateway...');
+              refreshOpenclawConnectionUI({ status: 'connecting', message: 'Connected to Evobrew. Waiting for OpenClaw authentication…' });
               updateOpenClawStatus();
             };
             
@@ -13431,6 +13836,7 @@ ${html}
               openclawAuthenticated = false;
               openclawConnectSent = false;
               addOpenclawMessage('system', 'Disconnected. Click to reconnect.', true);
+              refreshOpenclawConnectionUI({ status: 'offline', message: 'The OpenClaw Gateway disconnected. Start or restart it, then retry the connection.' });
               updateOpenClawStatus();
               // Clean up any in-flight OpenClaw main chat request
               if (openclawActive) {
@@ -13449,10 +13855,12 @@ ${html}
             openclawWebSocket.onerror = (error) => {
               console.error('[OpenClaw] WebSocket error:', error);
               addOpenclawMessage('system', 'Connection error. Is OpenClaw Gateway running?');
+              refreshOpenclawConnectionUI({ status: 'offline', message: 'Connection failed. Verify the OpenClaw Gateway is running, then retry.' });
             };
           } catch (e) {
             console.error('[OpenClaw] Failed to connect:', e);
             addOpenclawMessage('system', 'Failed to connect to Gateway');
+            refreshOpenclawConnectionUI({ status: 'offline', message: 'Failed to open the OpenClaw connection. Check gateway status and try again.' });
           }
         }
         
@@ -13545,12 +13953,14 @@ ${html}
                 console.log('[OpenClaw] Authentication successful');
                 openclawAuthenticated = true;
                 addOpenclawMessage('system', 'Connected and authenticated');
+                refreshOpenclawConnectionUI({ status: 'connected' });
                 updateOpenClawStatus();
                 // Now we can load chat history
                 loadOpenclawHistory();
               } else {
                 console.error('[OpenClaw] Authentication failed:', data.error);
                 addOpenclawMessage('system', 'Authentication failed: ' + (data.error?.message || 'Unknown error'));
+                refreshOpenclawConnectionUI({ status: 'offline', message: 'OpenClaw rejected the connection. Check gateway configuration, then retry.' });
               }
               return;
             } else if (type === 'history' && data.ok && data.payload?.messages) {
@@ -14042,6 +14452,14 @@ ${html}
         
         // Initialize panel resizing after DOM loaded
         document.addEventListener('DOMContentLoaded', async () => {
+            if (IDE_MODE !== 'picker') {
+                try {
+                    await initializeMonaco();
+                } catch (error) {
+                    console.error('[Init] Monaco initialization failed:', error);
+                }
+            }
+
             initPanelResizing();
             restorePanelSizes();
             let configData = null;
@@ -14098,7 +14516,7 @@ ${html}
             }));
             
             // Populate AI model selector from API
-            populateModelSelector();
+            populateModelSelector({ useCached: true, backgroundRefresh: true });
             setupOpenClawModelHandler();
 
             // Set initial tab state
@@ -14311,6 +14729,7 @@ ${html}
     <script src="js/terminal.js"></script>
 
     <!-- Brain Studio Tab Modules -->
+    <script src="js/ui-runtime-settings.js"></script>
     <script src="js/query-tab.js"></script>
     <script src="js/explore-tab.js"></script>
     <script src="js/ui-panels.js"></script>
@@ -14610,12 +15029,16 @@ ${html}
         label.textContent = name;
         btn.style.borderColor = 'var(--accent-primary)';
         btn.style.color = 'var(--text-primary)';
-        btn.setAttribute('title', `Loaded brain: ${name}. Click to load or switch brain.`);
+        btn.setAttribute('title', `Connected brain: ${name}. Click to switch brain.`);
+        btn.setAttribute('data-tooltip', 'Switch Brain');
+        btn.setAttribute('aria-label', `Switch Brain (${name})`);
       } else {
-        label.textContent = 'No Brain';
+        label.textContent = 'Connect Brain';
         btn.style.borderColor = 'var(--border-color)';
         btn.style.color = 'var(--text-secondary)';
-        btn.setAttribute('title', 'Connect or switch brain');
+        btn.setAttribute('title', 'Connect a brain to enable research and memory context');
+        btn.setAttribute('data-tooltip', 'Connect Brain');
+        btn.setAttribute('aria-label', 'Connect Brain');
       }
     }
 

@@ -182,9 +182,12 @@
   function getRuntimeContextElements() {
     if (runtimeContextElements) return runtimeContextElements;
     runtimeContextElements = {
+      summaryEyebrow: document.querySelector('#runtime-context-summary .runtime-context-summary__eyebrow'),
       summaryButton: document.getElementById('runtime-context-summary'),
       summaryText: document.getElementById('runtime-context-summary-text'),
       sheet: document.getElementById('runtime-context-sheet'),
+      setupChip: document.getElementById('runtime-setup-chip'),
+      setupValue: document.getElementById('runtime-setup-chip-value'),
       folderChip: document.getElementById('runtime-folder-chip'),
       folderValue: document.getElementById('runtime-folder-chip-value'),
       workspaceChip: document.getElementById('runtime-workspace-chip'),
@@ -238,6 +241,42 @@
     return !element.classList.contains('hidden') && getComputedStyle(element).display !== 'none';
   }
 
+  function isBrainConnectedLabel(label) {
+    const normalized = String(label || '').trim().toLowerCase();
+    if (!normalized) return false;
+    return !['no brain', 'connect brain', 'no brain connected', 'not connected'].includes(normalized);
+  }
+
+  function hasModelSelection(label) {
+    const normalized = String(label || '').trim().toLowerCase();
+    if (!normalized) return false;
+    return !['loading…', 'loading...', 'model'].includes(normalized);
+  }
+
+  function getSetupState(state) {
+    const folderReady = Boolean(state.folderPath);
+    const brainReady = folderReady && state.brainActive;
+    const modelReady = brainReady && hasModelSelection(state.modelLabel);
+    const workReady = modelReady;
+
+    const next = !folderReady
+      ? { action: 'showFolderBrowser()', label: 'Choose Folder' }
+      : !brainReady
+        ? { action: 'toggleBrainPicker()', label: 'Connect Brain' }
+        : !modelReady
+          ? { action: 'focusRuntimeModelPicker()', label: 'Choose Model' }
+          : { action: "switchBrainTab('files')", label: 'Start Working' };
+
+    return {
+      folderReady,
+      brainReady,
+      modelReady,
+      workReady,
+      completedCount: [folderReady, brainReady, modelReady, workReady].filter(Boolean).length,
+      next
+    };
+  }
+
   function readRuntimeContextState() {
     const sidebarPath = document.getElementById('sidebar-path');
     const workspaceBar = document.getElementById('workspace-bar');
@@ -257,7 +296,7 @@
         ? `Repo · ${branch}`
         : 'No workspace';
 
-    const brainName = String(brainLabel?.textContent || '').trim() || 'No Brain';
+    const brainName = String(brainLabel?.textContent || '').trim() || 'Connect Brain';
     const selectedOption = modelSelect?.selectedOptions?.[0] || null;
     const modelLabel = String(selectedOption?.textContent || modelSelect?.value || 'Model').trim();
     const editsCount = parsePendingEditsCount();
@@ -270,7 +309,7 @@
       workspaceActive,
       workspaceVisible,
       workspaceLabel: workspaceText,
-      brainActive: brainName !== 'No Brain',
+      brainActive: isBrainConnectedLabel(brainName),
       brainLabel: brainName,
       modelLabel,
       editsCount,
@@ -293,15 +332,35 @@
     const els = getRuntimeContextElements();
     if (!els.summaryText) return;
 
-    const summaryParts = [state.folderLabel, state.workspaceVisible ? state.workspaceLabel : null, state.brainActive ? state.brainLabel : null]
-      .filter(Boolean)
-      .slice(0, 3);
-    summaryParts.push(state.modelLabel);
-    if (state.editsCount > 0) {
-      summaryParts.push(`${state.editsCount} edit${state.editsCount === 1 ? '' : 's'}`);
+    const setup = getSetupState(state);
+
+    if (els.summaryEyebrow) {
+      els.summaryEyebrow.textContent = `Setup · ${setup.completedCount}/4`;
     }
 
-    const summary = summaryParts.filter(Boolean).join(' · ') || 'Choose a folder to start.';
+    if (els.setupValue) {
+      els.setupValue.textContent = setup.workReady ? '4/4 · Ready' : `${setup.completedCount}/4 · ${setup.next.label}`;
+    }
+
+    if (els.setupChip) {
+      els.setupChip.setAttribute('data-action', setup.next.action);
+      els.setupChip.setAttribute('title', `Next recommended step: ${setup.next.label}`);
+    }
+
+    let summary = '';
+    if (!setup.folderReady) {
+      summary = 'Choose a folder to start working.';
+    } else if (!setup.brainReady) {
+      summary = 'Folder ready. Connect a brain for research and memory context.';
+    } else if (!setup.modelReady) {
+      summary = 'Folder and brain ready. Choose a model to continue.';
+    } else {
+      const summaryParts = [state.folderLabel, state.brainLabel, state.modelLabel, 'Ready to work'];
+      if (state.editsCount > 0) {
+        summaryParts.push(`${state.editsCount} edit${state.editsCount === 1 ? '' : 's'}`);
+      }
+      summary = summaryParts.filter(Boolean).join(' · ');
+    }
     els.summaryText.textContent = summary;
 
     const valueMap = [
@@ -345,6 +404,7 @@
       element.classList.toggle('hidden', state.editsCount === 0);
     });
 
+    setChipState(els.setupChip, setup.workReady ? 'success' : setup.folderReady ? 'attention' : 'warning');
     setChipState(els.folderChip, state.folderPath ? 'active' : null);
     setChipState(els.workspaceChip, state.workspaceActive ? 'attention' : state.workspaceVisible ? 'active' : null);
     setChipState(els.brainChip, state.brainActive ? 'active' : null);
@@ -356,6 +416,9 @@
   function syncRuntimeContext() {
     runtimeContextScheduled = false;
     applyRuntimeContextState(readRuntimeContextState());
+    if (typeof window.refreshModeDescription === 'function') {
+      window.refreshModeDescription();
+    }
   }
 
   function scheduleRuntimeContextSync() {
@@ -434,6 +497,11 @@
   }
 
   function focusRuntimeModelPicker() {
+    if (typeof window.openRuntimeManager === 'function') {
+      window.openRuntimeManager();
+      return;
+    }
+
     const select = document.getElementById('ai-model-select');
     if (!select) return;
     try {

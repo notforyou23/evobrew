@@ -64,7 +64,14 @@ class ProviderRegistry {
         ...config,
         providerId: 'xai',
         baseUrl: config.baseUrl || 'https://api.x.ai/v1',
-        seedModels: ['grok-4-1-fast-reasoning', 'grok-4-1-fast-non-reasoning', 'grok-code-fast-1', 'grok-2', 'grok-beta'],
+        seedModels: [
+          'grok-4-latest',
+          'grok-4.20-non-reasoning-latest',
+          'grok-4.20-reasoning-latest',
+          'grok-4.20-multi-agent-latest',
+          'grok-4-fast-reasoning-latest',
+          'grok-code-fast-1'
+        ],
         modelFilter: (modelId) => String(modelId || '').toLowerCase().startsWith('grok')
       });
       // Override ID for routing
@@ -79,7 +86,7 @@ class ProviderRegistry {
         ...config,
         providerId: 'openai-codex',
         baseUrl: config.baseUrl || 'https://chatgpt.com/backend-api',
-        seedModels: ['gpt-5.2', 'gpt-5.3-codex', 'gpt-5.3-codex-spark'],
+        seedModels: ['gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano'],
         modelFilter: (modelId) => /gpt|codex/i.test(String(modelId || '')),
         discoveryEnabled: false
       });
@@ -99,16 +106,16 @@ class ProviderRegistry {
         seedModels: [
           'nemotron-3-super',
           'nemotron-3-nano:30b',
+          'minimax-m2.7',
+          'kimi-k2.5',
           'qwen3.5:397b',
           'qwen3-next:80b',
           'deepseek-v3.1:671b',
           'cogito-2.1:671b',
-          'kimi-k2:1t',
           'kimi-k2-thinking',
           'gemma3:12b',
           'devstral-small-2:24b',
           'gpt-oss:20b',
-          'minimax-m2.5',
           'glm-5'
         ],
         modelFilter: (modelId) => {
@@ -542,8 +549,9 @@ class ProviderRegistry {
             id: alias.id,
             provider: providerId,
             value: aliasValue,
-            label: `${alias.label} → ${alias.target} (${providerName})`,
+            label: this._formatAliasLabel(alias.target, providerName),
             isAlias: true,
+            channelLabel: alias.label,
             resolvedModel: alias.target
           });
           seen.add(aliasValue);
@@ -572,13 +580,46 @@ class ProviderRegistry {
    * @private
    */
   _formatModelLabel(modelId, providerName) {
-    // Remove date suffixes and format nicely
-    let label = modelId
-      .replace(/-\d{8}$/, '')  // Remove date suffixes like -20250514
-      .replace(/-/g, ' ')       // Replace dashes with spaces
-      .replace(/\b\w/g, c => c.toUpperCase()); // Title case
+    const normalizedProviderName = String(providerName || '').replace(/\s*\([^)]*\)\s*/g, '').trim();
+    const normalizedModelId = String(modelId || '').trim();
+    if (!normalizedModelId) return normalizedProviderName || '';
 
-    return `${label} (${providerName})`;
+    let label = normalizedModelId
+      .replace(/-\d{8}$/, '')
+      .replace(/(?<=\d)-(?=\d)/g, '.')
+      .replace(/-/g, ' ')
+      .replace(/\b\w/g, c => c.toUpperCase());
+
+    label = label
+      .replace(/\bGpt\b/g, 'GPT')
+      .replace(/\bApi\b/g, 'API')
+      .replace(/\bOauth\b/g, 'OAuth')
+      .replace(/\bXai\b/g, 'xAI')
+      .replace(/\bMoe\b/g, 'MoE')
+      .replace(/\bOss\b/g, 'OSS')
+      .replace(/\bGlm\b/g, 'GLM')
+      .replace(/\bMinimax\b/g, 'MiniMax')
+      .replace(/\bNemotron\b/g, 'Nemotron')
+      .replace(/\bQwen(\d(?:\.\d+)*)\b/g, 'Qwen $1')
+      .replace(/\bDeepseek\b/g, 'DeepSeek')
+      .replace(/\bGemma(\d(?:\.\d+)*)\b/g, 'Gemma $1')
+      .replace(/\bDevstral Small (\d(?:\.\d+)*)\b/g, 'Devstral Small $1')
+      .replace(/\bKimi K(\d(?:\.\d+)*) Thinking\b/g, 'Kimi K$1 Thinking')
+      .replace(/\bKimi K(\d(?:\.\d+)*)\b/g, 'Kimi K$1')
+      .replace(/\bClaude Sonnet (\d(?:\.\d+)*)\b/g, 'Claude Sonnet $1')
+      .replace(/\bClaude Opus (\d(?:\.\d+)*)\b/g, 'Claude Opus $1')
+      .replace(/\bClaude Haiku (\d(?:\.\d+)*)\b/g, 'Claude Haiku $1')
+      .replace(/\bGrok (\d(?:\.\d+)*) Multi Agent\b/g, 'Grok $1 Multi-Agent')
+      .replace(/\bGrok (\d(?:\.\d+)*) Non Reasoning\b/g, 'Grok $1 Non-Reasoning')
+      .replace(/\bGrok (\d(?:\.\d+)*) Reasoning\b/g, 'Grok $1 Reasoning')
+      .replace(/\bGrok (\d(?:\.\d+)*) Latest\b/g, 'Grok $1')
+      .replace(/\bGPT (\d(?:\.\d+)*)\b/g, 'GPT-$1');
+
+    return label;
+  }
+
+  _formatAliasLabel(resolvedModel, providerName) {
+    return this._formatModelLabel(resolvedModel, providerName);
   }
 
   /**

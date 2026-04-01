@@ -3219,7 +3219,11 @@ app.get('/api/providers/models', async (req, res) => {
     const { getDefaultRegistry } = require('./providers');
     const registry = await getDefaultRegistry();
     const forceRefresh = ['1', 'true', 'yes'].includes(String(req.query.refresh || '').toLowerCase());
-    await registry.refreshModelCatalog({ force: forceRefresh });
+
+    if (forceRefresh) {
+      await registry.refreshModelCatalog({ force: true });
+    }
+
     let models = registry.listModels({ includeAliases: true });
 
     // Add OpenClaw (COZ) as a virtual provider option
@@ -3237,6 +3241,8 @@ app.get('/api/providers/models', async (req, res) => {
     res.json({
       success: true,
       models,
+      refreshed: forceRefresh,
+      fetchedAt: Date.now(),
       providerCount: new Set(models.map((model) => model.provider)).size,
       platform: {
         type: platform.platform,

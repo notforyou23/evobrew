@@ -42,7 +42,7 @@
   async function refreshModelSelectors() {
     try {
       if (typeof window.populateModelSelector === 'function') {
-        await window.populateModelSelector();
+        await window.populateModelSelector({ refresh: true, useCached: false, backgroundRefresh: false });
       }
     } catch (error) {
       console.warn('[live-settings] Failed to refresh main model selector:', error);
@@ -50,10 +50,18 @@
 
     try {
       if (typeof window.QueryTab?.populateModels === 'function') {
-        await window.QueryTab.populateModels();
+        await window.QueryTab.populateModels({ refresh: true, useCached: false, backgroundRefresh: false });
       }
     } catch (error) {
       console.warn('[live-settings] Failed to refresh query-tab model selector:', error);
+    }
+
+    try {
+      if (typeof window.EvobrewRuntimePrefs?.refreshCatalog === 'function') {
+        await window.EvobrewRuntimePrefs.refreshCatalog(true);
+      }
+    } catch (error) {
+      console.warn('[live-settings] Failed to refresh runtime catalog:', error);
     }
   }
 
