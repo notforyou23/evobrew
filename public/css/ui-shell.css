@@ -85,6 +85,7 @@ body.ui-refresh-enabled .tab-btn.active {
 body.ui-refresh-enabled .runtime-context-shell {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--ui-space-3);
   padding: var(--ui-space-2) var(--ui-space-4);
   border-bottom: 1px solid var(--border-color);
@@ -141,6 +142,10 @@ body.ui-refresh-enabled .runtime-context-pill__value {
   white-space: nowrap;
   font-size: 12px;
   font-weight: 500;
+}
+
+body.ui-refresh-enabled .runtime-context-pill--setup {
+  border-style: dashed;
 }
 
 body.ui-refresh-enabled .runtime-context-pill[data-state="active"] {
@@ -297,7 +302,7 @@ body.ui-refresh-enabled .header-actions {
   gap: var(--ui-space-2);
   flex-wrap: nowrap;
   min-width: 0;
-  max-width: 100%;
+  max-width: min(46vw, 520px);
   overflow-x: auto;
   overflow-y: hidden;
   padding-bottom: 2px;
@@ -318,6 +323,12 @@ body.ui-refresh-enabled .header-group {
   padding: 0;
   gap: var(--ui-space-1);
   white-space: nowrap;
+}
+
+body.ui-refresh-enabled .header-group:not(:last-child) {
+  padding-right: var(--ui-space-1);
+  margin-right: var(--ui-space-1);
+  border-right: 1px solid color-mix(in srgb, var(--border-color) 82%, transparent);
 }
 
 body.ui-refresh-enabled .header-group-label {
@@ -361,6 +372,25 @@ body.ui-refresh-enabled #brainPickerLabel {
 
 body.ui-refresh-enabled .btn svg {
   flex: 0 0 auto;
+}
+
+body.ui-refresh-enabled #ai-btn {
+  background: color-mix(in srgb, var(--accent-primary) 18%, var(--bg-tertiary)) !important;
+  border: 1px solid color-mix(in srgb, var(--accent-primary) 38%, var(--border-color));
+  min-width: auto;
+  padding: 0 var(--ui-space-3) !important;
+}
+
+body.ui-refresh-enabled .header-ai-label {
+  display: inline;
+}
+
+body.ui-refresh-enabled #ai-btn:not(.active) {
+  background: var(--bg-tertiary) !important;
+}
+
+body.ui-refresh-enabled #save-btn {
+  min-width: auto;
 }
 
 body.ui-refresh-enabled .header-overflow {
@@ -627,4 +657,28 @@ body.ui-refresh-enabled .onboarding-action.primary {
   background: var(--accent-primary);
   border-color: var(--accent-primary);
   color: #fff;
+}
+
+body.ui-refresh-enabled .readiness-disabled {
+  opacity: 0.48 !important;
+  cursor: not-allowed !important;
+}
+
+body.ui-refresh-enabled .overflow-item:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+body.ui-refresh-enabled .overflow-item:disabled:hover {
+  background: transparent;
+  border-color: transparent;
+}
+
+body.ui-refresh-enabled.agent-ide-no-folder .sidebar-path {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+body.ui-refresh-enabled.agent-ide-no-folder .sidebar-header {
+  background: color-mix(in srgb, var(--bg-secondary) 92%, var(--accent-primary) 8%);
 }

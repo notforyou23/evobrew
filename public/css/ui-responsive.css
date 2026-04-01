@@ -22,7 +22,7 @@
   body.ui-refresh-enabled .header-actions {
     grid-area: actions;
     justify-self: end;
-    max-width: min(56vw, 640px);
+    max-width: min(48vw, 520px);
   }
 
   body.ui-refresh-enabled .ide-header > nav {
@@ -62,7 +62,15 @@
   }
 
   body.ui-refresh-enabled .header-actions {
-    max-width: min(58vw, 420px);
+    max-width: min(46vw, 360px);
+  }
+
+  body.ui-refresh-enabled #ai-btn {
+    padding: 0 10px !important;
+  }
+
+  body.ui-refresh-enabled .header-ai-label {
+    display: none;
   }
 
   body.ui-refresh-enabled .sidebar-header .sidebar-actions {
@@ -134,7 +142,7 @@
   }
 
   body.ui-refresh-enabled .header-actions {
-    max-width: min(64vw, 300px);
+    max-width: min(58vw, 280px);
   }
 
   body.ui-refresh-enabled .tab-btn {

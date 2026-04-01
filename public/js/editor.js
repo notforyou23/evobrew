@@ -16,7 +16,7 @@ export async function initializeEditor() {
         
         require(['vs/editor/editor.main'], () => {
             editor = monaco.editor.create(document.getElementById('editor-container'), {
-                value: '// Select a file or pick a folder to start coding\n',
+                value: '// Choose a working folder, then open a file to start coding\n',
                 language: 'javascript',
                 theme: 'vs-dark',
                 automaticLayout: true,
@@ -315,4 +315,3 @@ document.addEventListener('keydown', (e) => {
 
 // Export for other modules
 export { editor, openFiles, activeFile };
-

@@ -85,6 +85,11 @@
       if (aiPanel && !aiPanel.classList.contains('hidden') && typeof window.toggleAI === 'function') {
         window.toggleAI();
       }
+    } else if (saved.rightPanel === 'open') {
+      const aiPanel = document.getElementById('ai-panel');
+      if (aiPanel && aiPanel.classList.contains('hidden') && typeof window.toggleAI === 'function') {
+        window.toggleAI();
+      }
     }
 
     syncFromDom();

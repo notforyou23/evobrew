@@ -79,7 +79,10 @@ function setActiveFolder(folderKey) {
         // Minimal welcome message (same as initial state)
         const welcome = document.createElement('div');
         welcome.className = 'welcome-message';
-        welcome.innerHTML = `<h3>👋 AI Assistant Ready</h3><p>Select a file and ask questions, or request edits.</p>`;
+        const noFolder = folderKey === '__NO_FOLDER__';
+        welcome.innerHTML = noFolder
+            ? `<h3>👋 AI Assistant</h3><p>Choose a working folder first, then open a file to ask questions or request edits.</p>`
+            : `<h3>👋 AI Assistant Ready</h3><p>Open a file and ask questions, or request edits.</p>`;
         container.appendChild(welcome);
         return;
     }

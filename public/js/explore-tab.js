@@ -17,6 +17,7 @@ let edgeOpacity = 0.2;
 let showLabels = false;
 let colorByClusters = false;
 let exploreInitialized = false;
+let exploreBrainListenersBound = false;
 
 const colors = {
   analyst: '#4ec9b0',
@@ -119,6 +120,7 @@ function injectExploreStyles() {
 
 function initExploreTab() {
   injectExploreStyles();
+  bindExploreBrainListeners();
 
   const panel = document.getElementById('explore-tab-panel');
   if (!panel) return;
@@ -128,8 +130,9 @@ function initExploreTab() {
     panel.innerHTML = `
       <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:16px;color:var(--text-secondary);padding:40px;">
         <div style="font-size:48px;">🧠</div>
-        <div style="font-size:18px;font-weight:600;color:var(--text-primary);">No Brain Loaded</div>
-        <div style="text-align:center;max-width:400px;line-height:1.6;">Load a brain first using the top "Load Brain" button to explore its memory network.</div>
+        <div style="font-size:18px;font-weight:600;color:var(--text-primary);">Connect a Brain</div>
+        <div style="text-align:center;max-width:400px;line-height:1.6;">Connect a brain first to explore its memory network, active concepts, and linked evidence.</div>
+        <button class="explore-ctrl-btn explore-ctrl-btn-primary" data-action="toggleBrainPicker()">Connect Brain</button>
       </div>`;
     return;
   }
@@ -298,6 +301,27 @@ function initExploreTab() {
   window.addEventListener('resize', () => {
     if (typeof resizeGraph === 'function') resizeGraph();
   });
+}
+
+function bindExploreBrainListeners() {
+  if (exploreBrainListenersBound) return;
+  exploreBrainListenersBound = true;
+
+  const syncExploreState = () => {
+    const panel = document.getElementById('explore-tab-panel');
+    if (!panel || panel.style.display === 'none') return;
+
+    exploreInitialized = false;
+    nodes = [];
+    edges = [];
+    allNodes = [];
+    allEdges = [];
+    selectedNode = null;
+    initExploreTab();
+  };
+
+  window.addEventListener('cosmo:brainLoaded', syncExploreState);
+  window.addEventListener('cosmo:brainUnloaded', syncExploreState);
 }
 
 // ============================================================================
