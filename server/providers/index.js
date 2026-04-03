@@ -213,26 +213,6 @@ async function createRegistry(options = {}) {
       console.log('[Providers] ℹ️ Ollama disabled in config');
     }
 
-    // Local Agents — HTTP-based agents configured in config.json
-    const localAgents = evobrewConfig?.providers?.local_agents || [];
-    for (const agent of localAgents) {
-      if (agent.enabled === false) continue;
-      const agentId = `local:${agent.id}`;
-      try {
-        registry.initializeProvider(agentId, {
-          id: agentId,
-          name: agent.name || agent.id,
-          url: agent.url,
-          endpoint: agent.endpoint || '/api/chat',
-          capabilities: agent.capabilities || {},
-          apiKey: agent.api_key
-        });
-        console.log(`[Providers] ✅ Local agent registered: ${agent.name || agent.id} (${agentId})`);
-      } catch (err) {
-        console.warn(`[Providers] ⚠️ Failed to register local agent ${agent.name || agent.id}:`, err.message);
-      }
-    }
-
     // LMStudio (uses OpenAI-compatible API)
     if (lmstudioConfig.enabled) {
       const lmstudioBaseUrl = lmstudioConfig.base_url || 'http://localhost:1234/v1';
@@ -243,6 +223,27 @@ async function createRegistry(options = {}) {
     }
   } else if (detectOllamaEnabled && !platform.supportsLocalModels) {
     console.log(`[Providers] ℹ️ Skipping local models on ${platform.platform} (not supported; set providers.ollama.base_url to a remote host to enable)`);
+  }
+
+  // Local Agents — HTTP-based agents configured in config.json
+  // Not gated by supportsLocalModels since agents connect to remote HTTP endpoints
+  const localAgents = evobrewConfig?.providers?.local_agents || [];
+  for (const agent of localAgents) {
+    if (agent.enabled === false) continue;
+    const agentId = `local:${agent.id}`;
+    try {
+      registry.initializeProvider(agentId, {
+        id: agentId,
+        name: agent.name || agent.id,
+        url: agent.url,
+        endpoint: agent.endpoint || '/api/chat',
+        capabilities: agent.capabilities || {},
+        apiKey: agent.api_key
+      });
+      console.log(`[Providers] ✅ Local agent registered: ${agent.name || agent.id} (${agentId})`);
+    } catch (err) {
+      console.warn(`[Providers] ⚠️ Failed to register local agent ${agent.name || agent.id}:`, err.message);
+    }
   }
 
   return registry;

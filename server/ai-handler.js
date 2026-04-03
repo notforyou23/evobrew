@@ -1476,7 +1476,7 @@ Execute the pending steps now. Start with the first step that has status "pendin
     effectiveModel.includes(':') // Ollama models typically use format like "llama3.3:70b"
   ));
   const isOpenAIModel = providerId === 'openai' || providerId === 'openai-codex' || (!providerId && !isClaudeModel && !isGrokModel && !isOllamaModel && !isOllamaCloudModel);
-  const isLocalAgent = providerId?.startsWith('local:');
+  const isLocalAgent = providerId?.startsWith('local:') || requestedModelSelection?.startsWith('local:');
 
   const providerName = providerId || (isClaudeModel ? 'anthropic' : isGrokModel ? 'xai' : isOllamaModel ? 'ollama' : 'openai');
   console.log(`[AI] Starting ${providerName}/${effectiveModel} in ${currentFolder}`);
