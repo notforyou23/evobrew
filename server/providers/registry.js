@@ -129,6 +129,12 @@ class ProviderRegistry {
       return adapter;
     });
 
+    // Local Agents — HTTP-based agents configured in config.json
+    this.adapterFactories.set('local-agent', (config) => {
+      const { LocalAgentAdapter } = require('./adapters/local-agent.js');
+      return new LocalAgentAdapter(config);
+    });
+
     // LMStudio uses OpenAI adapter with local URL and custom ID
     this.adapterFactories.set('lmstudio', (config) => {
       const adapter = new OpenAIAdapter({
@@ -372,6 +378,11 @@ class ProviderRegistry {
    * @returns {string|null}
    */
   parseProviderId(modelId) {
+    // Local agents use "local:" prefix
+    if (modelId.startsWith('local:')) {
+      return modelId;
+    }
+
     // Handle prefixed format: "anthropic/claude-sonnet-4"
     if (modelId.includes('/')) {
       return modelId.split('/')[0];
@@ -437,7 +448,8 @@ class ProviderRegistry {
    * @returns {ProviderAdapter}
    */
   createAdapter(providerId, config) {
-    const factory = this.adapterFactories.get(providerId);
+    const factoryKey = providerId.startsWith('local:') ? 'local-agent' : providerId;
+    const factory = this.adapterFactories.get(factoryKey);
     if (!factory) {
       throw new Error(`Unknown provider: ${providerId}`);
     }

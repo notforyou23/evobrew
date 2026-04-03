@@ -213,6 +213,26 @@ async function createRegistry(options = {}) {
       console.log('[Providers] ℹ️ Ollama disabled in config');
     }
 
+    // Local Agents — HTTP-based agents configured in config.json
+    const localAgents = evobrewConfig?.providers?.local_agents || [];
+    for (const agent of localAgents) {
+      if (agent.enabled === false) continue;
+      const agentId = `local:${agent.id}`;
+      try {
+        registry.initializeProvider(agentId, {
+          id: agentId,
+          name: agent.name || agent.id,
+          url: agent.url,
+          endpoint: agent.endpoint || '/api/chat',
+          capabilities: agent.capabilities || {},
+          apiKey: agent.api_key
+        });
+        console.log(`[Providers] ✅ Local agent registered: ${agent.name || agent.id} (${agentId})`);
+      } catch (err) {
+        console.warn(`[Providers] ⚠️ Failed to register local agent ${agent.name || agent.id}:`, err.message);
+      }
+    }
+
     // LMStudio (uses OpenAI-compatible API)
     if (lmstudioConfig.enabled) {
       const lmstudioBaseUrl = lmstudioConfig.base_url || 'http://localhost:1234/v1';
