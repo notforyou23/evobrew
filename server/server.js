@@ -1089,6 +1089,93 @@ app.put('/api/folder/upload-binary', mutationGuard, async (req, res) => {
   }
 });
 
+app.get('/api/folder/download-zip', async (req, res) => {
+  try {
+    const archiver = require('archiver');
+    const { path: folderPath, includeHidden } = req.query;
+
+    if (!folderPath) {
+      return res.status(400).json({ error: 'Path required' });
+    }
+
+    const resolvedPath = await resolvePathForRequest(req, folderPath, { expectFile: false });
+
+    // Verify it's a directory
+    let stat;
+    try {
+      stat = await fs.stat(resolvedPath);
+    } catch (e) {
+      return res.status(400).json({ error: 'Path not found' });
+    }
+    if (!stat.isDirectory()) {
+      return res.status(400).json({ error: 'Path is not a directory' });
+    }
+
+    const showHidden = includeHidden === 'true';
+    const SIZE_LIMIT = 500 * 1024 * 1024; // 500MB
+
+    // Walk directory and sum file sizes
+    async function sumSize(dir) {
+      let total = 0;
+      let entries;
+      try {
+        entries = await fs.readdir(dir, { withFileTypes: true });
+      } catch (e) {
+        return 0;
+      }
+      for (const entry of entries) {
+        if (entry.name === 'node_modules' || entry.name === '.git') continue;
+        if (!showHidden && entry.name.startsWith('.')) continue;
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          total += await sumSize(fullPath);
+        } else if (entry.isFile()) {
+          try {
+            const s = await fs.stat(fullPath);
+            total += s.size;
+          } catch (e) { /* skip unreadable */ }
+        }
+        if (total > SIZE_LIMIT) return total;
+      }
+      return total;
+    }
+
+    const totalSize = await sumSize(resolvedPath);
+    if (totalSize > SIZE_LIMIT) {
+      return res.status(413).json({ error: 'Directory too large to download (max 500MB)' });
+    }
+
+    const folderName = path.basename(resolvedPath);
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${folderName}.zip"`);
+
+    const archive = archiver('zip', { zlib: { level: 5 } });
+
+    archive.on('error', (err) => {
+      console.error('[DOWNLOAD-ZIP] Archive error:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: err.message });
+      }
+    });
+
+    archive.pipe(res);
+
+    archive.glob('**/*', {
+      cwd: resolvedPath,
+      dot: showHidden,
+      ignore: ['node_modules/**', '.git/**']
+    });
+
+    await archive.finalize();
+
+  } catch (error) {
+    console.error('[DOWNLOAD-ZIP] Error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+});
+
 app.delete('/api/folder/delete', mutationGuard, async (req, res) => {
   try {
     const { path: filePath } = req.body;

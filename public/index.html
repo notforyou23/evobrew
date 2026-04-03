@@ -7207,7 +7207,7 @@
                     // Context menu for folders
                     folderHeader.addEventListener('contextmenu', (e) => {
                         e.preventDefault();
-                        showContextMenu(e.clientX, e.clientY, item.path);
+                        showContextMenu(e.clientX, e.clientY, item.path, true);
                     });
                     
                     treeItem.appendChild(folderHeader);
@@ -7233,7 +7233,7 @@
                     // Context menu (Cursor-style)
                     fileItem.addEventListener('contextmenu', (e) => {
                         e.preventDefault();
-                        showContextMenu(e.clientX, e.clientY, item.path);
+                        showContextMenu(e.clientX, e.clientY, item.path, false);
                     });
                     
                     treeItem.appendChild(fileItem);
@@ -7850,7 +7850,7 @@ ${result.content}`;
             // Context menu (right-click)
             tab.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
-                showContextMenu(e.clientX, e.clientY, filePath);
+                showContextMenu(e.clientX, e.clientY, filePath, false);
             });
             
             // Insert tab in correct position (pinned tabs first)
@@ -11906,6 +11906,47 @@ ${result.content}`;
             }
         }
         
+        function downloadFileByPath(filePath) {
+            const fileName = filePath.split('/').pop();
+            const url = '/api/serve-file?path=' + encodeURIComponent(filePath);
+            fetch(url)
+                .then(resp => {
+                    if (!resp.ok) throw new Error('Download failed');
+                    return resp.blob();
+                })
+                .then(blob => {
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    a.download = fileName;
+                    a.click();
+                    URL.revokeObjectURL(a.href);
+                    showToast('Downloaded: ' + fileName);
+                })
+                .catch(err => showToast('Download failed: ' + err.message, 'error'));
+        }
+
+        function downloadFolderAsZip(folderPath) {
+            const folderName = folderPath.split('/').pop();
+            showToast('Preparing ZIP download...');
+            const url = '/api/folder/download-zip?path=' + encodeURIComponent(folderPath);
+            fetch(url)
+                .then(resp => {
+                    if (!resp.ok) {
+                        return resp.json().then(body => { throw new Error(body.error || 'Download failed'); });
+                    }
+                    return resp.blob();
+                })
+                .then(blob => {
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    a.download = folderName + '.zip';
+                    a.click();
+                    URL.revokeObjectURL(a.href);
+                    showToast('Downloaded: ' + folderName + '.zip');
+                })
+                .catch(err => showToast('ZIP download failed: ' + err.message, 'error'));
+        }
+
         // Upload a replacement file (for Office files - download, edit locally, re-upload)
         function uploadReplacementFile() {
             if (!activeFile) {
@@ -12800,19 +12841,21 @@ ${html}
         // CONTEXT MENU - Cursor-style right-click options
         // ============================================================================
         
-        function showContextMenu(x, y, filePath) {
+        function showContextMenu(x, y, filePath, isDirectory) {
             const menu = document.getElementById('context-menu');
             const fileData = openFiles.get(filePath);
             const fileName = filePath.split('/').pop();
             const renameAvailability = getFileActionAvailability('rename');
             const deleteAvailability = getFileActionAvailability('delete');
-            
+
             const menuItems = [
                 { icon: '👁️', label: 'Open in Browser', action: () => openInBrowser(filePath) },
                 { icon: '📁', label: 'Reveal in Finder', action: () => revealInFinder(filePath) },
                 { separator: true },
                 { icon: '📋', label: 'Copy Path', action: () => copyFilePath(filePath) },
                 { icon: '📋', label: 'Copy Relative Path', action: () => copyRelativePath(filePath) },
+                { separator: true },
+                { icon: '⬇️', label: isDirectory ? 'Download as ZIP' : 'Download', action: () => isDirectory ? downloadFolderAsZip(filePath) : downloadFileByPath(filePath) },
                 { separator: true },
                 { icon: '✏️', label: renameAvailability.label, action: () => renameFileDialog(filePath), disabled: !renameAvailability.supported, title: renameAvailability.reason },
                 { icon: '🗑️', label: deleteAvailability.label, action: () => deleteFileDialog(filePath), disabled: !deleteAvailability.supported, danger: true, title: deleteAvailability.reason },
