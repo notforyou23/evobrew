@@ -1476,6 +1476,7 @@ Execute the pending steps now. Start with the first step that has status "pendin
     effectiveModel.includes(':') // Ollama models typically use format like "llama3.3:70b"
   ));
   const isOpenAIModel = providerId === 'openai' || providerId === 'openai-codex' || (!providerId && !isClaudeModel && !isGrokModel && !isOllamaModel && !isOllamaCloudModel);
+  const isLocalAgent = providerId?.startsWith('local:');
 
   const providerName = providerId || (isClaudeModel ? 'anthropic' : isGrokModel ? 'xai' : isOllamaModel ? 'ollama' : 'openai');
   console.log(`[AI] Starting ${providerName}/${effectiveModel} in ${currentFolder}`);
@@ -1908,6 +1909,69 @@ Execute the pending steps now. Start with the first step that has status "pendin
         } catch (ollamaError) {
           console.error('[AI] Ollama error:', ollamaError.message);
           throw new Error(`Ollama error: ${ollamaError.message}`);
+        }
+
+      } else if (isLocalAgent) {
+        // ============ LOCAL AGENT (HTTP+SSE) ============
+        const trimmedMessages = trimMessages(messages, 200000);
+
+        const agentProvider = provider || registry?.getProviderById(providerId);
+        if (!agentProvider) {
+          throw new Error(`Local agent "${providerId}" not registered. Check config.json providers.local_agents.`);
+        }
+
+        console.log(`[AI] Calling local agent ${providerId} (${agentProvider.name})`);
+
+        try {
+          const stream = agentProvider.streamMessage({
+            model: effectiveModel,
+            messages: trimmedMessages,
+            tools: availableTools,
+            temperature: 0.7,
+            maxTokens: 64000,
+            systemPrompt: systemPrompt
+          });
+
+          let textContent = '';
+
+          for await (const chunk of stream) {
+            if (chunk.type === 'text' && chunk.text) {
+              textContent += chunk.text;
+              eventEmitter?.({ type: 'response_chunk', chunk: chunk.text });
+            }
+            if (chunk.type === 'content_delta' && chunk.delta?.text) {
+              textContent += chunk.delta.text;
+              eventEmitter?.({ type: 'response_chunk', chunk: chunk.delta.text });
+            }
+            if (chunk.type === 'thinking' && chunk.text) {
+              eventEmitter?.({ type: 'thinking', content: chunk.text });
+            }
+            if (chunk.type === 'tool_use_start') {
+              eventEmitter?.({ type: 'tool_preparing', toolName: chunk.toolName, toolId: chunk.toolId });
+              toolCalls.push({ id: chunk.toolId, name: chunk.toolName, arguments: '' });
+            }
+            if (chunk.type === 'tool_use_delta' && toolCalls.length > 0) {
+              toolCalls[toolCalls.length - 1].arguments += chunk.argumentsDelta || '';
+            }
+            if (chunk.type === 'tool_use_end' && toolCalls.length > 0) {
+              const tc = toolCalls[toolCalls.length - 1];
+              if (typeof tc.arguments === 'string') {
+                try { tc.arguments = JSON.parse(tc.arguments); } catch (_) {}
+              }
+            }
+            if (chunk.type === 'tool_calls' && chunk.tool_calls) {
+              toolCalls = chunk.tool_calls;
+            }
+          }
+
+          assistantMessage = {
+            content: textContent,
+            tool_calls: toolCalls.length > 0 ? toolCalls : null
+          };
+
+        } catch (agentError) {
+          console.error(`[AI] Local agent ${providerId} error:`, agentError.message);
+          throw new Error(`Local agent error (${providerId}): ${agentError.message}`);
         }
 
       } else if (isOllamaCloudModel) {

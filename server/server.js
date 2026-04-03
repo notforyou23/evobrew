@@ -3322,6 +3322,23 @@ app.get('/api/providers/models', async (req, res) => {
       label: 'COZ \u2014 Agent with Memory'
     });
 
+    // Include local agents from registry
+    const allProviders = registry.getAllProviders();
+    for (const agentProvider of allProviders) {
+      if (agentProvider.id.startsWith('local:')) {
+        const alreadyListed = models.some(m => m.id === agentProvider.id);
+        if (!alreadyListed) {
+          models.push({
+            id: agentProvider.id,
+            provider: agentProvider.id,
+            value: qualifyModelSelection(agentProvider.id, agentProvider.id),
+            label: agentProvider.name,
+            group: 'Local Agents'
+          });
+        }
+      }
+    }
+
     // Include platform info for UI awareness
     const { getPlatform } = require('./providers');
     const platform = getPlatform();
