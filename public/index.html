@@ -8413,7 +8413,7 @@ ${result.content}`;
                     (async () => {
                         const pdfLib = await loadPdfJs();
                         if (!pdfLib) {
-                            document.getElementById('pdf-page-label').textContent = 'PDF.js failed to load';
+                            document.getElementById('pdf-canvas-container').innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-secondary);"><p>PDF.js failed to load.</p><button onclick="downloadCurrentFile()" class="btn" style="margin-top:12px;">Download PDF</button></div>';
                             return;
                         }
                         try {
@@ -8422,8 +8422,7 @@ ${result.content}`;
                             window._pdfPage = 1;
                             await renderPdfPage(window._pdfPage);
                         } catch (e) {
-                            const lbl = document.getElementById('pdf-page-label');
-                            if (lbl) lbl.textContent = 'Error loading PDF';
+                            document.getElementById('pdf-canvas-container').innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-secondary);"><p>Error loading PDF: ' + e.message + '</p><button onclick="downloadCurrentFile()" class="btn" style="margin-top:12px;">Download PDF</button></div>';
                             console.error('PDF load error:', e);
                         }
                     })();
