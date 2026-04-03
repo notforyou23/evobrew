@@ -8262,6 +8262,19 @@ ${result.content}`;
             previewUpdateTimer = setTimeout(updatePreview, 500);
         }
 
+        let _pdfJsLib = null;
+        async function loadPdfJs() {
+            if (_pdfJsLib) return _pdfJsLib;
+            try {
+                _pdfJsLib = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs');
+                _pdfJsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs';
+                return _pdfJsLib;
+            } catch (e) {
+                console.error('Failed to load PDF.js:', e);
+                return null;
+            }
+        }
+
         function updatePreview() {
             const fileData = activeFile ? openFiles.get(activeFile) : null;
             if (!fileData) return;
@@ -8377,17 +8390,43 @@ ${result.content}`;
                     `;
                     
                 } else if (fileName.endsWith('.pdf')) {
-                    // PDF viewer (requires base64 encoded content or URL)
+                    // PDF viewer via PDF.js
+                    window._pdfDoc = null;
+                    window._pdfPage = 1;
+                    window._pdfScale = 1.0;
                     previewContent.innerHTML = `
-                        <div style="padding: 20px; text-align: center;">
-                            <p style="color: var(--text-secondary); margin-bottom: 16px;">
-                                PDF preview requires a URL or base64 encoded content.
-                            </p>
-                            <button onclick="downloadCurrentFile()" class="btn">
-                                Download PDF to View
-                            </button>
+                        <div style="display:flex; flex-direction:column; height:100%; background:var(--bg-primary);">
+                            <div id="pdf-controls" style="display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--bg-secondary); border-bottom:1px solid var(--border-color); flex-shrink:0;">
+                                <button onclick="pdfPrevPage()" class="btn btn-secondary" style="padding:3px 10px; font-size:13px;">&#8592;</button>
+                                <span id="pdf-page-label" style="color:var(--text-secondary); font-size:13px; min-width:90px; text-align:center;">Loading…</span>
+                                <button onclick="pdfNextPage()" class="btn btn-secondary" style="padding:3px 10px; font-size:13px;">&#8594;</button>
+                                <div style="flex:1;"></div>
+                                <button onclick="pdfZoomOut()" class="btn btn-secondary" style="padding:3px 10px; font-size:13px;">&#8722;</button>
+                                <span id="pdf-zoom-label" style="color:var(--text-secondary); font-size:13px; min-width:46px; text-align:center;">100%</span>
+                                <button onclick="pdfZoomIn()" class="btn btn-secondary" style="padding:3px 10px; font-size:13px;">&#43;</button>
+                            </div>
+                            <div style="flex:1; overflow:auto; display:flex; justify-content:center; align-items:flex-start; padding:16px; background:var(--bg-primary);">
+                                <canvas id="pdf-canvas" style="display:block; box-shadow:0 2px 8px rgba(0,0,0,0.4);"></canvas>
+                            </div>
                         </div>
                     `;
+                    (async () => {
+                        const pdfLib = await loadPdfJs();
+                        if (!pdfLib) {
+                            document.getElementById('pdf-page-label').textContent = 'PDF.js failed to load';
+                            return;
+                        }
+                        try {
+                            const url = `/api/serve-file?path=${encodeURIComponent(activeFile)}`;
+                            window._pdfDoc = await pdfLib.getDocument(url).promise;
+                            window._pdfPage = 1;
+                            await renderPdfPage(window._pdfPage);
+                        } catch (e) {
+                            const lbl = document.getElementById('pdf-page-label');
+                            if (lbl) lbl.textContent = 'Error loading PDF';
+                            console.error('PDF load error:', e);
+                        }
+                    })();
                     
                 } else if (/\.(png|jpg|jpeg|gif|webp|bmp|ico)$/i.test(fileName)) {
                     // Image preview - load image as base64 and display
@@ -8478,6 +8517,58 @@ ${result.content}`;
             }
         }
         
+        // PDF.js page rendering helper
+        async function renderPdfPage(pageNum) {
+            const doc = window._pdfDoc;
+            if (!doc) return;
+            const canvas = document.getElementById('pdf-canvas');
+            if (!canvas) return;
+            const page = await doc.getPage(pageNum);
+            // Fit to canvas container width
+            const container = canvas.parentElement;
+            const containerWidth = container ? container.clientWidth - 32 : 800;
+            const unscaledViewport = page.getViewport({ scale: 1 });
+            const fitScale = containerWidth / unscaledViewport.width;
+            const scale = fitScale * (window._pdfScale || 1.0);
+            const viewport = page.getViewport({ scale });
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            const ctx = canvas.getContext('2d');
+            await page.render({ canvasContext: ctx, viewport }).promise;
+            const label = document.getElementById('pdf-page-label');
+            if (label) label.textContent = `Page ${pageNum} of ${doc.numPages}`;
+            const zoomLabel = document.getElementById('pdf-zoom-label');
+            if (zoomLabel) zoomLabel.textContent = `${Math.round((window._pdfScale || 1.0) * 100)}%`;
+        }
+
+        function pdfPrevPage() {
+            if (!window._pdfDoc) return;
+            if (window._pdfPage > 1) {
+                window._pdfPage -= 1;
+                renderPdfPage(window._pdfPage);
+            }
+        }
+
+        function pdfNextPage() {
+            if (!window._pdfDoc) return;
+            if (window._pdfPage < window._pdfDoc.numPages) {
+                window._pdfPage += 1;
+                renderPdfPage(window._pdfPage);
+            }
+        }
+
+        function pdfZoomIn() {
+            if (!window._pdfDoc) return;
+            window._pdfScale = Math.min(3.0, (window._pdfScale || 1.0) + 0.25);
+            renderPdfPage(window._pdfPage);
+        }
+
+        function pdfZoomOut() {
+            if (!window._pdfDoc) return;
+            window._pdfScale = Math.max(0.25, (window._pdfScale || 1.0) - 0.25);
+            renderPdfPage(window._pdfPage);
+        }
+
         // Helper function to render JSON tree
         function renderJsonTree(obj, container, level = 0) {
             const indent = level * 20;

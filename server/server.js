@@ -1146,18 +1146,19 @@ app.get('/api/serve-file', async (req, res) => {
       '.gif': 'image/gif',
       '.webp': 'image/webp',
       '.bmp': 'image/bmp',
-      '.ico': 'image/x-icon'
+      '.ico': 'image/x-icon',
+      '.pdf': 'application/pdf'
     };
     
     const contentType = mimeTypes[ext] || 'text/plain';
     
-    // Check if it's an image
-    const isImage = contentType.startsWith('image/');
-    
-    if (isImage) {
-      // Serve image as binary
+    // Check if it's binary (image or PDF)
+    const isBinary = contentType.startsWith('image/') || contentType === 'application/pdf';
+
+    if (isBinary) {
+      // Serve binary as buffer
       const buffer = await fs.readFile(resolvedFilePath);
-      console.log(`[SERVE] ✅ Image served: ${path.basename(resolvedFilePath)} (${buffer.length} bytes)`);
+      console.log(`[SERVE] ✅ Binary served: ${path.basename(resolvedFilePath)} (${buffer.length} bytes)`);
       res.type(contentType).send(buffer);
     } else {
       // Serve text files as UTF-8
