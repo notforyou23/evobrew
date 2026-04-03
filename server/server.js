@@ -1145,7 +1145,7 @@ app.get('/api/folder/download-zip', async (req, res) => {
       return res.status(413).json({ error: 'Directory too large to download (max 500MB)' });
     }
 
-    const folderName = path.basename(resolvedPath);
+    const folderName = path.basename(resolvedPath).replace(/"/g, '_');
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="${folderName}.zip"`);
 
