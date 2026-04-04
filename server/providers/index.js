@@ -40,6 +40,17 @@ const { OllamaAdapter, createOllamaAdapter } = require('./adapters/ollama.js');
 // Registry
 const { ProviderRegistry } = require('./registry.js');
 
+// Decrypt local agent API keys (config encryption doesn't recurse into arrays)
+function decryptAgentKey(value) {
+  if (!value || typeof value !== 'string' || !value.startsWith('encrypted:')) return value;
+  try {
+    const { decrypt } = require('../lib/encryption');
+    return decrypt(value);
+  } catch (_) {
+    return value;
+  }
+}
+
 /**
  * Detect if Ollama is running at the given URL
  * @param {string} [baseUrl] - Ollama base URL (default: http://localhost:11434)
@@ -238,7 +249,7 @@ async function createRegistry(options = {}) {
         url: agent.url,
         endpoint: agent.endpoint || '/api/chat',
         capabilities: agent.capabilities || {},
-        apiKey: agent.api_key
+        apiKey: decryptAgentKey(agent.api_key)
       });
       console.log(`[Providers] ✅ Local agent registered: ${agent.name || agent.id} (${agentId})`);
     } catch (err) {
