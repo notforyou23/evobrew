@@ -5367,6 +5367,20 @@
                     <input type="number" class="setting-input" id="setting-auto-save-delay" value="1000" min="500" max="5000" step="500" />
                 </div>
             </div>
+            <div class="setting-group" id="local-agents-settings">
+                <div class="setting-group-title" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>Local Agents</span>
+                    <button class="btn" id="scan-agents-btn" onclick="scanForAgents()" style="font-size: 11px; padding: 4px 10px;">Scan</button>
+                </div>
+                <div id="local-agents-list" style="margin-bottom: 8px;">
+                    <div style="color: var(--text-secondary); font-size: 12px; padding: 4px 0;">No agents configured</div>
+                </div>
+                <div id="scan-results" style="display: none; margin-bottom: 8px;"></div>
+                <div style="display: flex; gap: 6px; align-items: center;">
+                    <input type="text" class="setting-input" id="manual-agent-url" placeholder="http://localhost:4611" style="flex: 1; font-size: 12px;" />
+                    <button class="btn" onclick="addManualAgent()" style="font-size: 11px; padding: 4px 10px;">Add</button>
+                </div>
+            </div>
             <div style="margin-top: 24px;">
                 <button class="btn" onclick="resetSettings()" style="width: 100%;">Reset to Defaults</button>
             </div>
@@ -8974,6 +8988,150 @@ ${result.content}`;
             // Reload to apply all defaults
             location.reload();
         }
+
+        // ── Local Agent Settings ──
+        async function scanForAgents() {
+            const btn = document.getElementById('scan-agents-btn');
+            const resultsDiv = document.getElementById('scan-results');
+            btn.textContent = 'Scanning...';
+            btn.disabled = true;
+            resultsDiv.style.display = 'block';
+            resultsDiv.innerHTML = '<div style="color: var(--text-secondary); font-size: 12px;">Scanning ports 4600-4660...</div>';
+
+            try {
+                const resp = await fetch('/api/setup/scan-agents');
+                const data = await resp.json();
+                if (!data.success) throw new Error(data.error);
+
+                renderConfiguredAgents(data.configured);
+
+                const configuredUrls = new Set((data.configured || []).map(a => a.url));
+                const newAgents = (data.discovered || []).filter(a => !configuredUrls.has(a.url));
+
+                if (newAgents.length === 0) {
+                    resultsDiv.innerHTML = '<div style="color: var(--text-secondary); font-size: 12px;">No new agents found</div>';
+                } else {
+                    resultsDiv.innerHTML = newAgents.map(a => `
+                        <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; background: var(--bg-primary); border-radius: 6px; margin-bottom: 4px;">
+                            <div>
+                                <span style="font-weight: 600; font-size: 13px; color: var(--text-primary);">${a.agent}</span>
+                                <span style="font-size: 11px; color: var(--text-secondary); margin-left: 6px;">${a.type} · port ${a.port}</span>
+                                ${!a.bridgeAvailable ? '<span style="font-size: 10px; color: #e74c3c; margin-left: 6px;">no bridge</span>' : ''}
+                            </div>
+                            <button class="btn" onclick="connectDiscoveredAgent('${a.url}', '${a.endpoint}')" style="font-size: 11px; padding: 3px 8px;" ${!a.bridgeAvailable ? 'disabled title="Bridge not installed"' : ''}>Connect</button>
+                        </div>
+                    `).join('');
+                }
+            } catch (err) {
+                resultsDiv.innerHTML = '<div style="color: #e74c3c; font-size: 12px;">Scan failed: ' + err.message + '</div>';
+            }
+            btn.textContent = 'Scan';
+            btn.disabled = false;
+        }
+
+        function renderConfiguredAgents(agents) {
+            const listDiv = document.getElementById('local-agents-list');
+            if (!agents || agents.length === 0) {
+                listDiv.innerHTML = '<div style="color: var(--text-secondary); font-size: 12px; padding: 4px 0;">No agents configured</div>';
+                return;
+            }
+            listDiv.innerHTML = agents.map(a => {
+                const mismatch = a.verifiedAgent && a.verifiedAgent !== a.id && a.verifiedAgent !== a.name.toLowerCase();
+                const statusDot = a.verifiedAgent
+                    ? '<span style="color: #2ecc71;">●</span>'
+                    : '<span style="color: #e74c3c;">●</span>';
+                return `
+                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; background: var(--bg-primary); border-radius: 6px; margin-bottom: 4px;">
+                        <div>
+                            ${statusDot}
+                            <span style="font-weight: 600; font-size: 13px; color: var(--text-primary); margin-left: 4px;">${a.name}</span>
+                            <span style="font-size: 11px; color: var(--text-secondary); margin-left: 6px;">${a.url}</span>
+                            ${mismatch ? '<span style="font-size: 10px; color: #f39c12; margin-left: 6px;">⚠ responds as "' + a.verifiedAgent + '"</span>' : ''}
+                        </div>
+                        <button class="btn" onclick="removeLocalAgent('${a.id}')" style="font-size: 11px; padding: 3px 8px; color: #e74c3c;">Remove</button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function connectDiscoveredAgent(url, endpoint) {
+            const token = prompt('Webhook token (leave blank if none):');
+            try {
+                const resp = await fetch('/api/setup/local-agent/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url, endpoint, api_key: token || undefined })
+                });
+                const data = await resp.json();
+                if (!data.success) throw new Error(data.error);
+                showToast('Connected: ' + data.agent.name);
+                scanForAgents();
+            } catch (err) {
+                showToast('Failed: ' + err.message, 'error');
+            }
+        }
+
+        async function addManualAgent() {
+            const urlInput = document.getElementById('manual-agent-url');
+            const url = urlInput.value.trim();
+            if (!url) return showToast('Enter agent URL', 'error');
+
+            try {
+                const testResp = await fetch('/api/setup/local-agent/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url })
+                });
+                const testData = await testResp.json();
+                if (!testData.reachable) throw new Error('Agent not reachable at ' + url);
+
+                const token = prompt('Found: ' + testData.agent + ' (' + testData.type + '). Webhook token (leave blank if none):');
+                const saveResp = await fetch('/api/setup/local-agent/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url, api_key: token || undefined })
+                });
+                const saveData = await saveResp.json();
+                if (!saveData.success) throw new Error(saveData.error);
+
+                showToast('Connected: ' + saveData.agent.name);
+                urlInput.value = '';
+                scanForAgents();
+            } catch (err) {
+                showToast('Failed: ' + err.message, 'error');
+            }
+        }
+
+        async function removeLocalAgent(id) {
+            if (!confirm('Remove agent "' + id + '"?')) return;
+            try {
+                const resp = await fetch('/api/setup/local-agent/remove', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id })
+                });
+                const data = await resp.json();
+                if (!data.success) throw new Error(data.error);
+                showToast('Removed: ' + id);
+                scanForAgents();
+            } catch (err) {
+                showToast('Remove failed: ' + err.message, 'error');
+            }
+        }
+
+        // Auto-load configured agents when settings opens
+        (function() {
+            const panel = document.getElementById('settings-panel');
+            if (!panel) return;
+            const observer = new MutationObserver(() => {
+                if (panel.classList.contains('open')) {
+                    fetch('/api/setup/scan-agents?portMin=0&portMax=0').then(r => r.json()).then(data => {
+                        if (data.configured) renderConfiguredAgents(data.configured);
+                    }).catch(() => {});
+                }
+            });
+            observer.observe(panel, { attributes: true, attributeFilter: ['class'] });
+        })();
 
         // ============================================================================
         // WORKSPACE STATE PERSISTENCE
