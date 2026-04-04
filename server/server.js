@@ -4846,6 +4846,279 @@ app.delete('/api/setup/providers/ollama', async (req, res) => {
   }
 });
 
+// ── Local Agent Discovery & Management ──────────────────────────────────────
+
+app.get('/api/setup/scan-agents', async (req, res) => {
+  try {
+    const host = String(req.query.host || 'localhost');
+    const portMin = Math.max(1, Math.min(65535, parseInt(req.query.portMin, 10) || 4600));
+    const portMax = Math.max(portMin, Math.min(65535, parseInt(req.query.portMax, 10) || 4660));
+    const TIMEOUT_MS = 1500;
+
+    async function probePort(port) {
+      const url = `http://${host}:${port}`;
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+        let healthRes;
+        try {
+          healthRes = await fetch(`${url}/health`, { signal: controller.signal });
+        } finally {
+          clearTimeout(timer);
+        }
+        if (!healthRes.ok) return null;
+        let healthData = {};
+        try { healthData = await healthRes.json(); } catch (_) {}
+
+        // Probe common bridge endpoints
+        const bridgeEndpoints = ['/api/chat', '/v1/chat/completions', '/chat'];
+        let bridgeAvailable = false;
+        let bridgeEndpoint = '/api/chat';
+        for (const ep of bridgeEndpoints) {
+          try {
+            const bCtrl = new AbortController();
+            const bTimer = setTimeout(() => bCtrl.abort(), TIMEOUT_MS);
+            let bRes;
+            try {
+              bRes = await fetch(`${url}${ep}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ messages: [] }),
+                signal: bCtrl.signal
+              });
+            } finally {
+              clearTimeout(bTimer);
+            }
+            // 400/401 means the endpoint exists (bridge installed), 404 means not present
+            if (bRes.status === 400 || bRes.status === 401 || bRes.status === 422) {
+              bridgeAvailable = true;
+              bridgeEndpoint = ep;
+              break;
+            }
+          } catch (_) {}
+        }
+
+        return {
+          agent: healthData.agent || healthData.name || null,
+          type: healthData.type || healthData.service || null,
+          url,
+          port,
+          endpoint: bridgeEndpoint,
+          bridgeAvailable
+        };
+      } catch (_) {
+        return null;
+      }
+    }
+
+    // Scan in parallel batches of 10
+    const ports = [];
+    for (let p = portMin; p <= portMax; p++) ports.push(p);
+    const discovered = [];
+    const BATCH = 10;
+    for (let i = 0; i < ports.length; i += BATCH) {
+      const batch = ports.slice(i, i + BATCH);
+      const results = await Promise.all(batch.map(p => probePort(p)));
+      for (const r of results) {
+        if (r) discovered.push(r);
+      }
+    }
+
+    // Load configured agents and verify their current identity
+    const config = await loadMutableServerConfig();
+    const configuredAgents = Array.isArray(config.providers?.local_agents) ? config.providers.local_agents : [];
+    const verifiedConfigured = await Promise.all(configuredAgents.map(async (agent) => {
+      let verifiedAgent = null;
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+        let hRes;
+        try {
+          hRes = await fetch(`${agent.url}/health`, { signal: controller.signal });
+        } finally {
+          clearTimeout(timer);
+        }
+        if (hRes.ok) {
+          const hData = await hRes.json().catch(() => ({}));
+          verifiedAgent = hData.agent || hData.name || null;
+        }
+      } catch (_) {}
+      return { ...agent, verifiedAgent };
+    }));
+
+    res.json({ success: true, discovered, configured: verifiedConfigured });
+  } catch (error) {
+    console.error('[SETUP-SCAN-AGENTS] Scan failed:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/setup/local-agent/save', async (req, res) => {
+  try {
+    const url = String(req.body?.url || '').trim();
+    const endpoint = String(req.body?.endpoint || '/api/chat').trim();
+    const apiKey = String(req.body?.api_key || '').trim();
+
+    if (!url) {
+      return res.status(400).json({ success: false, error: 'url is required' });
+    }
+
+    // Resolve agent identity from /health
+    const TIMEOUT_MS = 1500;
+    let agentName = null;
+    let agentType = null;
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+      let hRes;
+      try {
+        hRes = await fetch(`${url}/health`, { signal: controller.signal });
+      } finally {
+        clearTimeout(timer);
+      }
+      if (!hRes.ok) {
+        return res.status(400).json({ success: false, error: `Agent at ${url} returned HTTP ${hRes.status} from /health` });
+      }
+      const hData = await hRes.json().catch(() => ({}));
+      agentName = hData.agent || hData.name || null;
+      agentType = hData.type || hData.service || null;
+    } catch (err) {
+      return res.status(400).json({ success: false, error: `Could not reach agent at ${url}: ${err.message}` });
+    }
+
+    if (!agentName) {
+      return res.status(400).json({ success: false, error: 'Agent did not report a name via /health' });
+    }
+
+    const agentId = agentName.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+
+    const { saveConfig } = require('../lib/config-manager');
+    const config = await loadMutableServerConfig();
+    if (!config.providers || typeof config.providers !== 'object') config.providers = {};
+    if (!Array.isArray(config.providers.local_agents)) config.providers.local_agents = [];
+
+    const existingIdx = config.providers.local_agents.findIndex(a => a.id === agentId);
+    const entry = {
+      id: agentId,
+      name: agentName,
+      type: agentType,
+      url,
+      endpoint,
+      ...(apiKey ? { api_key: apiKey } : {}),
+      enabled: true
+    };
+
+    if (existingIdx >= 0) {
+      config.providers.local_agents[existingIdx] = { ...config.providers.local_agents[existingIdx], ...entry };
+    } else {
+      config.providers.local_agents.push(entry);
+    }
+
+    await saveConfig(config);
+    await applyUpdatedServerConfig(config);
+
+    res.json({ success: true, agent: agentName, id: agentId, type: agentType, url, endpoint, message: `Agent "${agentName}" saved and applied` });
+  } catch (error) {
+    console.error('[SETUP-LOCAL-AGENT] Save failed:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/setup/local-agent/test', async (req, res) => {
+  try {
+    const url = String(req.body?.url || '').trim();
+    const endpoint = String(req.body?.endpoint || '/api/chat').trim();
+    const apiKey = String(req.body?.api_key || '').trim();
+
+    if (!url) {
+      return res.status(400).json({ success: false, error: 'url is required' });
+    }
+
+    const TIMEOUT_MS = 1500;
+    const start = Date.now();
+    let reachable = false;
+    let agentName = null;
+    let agentType = null;
+    let bridgeOk = false;
+
+    // Health check
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+      let hRes;
+      try {
+        hRes = await fetch(`${url}/health`, { signal: controller.signal });
+      } finally {
+        clearTimeout(timer);
+      }
+      if (hRes.ok) {
+        reachable = true;
+        const hData = await hRes.json().catch(() => ({}));
+        agentName = hData.agent || hData.name || null;
+        agentType = hData.type || hData.service || null;
+      }
+    } catch (_) {}
+
+    // Bridge probe
+    if (reachable) {
+      try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+        let bRes;
+        try {
+          bRes = await fetch(`${url}${endpoint}`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ messages: [] }),
+            signal: controller.signal
+          });
+        } finally {
+          clearTimeout(timer);
+        }
+        bridgeOk = bRes.status === 400 || bRes.status === 401 || bRes.status === 422;
+      } catch (_) {}
+    }
+
+    const latencyMs = Date.now() - start;
+    res.json({ success: reachable, reachable, agent: agentName, type: agentType, bridgeOk, latencyMs });
+  } catch (error) {
+    console.error('[SETUP-LOCAL-AGENT] Test failed:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/setup/local-agent/remove', async (req, res) => {
+  try {
+    const id = String(req.body?.id || '').trim();
+    if (!id) {
+      return res.status(400).json({ success: false, error: 'id is required' });
+    }
+
+    const { saveConfig } = require('../lib/config-manager');
+    const config = await loadMutableServerConfig();
+    if (!config.providers || typeof config.providers !== 'object') config.providers = {};
+    if (!Array.isArray(config.providers.local_agents)) config.providers.local_agents = [];
+
+    const before = config.providers.local_agents.length;
+    config.providers.local_agents = config.providers.local_agents.filter(a => a.id !== id);
+    const removed = before - config.providers.local_agents.length;
+
+    if (removed === 0) {
+      return res.status(404).json({ success: false, error: `No configured agent with id "${id}"` });
+    }
+
+    await saveConfig(config);
+    await applyUpdatedServerConfig(config);
+
+    res.json({ success: true, id, removed: true, applied: true, message: `Agent "${id}" removed` });
+  } catch (error) {
+    console.error('[SETUP-LOCAL-AGENT] Remove failed:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.get('/api/brains/locations', async (req, res) => {
   // Return empty list if brains feature is disabled
   if (!BRAINS_ENABLED || BRAIN_DIRS.length === 0) {
