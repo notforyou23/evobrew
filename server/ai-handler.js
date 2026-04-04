@@ -1139,6 +1139,16 @@ async function handleFunctionCalling(openai, anthropic, xai, indexer, params, ev
     const qe = getQueryEngine();
     const loader = getBrainLoader();
 
+    // Inject brain identity into system prompt so local agents can see it
+    if (loader?.brainPath) {
+      const brainName = String(loader.brainPath).split('/').filter(Boolean).pop() || 'brain';
+      const nodeCount = loader.nodes?.length || 0;
+      systemPrompt = systemPrompt.replace(
+        /(\*\*Folder\*\*:.+)/,
+        `$1\n**Brain**: ${brainName} (${nodeCount} nodes, path: ${loader.brainPath})`
+      );
+    }
+
     if (qe && loader) {
       const runStandardBrainSearch = async () => {
         console.log('[AI] Brain context injection enabled - searching brain...');
