@@ -151,6 +151,7 @@ Returns `{ type, supportsLocalModels }`. Pi detected via `/proc/device-tree/mode
 getProvider(modelId)
   1. Explicit model map (Map<modelId, providerId>) — checked first, wins immediately
   2. parseProviderId(modelId) — checks for "/" prefix, then heuristic chain:
+     local: prefix → local-agent (routes to LocalAgentAdapter by id)
      claude → anthropic | gpt/o1/o3 → openai | grok → xai
      nemotron/kimi/cogito/minimax/devstral → ollama-cloud
      llama/mistral/qwen/deepseek or contains ":" → ollama
@@ -200,6 +201,7 @@ Anthropic (OAuth or API key) → OpenAI → OpenAI Codex (model IDs only, no ada
 | `ollama` | OllamaAdapter | None (local) | Yes — `/api/tags` |
 | `ollama-cloud` | OpenAIAdapter + override | API key | Yes — `/v1/models` |
 | `lmstudio` | OpenAIAdapter + override | None (local) | Via listModels() |
+| `local:<id>` | LocalAgentAdapter | Optional key | Via `/health` |
 
 Important provider nuance:
 
@@ -215,6 +217,7 @@ Important provider nuance:
 **Ollama Cloud:** dynamic — seed list includes `nemotron-3-super:cloud`, `qwen3.5:397b`, `deepseek-v3.1:671b`, `kimi-k2:1t`
 **Ollama (local):** dynamic — whatever is installed (`ollama list`)
 **OpenAI Codex:** `gpt-5.2`, `gpt-5.3-codex`, `gpt-5.3-codex-spark` (via ChatGPT OAuth)
+**Local Agents:** dynamic — whatever agents are registered in `config.providers.local_agents[]`, shown in UI under "Local Agents" group
 
 ### OpenAI-Compatible Adapter Gotcha
 
@@ -255,7 +258,65 @@ Pattern used by every cloud provider (xAI, Ollama Cloud):
 
 ### Dynamic vs Static Model Lists
 
-Static: Anthropic, OpenAI, xAI, Codex. Dynamic: Ollama local (`/api/tags`), Ollama Cloud (`ollama.com/v1/models`, 5-min TTL cache with seed list fallback), LMStudio (`listModels()`).
+Static: Anthropic, OpenAI, xAI, Codex. Dynamic: Ollama local (`/api/tags`), Ollama Cloud (`ollama.com/v1/models`, 5-min TTL cache with seed list fallback), LMStudio (`listModels()`), Local Agents (registered entries in config).
+
+---
+
+## Local Agent System
+
+### Overview
+
+Local agents are first-class providers that run as separate HTTP/SSE servers on localhost. They are distinct from Ollama (model runner) and LMStudio (model server) — a local agent is a fully autonomous process with its own identity, tools, and memory. Evobrew connects to it like a provider, routing chat turns to its webhook and streaming responses back.
+
+Provider IDs use the `local:<id>` prefix (e.g., `local:home`, `local:research`). `parseProviderId()` in `registry.js` matches the `local:` prefix and routes to `LocalAgentAdapter`.
+
+### LocalAgentAdapter (`server/providers/adapters/local-agent.js`)
+
+HTTP + SSE streaming adapter. Sends `POST /api/chat` to the agent's webhook server with full message history, tools, and system context. Streams back `UnifiedChunk`-format SSE events. Optional bearer-token auth via per-agent key stored encrypted in config.
+
+The adapter implements the standard `ProviderAdapter` contract: `streamMessage()`, `createMessage()`, `convertTools()`, `getAvailableModels()` (returns `['local:<id>']`).
+
+### Config Structure
+
+Agents are stored in `config.providers.local_agents[]`. Each entry:
+```json
+{
+  "id": "home",
+  "name": "Home Agent",
+  "endpoint": "http://localhost:4610",
+  "key": "<encrypted-or-plaintext>"
+}
+```
+
+On registry init (`providers/index.js`), each entry is decrypted via `decryptAgentKey()` and registered with `registry.initializeProvider('local:<id>', { endpoint, apiKey })`.
+
+### Agent Discovery & Setup Routes (`/api/setup/*`)
+
+- **`GET /api/setup/scan-agents`** — scans `localhost:4600–4660` for `/health` endpoints, returns discovered agents with identity info.
+- **`POST /api/setup/local-agent/save`** — verifies agent identity via `/health`, saves to `config.providers.local_agents[]`, hot-reloads registry (`resetDefaultRegistry()` + `getDefaultRegistry()`).
+- **`POST /api/setup/local-agent/test`** — connectivity test only, no config change.
+- **`POST /api/setup/local-agent/remove`** — removes agent from config by id, hot-reloads registry.
+
+**Health endpoint contract:** `GET /health → { status: "ok", agent: "<name>", type: "<type>", endpoint: "<url>" }`
+
+### UI Surface
+
+- **Settings panel** — "Local Agents" section with Scan button (calls scan-agents), per-agent Connect/Remove actions. Shows agent name, type, and endpoint URL from `/health`.
+- **Model picker** (`public/js/ui-runtime-settings.js`) — registered local agents appear under a "Local Agents" group with `local:<id>` model IDs.
+- **CLI wizard** (`lib/setup-wizard.js`) — scan-and-select flow in `stepProviders()` for `local-agents` option: scans, prompts user to pick, saves.
+
+### Dispatch in ai-handler.js
+
+Local agent branch sits between the Ollama and Ollama Cloud branches in `handleFunctionCalling()`. Detection: `providerId.startsWith('local:')`. Uses `provider.streamMessage()` from the registry — same path as Ollama/Ollama Cloud.
+
+### Cosmohome Bridge Protocol (cosmo-home_2.3)
+
+Each agent in the cosmohome_2.3 repo runs its own webhook server on `HOME_PORT`. The bridge route `POST /api/chat` on the agent:
+- Calls `agent.run()` with full identity payload (SOUL, MISSION, MEMORY, conversation history, tools list).
+- Parses IDE context (active folder, open file, brain path) from Evobrew's system prompt prefix and prepends it to the user message.
+- Streams SSE back in `UnifiedChunk` format compatible with `LocalAgentAdapter`.
+
+This is the Cosmohome side of the integration; Evobrew's side is `LocalAgentAdapter`.
 
 ---
 
@@ -282,6 +343,7 @@ Each provider has its own streaming branch in `handleFunctionCalling()`:
 - **Claude** — Anthropic SDK `messages.stream()`, max_tokens 64000, temp 0.1. Orphaned tool results (no matching tool_use id) are skipped.
 - **OpenAI** — `responses.create()` (Responses API), stateful via `previousResponseId`. Subsequent tool-call turns send only function outputs, not full history.
 - **Grok/xAI** — `responses.create()` (OpenAI-compatible), system prompt as first input item (xAI doesn't support `instructions`).
+- **Local Agents** — `provider.streamMessage()` from registry via `LocalAgentAdapter`. Branch sits between Ollama and Ollama Cloud. Detection: `providerId.startsWith('local:')`.
 - **Ollama/Ollama Cloud** — `provider.streamMessage()` from registry. Gemma models: tools disabled entirely.
 
 Reality of the architecture:
@@ -371,6 +433,7 @@ UI Refresh layer details:
 - `ui-panels.js` persists layout state in `evobrew.ui.layout.v2` and restores panel visibility/docking heuristically on load.
 - `ui-shortcuts.js` is the newer shortcut system; legacy Monaco/global shortcuts still coexist with it.
 - `ui-onboarding.js` adds a **non-blocking empty-state card** (“Start Your Workspace”) over the editor when no folder is selected, reinforcing that folder + optional brain is the first interaction contract.
+- `initUIRefresh(true)` is called immediately after `ui-shell.js` loads. This call is required to restore the overflow menu and other delegated-event handlers — missing it leaves those handlers unregistered.
 
 Runtime context strip notes:
 
@@ -541,9 +604,19 @@ Separate from brain search. Uses `text-embedding-3-small` at **default 1536 dime
 
 **Frontend** (`public/js/terminal.js`): xterm.js with FitAddon/WebLinksAddon/SearchAddon. Client ID persisted in localStorage. Auto-reconnects on WS close (1200ms debounce). Session restore on page refresh via `GET /api/terminal/sessions`.
 
+### PDF Preview
+
+PDF.js is loaded lazily from CDN on first PDF open. Renders inside the existing preview pane with page navigation and zoom controls. Wired into `updatePreview()` in `public/index.html`. The PDF MIME type (`application/pdf`) was added to `/api/serve-file` so the browser receives the correct content-type for inline rendering.
+
+### File Download Enhancements
+
+**`GET /api/folder/download-zip`** — streams a ZIP archive of a directory using the `archiver` package. 500MB cap, skips `node_modules/` and `.git/`. No intermediate file on disk; streams directly to response.
+
+Frontend functions: `downloadFileByPath()` (direct browser download of a single file), `downloadFolderAsZip()` (calls download-zip endpoint). Both are triggered from the file tree right-click context menu: "Download" on files, "Download as ZIP" on folders.
+
 ### File Operations
 
-REST endpoints at `/api/folder/*`: `browse` (recursive with configurable depth, max 12K entries), `read`, `write`, `create`, `delete`, `upload-binary`, `write-docx`. No rename/move endpoint.
+REST endpoints at `/api/folder/*`: `browse` (recursive with configurable depth, max 12K entries), `read`, `write`, `create`, `delete`, `upload-binary`, `write-docx`, `download-zip`. No rename/move endpoint.
 
 ### Editor (`public/js/editor.js`)
 
@@ -636,6 +709,11 @@ Key sections in the 4200+ line monolith:
 | `POST` | `/api/index-folder` | Index codebase for semantic search |
 | `POST` | `/api/codebase-search` | Semantic code search |
 | `GET` | `/api/conversations` | List saved conversations |
+| `GET` | `/api/folder/download-zip` | Stream ZIP archive of a directory |
+| `GET` | `/api/setup/scan-agents` | Scan localhost:4600-4660 for local agents |
+| `POST` | `/api/setup/local-agent/save` | Verify and save a local agent config |
+| `POST` | `/api/setup/local-agent/test` | Test local agent connectivity |
+| `POST` | `/api/setup/local-agent/remove` | Remove a local agent from config |
 | `WS` | `/api/terminal/ws` | PTY terminal WebSocket |
 | `WS` | `/api/gateway-ws` | OpenClaw gateway proxy |
 
@@ -659,3 +737,8 @@ Key sections in the 4200+ line monolith:
 - **`create_file` bypasses approval** — Unlike edit tools, `create_file` writes directly to disk without user review
 - **PGS sweeps always use Claude** — Hardcoded to `claude-sonnet-4-6` regardless of user model selection (synthesis uses user model)
 - **Codebase indexer vs brain embeddings** — Codebase uses 1536d, brain uses 512d. Different vector spaces, not interchangeable
+- **Local agent not appearing in dropdown** — Verify `config.providers.local_agents[]` entry exists, `decryptAgentKey()` is not throwing, and `initializeProvider('local:<id>', ...)` is called in `providers/index.js` init loop
+- **Local agent routes to wrong provider** — `parseProviderId()` must match `local:` prefix before the Ollama colon heuristic fires; colons in model IDs default to Ollama without the prefix check
+- **PDF not rendering inline** — Check that `/api/serve-file` is returning `Content-Type: application/pdf` and that PDF.js CDN loaded successfully (lazy, only on first PDF open)
+- **ZIP download hangs or truncates** — `archiver` streams directly; any unhandled `error` event on the archive will silently terminate the stream. Check server logs for archiver errors on large directories
+- **Overflow menu broken after ui-shell.js load** — `initUIRefresh(true)` must be called after ui-shell.js loads. If the overflow menu stops working, verify that call is present and not being skipped by early-exit logic
