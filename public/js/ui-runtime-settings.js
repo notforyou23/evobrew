@@ -244,6 +244,11 @@
       .map((model) => model.value || model.id));
     if (agents.length > 0) groups.push({ label: 'Agents', items: agents });
 
+    const localAgents = pick(Array.from(modelMap.values())
+      .filter((model) => model.provider?.startsWith('local:') && !model.isAlias)
+      .map((model) => model.value || model.id));
+    if (localAgents.length > 0) groups.push({ label: 'Local Agents', items: localAgents });
+
     const curatedCount = favorites.length + recent.length + agents.length;
     if (curatedCount < 6) {
       const fallbackRecommended = pick(RECOMMENDED_SECTIONS.flatMap((section) => section.values));
