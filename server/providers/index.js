@@ -44,7 +44,7 @@ const { ProviderRegistry } = require('./registry.js');
 function decryptAgentKey(value) {
   if (!value || typeof value !== 'string' || !value.startsWith('encrypted:')) return value;
   try {
-    const { decrypt } = require('../lib/encryption');
+    const { decrypt } = require('../../lib/encryption');
     return decrypt(value);
   } catch (_) {
     return value;
