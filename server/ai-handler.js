@@ -1935,6 +1935,7 @@ Execute the pending steps now. Start with the first step that has status "pendin
           let textContent = '';
 
           for await (const chunk of stream) {
+            console.log(`[AI] Local agent chunk:`, JSON.stringify(chunk).substring(0, 200));
             if (chunk.type === 'text' && chunk.text) {
               textContent += chunk.text;
               eventEmitter?.({ type: 'response_chunk', chunk: chunk.text });
@@ -1963,6 +1964,8 @@ Execute the pending steps now. Start with the first step that has status "pendin
               toolCalls = chunk.tool_calls;
             }
           }
+
+          console.log(`[AI] Local agent stream done: ${textContent.length} chars text, ${toolCalls.length} tool calls`);
 
           assistantMessage = {
             content: textContent,

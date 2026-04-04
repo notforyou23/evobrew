@@ -91,6 +91,7 @@ class LocalAgentAdapter extends ProviderAdapter {
 
   async *streamMessage(request) {
     const url = `${this._url}${this._endpoint}`;
+    console.log(`[LocalAgent:${this._id}] POST ${url} (messages: ${request.messages?.length}, tools: ${request.tools?.length})`);
     const headers = {
       'Content-Type': 'application/json',
       'Accept': 'text/event-stream'
