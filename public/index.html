@@ -15061,11 +15061,13 @@ ${html}
     }
 
     const _locationColors = {
+      'all': '#64748b',
       'cosmo-home': '#10b981',
       'main': '#0d9488',
       'bertha': '#7c3aed',
       'bertha/testing': '#a78bfa'
     };
+    const ALL_BRAIN_LOCATIONS_KEY = '__all__';
 
     function toggleBrainPicker() {
       brainPickerOpen = !brainPickerOpen;
@@ -15130,7 +15132,16 @@ ${html}
         if (!res.ok) throw new Error(`locations ${res.status}`);
         const data = await res.json();
         if (!data.success) throw new Error('Failed to load locations');
-        _bpLocations = data.locations.filter(l => l.available && l.brainCount > 0);
+        const discoveredLocations = data.locations.filter(l => l.available && l.brainCount > 0);
+        const totalBrains = discoveredLocations.reduce((sum, loc) => sum + (loc.brainCount || 0), 0);
+        _bpLocations = totalBrains > 0
+          ? [{
+              id: ALL_BRAIN_LOCATIONS_KEY,
+              label: 'all',
+              displayLabel: 'All',
+              brainCount: totalBrains
+            }, ...discoveredLocations]
+          : discoveredLocations;
         locEl.innerHTML = _bpLocations.map(loc => {
           const color = _locationColors[loc.label] || '#6b7280';
           const locationKey = loc.id || loc.path;
@@ -15143,8 +15154,10 @@ ${html}
           </button>`;
         }).join('');
 
-        // Auto-select cosmo-home if available, otherwise first
-        const defaultLoc = _bpLocations.find(l => l.label === 'cosmo-home') || _bpLocations[0];
+        // Default to the aggregate view so the picker still behaves like a global catalog.
+        const defaultLoc = _bpLocations.find(l => l.id === ALL_BRAIN_LOCATIONS_KEY)
+          || _bpLocations.find(l => l.label === 'cosmo-home')
+          || _bpLocations[0];
         if (defaultLoc) selectBrainLocation(defaultLoc.id || defaultLoc.path);
         else listEl.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-secondary);">No brain locations found</div>';
       } catch (err) {
@@ -15160,7 +15173,7 @@ ${html}
     async function selectBrainLocation(locationKey) {
       _bpSelectedLocation = locationKey;
       const location = (_bpLocations || []).find(loc => (loc.id || loc.path) === locationKey) || null;
-      const label = location?.label || 'main';
+      const label = location?.label || (locationKey === ALL_BRAIN_LOCATIONS_KEY ? 'all' : 'main');
       // Update active tab styling
       document.querySelectorAll('#brainPickerLocations button').forEach(btn => {
         btn.classList.remove('bp-active');
@@ -15188,28 +15201,32 @@ ${html}
       listEl.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-secondary);">Loading brains...</div>';
       try {
         const location = (_bpLocations || []).find(loc => (loc.id || loc.path) === locationKey) || null;
-        const url = locationKey ? `/api/brains/list?locationPath=${encodeURIComponent(locationKey)}` : '/api/brains/list';
+        const isAllLocations = !locationKey || locationKey === ALL_BRAIN_LOCATIONS_KEY;
+        const url = isAllLocations ? '/api/brains/list' : `/api/brains/list?locationPath=${encodeURIComponent(locationKey)}`;
         const res = await fetch(url);
         const data = await res.json();
         if (!data.success || !data.brains.length) {
-          listEl.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-secondary);">No brains in this location</div>';
+          listEl.innerHTML = `<div style="text-align:center; padding:20px; color:var(--text-secondary);">${isAllLocations ? 'No brains found' : 'No brains in this location'}</div>`;
           return;
         }
         const infoRes = await fetch('/api/brain/info');
         const info = await infoRes.json();
         const currentPath = info.brainPath || null;
-        const color = _locationColors[location?.label] || '#6b7280';
 
         listEl.innerHTML = data.brains.map(b => {
           const isActive = currentPath && b.path === currentPath;
+          const locationMeta = isAllLocations
+            ? (b.locationDisplay || b.location || '')
+            : (b.relativePath && b.relativePath !== b.name ? b.relativePath : '');
           const nodeText = b.nodes !== null
             ? (b.estimated ? '~' : '') + b.nodes.toLocaleString() + ' nodes'
             : 'unknown size';
+          const metaText = [locationMeta, nodeText].filter(Boolean).join(' · ');
           return `<div class="hub-brain-item ${isActive ? 'selected' : ''}" data-brain-path="${b.path}" onclick="pickBrain('${b.path.replace(/'/g, "\\'")}')" style="cursor:pointer;">
             <div class="hub-brain-item-header">
               <div class="hub-brain-item-info">
                 <div class="hub-brain-item-name"><span>${b.name}</span>${isActive ? ' <span style="color:var(--accent-primary); font-size:10px;">● active</span>' : ''}</div>
-                <div class="hub-brain-item-meta">${nodeText}</div>
+                <div class="hub-brain-item-meta">${metaText}</div>
               </div>
             </div>
           </div>`;

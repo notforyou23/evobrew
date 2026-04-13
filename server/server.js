@@ -4345,23 +4345,115 @@ const BRAIN_DIRS = BRAINS_ENABLED
       : legacyBrainDirs)
   : [];
 
+function inferBrainDirLabel(dir) {
+  const normalizedDir = String(dir || '').toLowerCase();
+  if (normalizedDir.includes('bertha') && normalizedDir.includes('testing')) return 'bertha/testing';
+  if (normalizedDir.includes('bertha')) return 'bertha';
+  if (normalizedDir.includes('cosmo-home')) return 'cosmo-home';
+  if (normalizedDir.includes('cosmo_2.3')) return 'cosmo_2.3';
+  return 'main';
+}
+
 const BRAIN_DIR_LABELS = {};
 BRAIN_DIRS.forEach(d => {
-  if (d.includes('cosmo-home')) BRAIN_DIR_LABELS[d] = 'cosmo-home';
-  else if (d.includes('_allTesting')) BRAIN_DIR_LABELS[d] = 'bertha/testing';
-  else if (d.includes('Bertha')) BRAIN_DIR_LABELS[d] = 'bertha';
-  else if (d.includes('cosmo_2.3')) BRAIN_DIR_LABELS[d] = 'cosmo_2.3';
-  else BRAIN_DIR_LABELS[d] = 'main';
+  BRAIN_DIR_LABELS[d] = inferBrainDirLabel(d);
 });
 
 // Brain list cache: keyed by location+counts, 60s TTL
 const _brainListCache = {};
 const BRAIN_CACHE_TTL = 60000;
+const BRAIN_SCAN_MAX_DEPTH = 6;
 
 function _getCachedBrains(key) {
   const entry = _brainListCache[key];
   if (entry && Date.now() - entry.ts < BRAIN_CACHE_TTL) return entry.data;
   return null;
+}
+
+function getBrainLocationDisplayLabel(dir, labelCounts = null) {
+  const label = BRAIN_DIR_LABELS[dir] || inferBrainDirLabel(dir);
+  if (!labelCounts || (labelCounts[label] || 0) <= 1) {
+    return label;
+  }
+
+  const resolvedPath = path.resolve(dir);
+  let suffix = path.basename(resolvedPath) || path.basename(path.dirname(resolvedPath));
+  if (suffix === 'runs' || suffix === 'priorRuns') {
+    suffix = path.basename(path.dirname(resolvedPath)) || suffix;
+  }
+  return `${label} · ${suffix}`;
+}
+
+async function buildBrainEntry(rootDir, brainPath, withCounts = false) {
+  const statePath = path.join(brainPath, 'state.json.gz');
+  let nodeCount = null;
+  let estimated = false;
+
+  if (withCounts) {
+    try {
+      const compressed = await fs.readFile(statePath);
+      const decompressed = await gunzip(compressed);
+      const state = JSON.parse(decompressed.toString());
+      nodeCount = state.memory?.nodes?.length || 0;
+    } catch {
+      estimated = true;
+    }
+  } else {
+    try {
+      const stat = await fs.stat(statePath);
+      nodeCount = Math.round(stat.size / 400);
+      estimated = true;
+    } catch {
+      estimated = true;
+    }
+  }
+
+  return {
+    name: path.basename(brainPath),
+    path: brainPath,
+    nodes: nodeCount,
+    estimated,
+    location: BRAIN_DIR_LABELS[rootDir] || inferBrainDirLabel(rootDir),
+    locationPath: rootDir,
+    relativePath: path.relative(rootDir, brainPath) || path.basename(brainPath)
+  };
+}
+
+async function scanBrainsWithinRoot(rootDir, options = {}) {
+  const { withCounts = false, maxDepth = BRAIN_SCAN_MAX_DEPTH } = options;
+  const brains = [];
+  const stack = [{ dir: rootDir, depth: 0 }];
+  const visited = new Set();
+
+  while (stack.length > 0) {
+    const { dir, depth } = stack.pop();
+    const resolvedDir = path.resolve(dir);
+    if (visited.has(resolvedDir)) continue;
+    visited.add(resolvedDir);
+
+    let entries;
+    try {
+      entries = await fs.readdir(resolvedDir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    const hasStateFile = entries.some(entry => entry.isFile() && entry.name === 'state.json.gz');
+    if (hasStateFile) {
+      brains.push(await buildBrainEntry(rootDir, resolvedDir, withCounts));
+      continue;
+    }
+
+    if (depth >= maxDepth) continue;
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+      stack.push({ dir: path.join(resolvedDir, entry.name), depth: depth + 1 });
+    }
+  }
+
+  return brains;
 }
 
 // Config endpoint for frontend (exposes safe config values)
@@ -5139,33 +5231,14 @@ app.get('/api/brains/locations', async (req, res) => {
       let brainCount = 0;
       if (available) {
         try {
-          const entries = await fs.readdir(dir, { withFileTypes: true });
-          for (const entry of entries) {
-            if (!entry.isDirectory()) continue;
-            const brainPath = path.join(dir, entry.name);
-            const statePath = path.join(brainPath, 'state.json.gz');
-            try {
-              await fs.access(statePath);
-              brainCount += 1;
-            } catch {
-              continue;
-            }
-          }
+          brainCount = (await scanBrainsWithinRoot(dir, { withCounts: false })).length;
         } catch {
           // ignore count errors
         }
       }
 
-      const label = (() => {
-        const d = dir.toLowerCase();
-        if (d.includes('bertha') && d.includes('testing')) return 'bertha/testing';
-        if (d.includes('bertha')) return 'bertha';
-        if (d.includes('cosmo-home')) return 'cosmo-home';
-        return BRAIN_DIR_LABELS[dir] || path.basename(dir) || 'brains';
-      })();
-
       rawLocations.push({
-        label,
+        label: BRAIN_DIR_LABELS[dir] || inferBrainDirLabel(dir),
         path: dir,
         available,
         brainCount
@@ -5178,20 +5251,10 @@ app.get('/api/brains/locations', async (req, res) => {
     }, {});
 
     const locations = rawLocations.map((location) => {
-      const duplicateCount = labelCounts[location.label] || 0;
-      const resolvedPath = path.resolve(location.path);
-      let suffix = path.basename(resolvedPath) || path.basename(path.dirname(resolvedPath));
-      if (suffix === 'runs' || suffix === 'priorRuns') {
-        suffix = path.basename(path.dirname(resolvedPath)) || suffix;
-      }
-      const displayLabel = duplicateCount > 1
-        ? `${location.label} · ${suffix}`
-        : location.label;
-
       return {
         ...location,
         id: location.path,
-        displayLabel
+        displayLabel: getBrainLocationDisplayLabel(location.path, labelCounts)
       };
     });
 
@@ -5225,6 +5288,12 @@ app.get('/api/brains/list', async (req, res) => {
         ? BRAIN_DIRS.filter(d => BRAIN_DIR_LABELS[d] === locationFilter)
         : BRAIN_DIRS;
 
+    const labelCounts = dirs.reduce((acc, dir) => {
+      const label = BRAIN_DIR_LABELS[dir] || inferBrainDirLabel(dir);
+      acc[label] = (acc[label] || 0) + 1;
+      return acc;
+    }, {});
+
     const brains = [];
     for (const dir of dirs) {
       try {
@@ -5232,43 +5301,13 @@ app.get('/api/brains/list', async (req, res) => {
       } catch {
         continue; // skip unmounted/missing dirs
       }
-      const entries = await fs.readdir(dir, { withFileTypes: true });
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
-        const brainPath = path.join(dir, entry.name);
-        const statePath = path.join(brainPath, 'state.json.gz');
-        try {
-          await fs.access(statePath);
-          let nodeCount = null;
-          let estimated = false;
-          if (withCounts) {
-            try {
-              const compressed = await fs.readFile(statePath);
-              const decompressed = await gunzip(compressed);
-              const state = JSON.parse(decompressed.toString());
-              nodeCount = state.memory?.nodes?.length || 0;
-            } catch {
-              estimated = true;
-            }
-          } else {
-            // Estimate from file size (fast)
-            try {
-              const stat = await fs.stat(statePath);
-              nodeCount = Math.round(stat.size / 400); // rough estimate
-              estimated = true;
-            } catch { estimated = true; }
-          }
-          brains.push({
-            name: entry.name,
-            path: brainPath,
-            nodes: nodeCount,
-            estimated,
-            location: BRAIN_DIR_LABELS[dir] || 'unknown'
-          });
-        } catch {
-          continue; // no state.json.gz = not a valid brain
-        }
-      }
+      const discoveredBrains = await scanBrainsWithinRoot(dir, { withCounts });
+      discoveredBrains.forEach((brain) => {
+        brains.push({
+          ...brain,
+          locationDisplay: getBrainLocationDisplayLabel(brain.locationPath, labelCounts)
+        });
+      });
     }
     // Sort by name descending (newest timestamps first typically)
     brains.sort((a, b) => b.name.localeCompare(a.name));
